@@ -3,6 +3,7 @@
 import { CheckCircle2, PencilLine, TriangleAlert, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { CorrectionAnomalies, CorrectionCyclesGroupee } from "@/components/correction-anomalies";
+import { FicheDossier } from "@/components/fiche-dossier";
 import { GuideImports } from "@/components/guide-imports";
 import { useSession } from "@/components/session";
 import { Aide, Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Modale, Pastille, Saisie, Tableau, Vide, ZoneFichier } from "@/components/ui";
@@ -40,6 +41,8 @@ export default function Recrutement() {
   const [page, setPage] = useState(1);
   const [edition, setEdition] = useState<Agent | null>(null);
   const [correction, setCorrection] = useState<Agent | null>(null);
+  // Fiche complète de la personne (identité, recrutement, texte, affectation, notes, pièces…)
+  const [ficheOuverte, setFicheOuverte] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const resumeAnomalies = useApi<{ anomalie: string; n: number }[]>("/agents/anomalies");
   const cyclesAVerifier = resumeAnomalies.donnees?.find((x) => x.anomalie === "Cycle de la base différent de celui du diplôme")?.n ?? 0;
@@ -189,7 +192,18 @@ export default function Recrutement() {
                           {a.anomalies.length ? <TriangleAlert /> : a.lotPublication ? <CheckCircle2 /> : <UserRound />}
                         </Pastille>
                         <div className="min-w-0">
-                          <div className="font-medium leading-snug">{a.nomComplet}</div>
+                          {peut.traiter(profil.role) ? (
+                            <button
+                              type="button"
+                              onClick={() => setFicheOuverte(a.id)}
+                              title="Voir toute la fiche"
+                              className="cursor-pointer text-left font-medium leading-snug hover:text-marque-700 hover:underline"
+                            >
+                              {a.nomComplet}
+                            </button>
+                          ) : (
+                            <div className="font-medium leading-snug">{a.nomComplet}</div>
+                          )}
                           <div className="text-[11px] text-zinc-400">
                             {a.dateNaissance ? (
                               <>
@@ -285,6 +299,7 @@ export default function Recrutement() {
         )}
       </Carte>
 
+      {ficheOuverte && <FicheDossier id={ficheOuverte} fermer={() => setFicheOuverte(null)} />}
       {correction && (
         <CorrectionAnomalies
           agent={correction}

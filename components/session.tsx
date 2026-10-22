@@ -244,7 +244,8 @@ export function Coquille({ children }: { children: ReactNode }) {
                       </div>
                     </div>
                   </div>
-                  {e.cle === "notes" && peut.parametrer(p.role) && (
+                  {/* Pilotage : juste après « Contrôle et vérification » */}
+                  {e.cle === "controle" && peut.parametrer(p.role) && (
                     <div className="mt-2">
                       <LienMenu href="/pilotage" libelle="Pilotage" icone={Gauge} actif={chemin === "/pilotage"} principal />
                     </div>
