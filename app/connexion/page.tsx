@@ -55,7 +55,7 @@ export default function Connexion() {
           </div>
           <div>
             <h1 className="text-[26px] leading-tight font-semibold">
-              Système d’information des ressources humaines et de l’administration scolaire (SIRHAS)
+              Système d’Information des Ressources Humaines et de l’Administration Scolaire (SIRHAS)
             </h1>
             <p className="mt-3 max-w-72 text-sm leading-relaxed text-white/55">
               Direction générale des ressources humaines et de l’administration scolaire — MEPPSA.
