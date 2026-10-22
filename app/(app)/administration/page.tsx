@@ -22,7 +22,11 @@ interface Utilisateur {
   /** A un code personnel de connexion (12 caractères). */
   aCode?: boolean;
   codeCreeLe?: string | null;
+  /** Trop d'essais de connexion ratés : bloqué jusqu'à cette heure. */
+  bloqueJusqua?: string | null;
 }
+
+const estBloque = (u: Utilisateur) => !!u.bloqueJusqua && new Date(u.bloqueJusqua).getTime() > Date.now();
 
 interface StructureCourte {
   id: number;
@@ -38,6 +42,17 @@ export default function Administration() {
   const [edition, setEdition] = useState<Utilisateur | "nouveau" | null>(null);
   const [message, setMessage] = useState<{ ton: "vert" | "rouge"; texte: string } | null>(null);
   const [codeNouveau, setCodeNouveau] = useState<{ nom: string; code: string } | null>(null);
+  const [aDeconnecter, setADeconnecter] = useState<Utilisateur | null>(null);
+
+  async function action(chemin: string, reussite: string) {
+    try {
+      await api.post(chemin);
+      setMessage({ ton: "vert", texte: reussite });
+      users.recharger();
+    } catch (e) {
+      setMessage({ ton: "rouge", texte: (e as Error).message });
+    }
+  }
   const codes = useCodesPersonnels(() => users.recharger());
 
   if (!peut.parametrer(profil.role)) return <Alerte>Accès réservé au DG et à l’administrateur.</Alerte>;
@@ -114,7 +129,16 @@ export default function Administration() {
                       <div className="text-[11px] text-or-700">sans structure</div>
                     ) : null}
                   </td>
-                  <td>{u.actif ? <Badge ton="vert">Actif</Badge> : <Badge ton="rouge">Désactivé</Badge>}</td>
+                  <td>
+                    {u.actif ? <Badge ton="vert">Actif</Badge> : <Badge ton="rouge">Désactivé</Badge>}
+                    {estBloque(u) && (
+                      <div className="mt-1">
+                        <Badge ton="rouge">
+                          Bloqué jusqu’à {new Date(u.bloqueJusqua!).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                        </Badge>
+                      </div>
+                    )}
+                  </td>
                   <td>
                     {u.aCode ? <Badge ton="vert">Oui</Badge> : <Badge ton="jaune">Pas encore</Badge>}
                     {u.codeCreeLe && <div className="text-[11px] text-zinc-400">depuis le {new Date(u.codeCreeLe).toLocaleDateString("fr-FR")}</div>}
@@ -138,6 +162,16 @@ export default function Administration() {
                       >
                         {u.aCode ? "Nouveau code" : "Créer le code"}
                       </Bouton>
+                      {estBloque(u) && (
+                        <Bouton variante="discret" onClick={() => action(`/utilisateurs/${u.id}/debloquer`, `${u.nom} peut de nouveau se connecter.`)}>
+                          Débloquer
+                        </Bouton>
+                      )}
+                      {u.actif && (
+                        <Bouton variante="discret" onClick={() => setADeconnecter(u)} title="Ferme toutes ses sessions ouvertes (poste perdu, départ…)">
+                          Déconnecter
+                        </Bouton>
+                      )}
                       <Bouton variante="discret" onClick={() => setEdition(u)}>Modifier</Bouton>
                     </div>
                   </td>
@@ -165,6 +199,36 @@ export default function Administration() {
       </Link>
 
       {codes.modales}
+      <Modale titre="Fermer ses sessions ?" ouverte={!!aDeconnecter} fermer={() => setADeconnecter(null)}>
+        {aDeconnecter && (
+          <div className="space-y-4 text-[13px] leading-relaxed text-zinc-600">
+            <p>
+              {aDeconnecter.id === profil.id ? (
+                <>Vos sessions ouvertes sur les <strong>autres</strong> postes seront fermées ; celle-ci reste ouverte.</>
+              ) : (
+                <>
+                  Toutes les sessions ouvertes de <strong>{aDeconnecter.nom}</strong> seront fermées tout de suite, sur tous les postes. Son compte reste actif : il
+                  pourra se reconnecter avec son mot de passe et son code.
+                </>
+              )}
+            </p>
+            <p className="text-[12px] text-zinc-500">Poste perdu ou volé : changez aussi son mot de passe ou son code (« Nouveau code »).</p>
+            <div className="flex justify-end gap-2">
+              <Bouton onClick={() => setADeconnecter(null)}>Annuler</Bouton>
+              <Bouton
+                variante="sombre"
+                onClick={() => {
+                  const u = aDeconnecter;
+                  setADeconnecter(null);
+                  void action(`/utilisateurs/${u.id}/deconnecter`, u.id === profil.id ? "Vos autres sessions sont fermées." : `Les sessions de ${u.nom} sont fermées.`);
+                }}
+              >
+                Fermer les sessions
+              </Bouton>
+            </div>
+          </div>
+        )}
+      </Modale>
       <Modale titre="Compte créé : son code personnel" ouverte={!!codeNouveau} fermer={() => setCodeNouveau(null)}>
         {codeNouveau && (
           <div className="space-y-3 text-[13px] text-zinc-600">

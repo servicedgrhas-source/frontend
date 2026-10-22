@@ -3,9 +3,9 @@
 import { KeyRound, Lock, Mail } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alerte, Bouton, Champ, Saisie } from "@/components/ui";
-import { api, ouvrirSession, type Profil } from "@/lib/api";
+import { api, lireSession, ouvrirSession, type Profil } from "@/lib/api";
 
 export default function Connexion() {
   const router = useRouter();
@@ -14,6 +14,11 @@ export default function Connexion() {
   const [code, setCode] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
+
+  // Déjà connecté : directement à l'application (un jeton périmé y ramène ici)
+  useEffect(() => {
+    if (lireSession().jeton) router.replace("/");
+  }, [router]);
 
   async function valider(e: React.FormEvent) {
     e.preventDefault();
@@ -74,16 +79,16 @@ export default function Connexion() {
           <Champ libelle="Adresse e-mail">
             <div className="relative">
               <Mail className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-400" />
-              <Saisie type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-9" />
+              <Saisie type="email" autoComplete="username" required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-9" />
             </div>
           </Champ>
           <Champ libelle="Mot de passe">
             <div className="relative">
               <Lock className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-400" />
-              <Saisie type="password" autoComplete="current-password" required value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} className="w-full pl-9" />
+              <Saisie type="password" autoComplete="current-password" required maxLength={128} value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} className="w-full pl-9" />
             </div>
           </Champ>
-          <Champ libelle="Code personnel" aide="Les 12 caractères remis par l’administrateur, par exemple T3G8-GH6J-FG3U">
+          <Champ libelle="Code personnel" aide="Les 12 caractères remis par l’administrateur (ex. T3G8-GH6J-FG3U). Laissez vide si vous n’en avez pas reçu.">
             <div className="relative">
               <KeyRound className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-400" />
               <Saisie

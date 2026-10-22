@@ -8,8 +8,8 @@ import { useCallback, useEffect, useState } from "react";
  */
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
-const CLE_JETON = "dgrhas.jeton";
-const CLE_PROFIL = "dgrhas.profil";
+export const CLE_JETON = "dgrhas.jeton";
+export const CLE_PROFIL = "dgrhas.profil";
 
 export type Role =
   | "ADMIN"
@@ -31,6 +31,8 @@ export interface Profil {
   role: Role;
   departementId: number | null;
   structureId?: number | null;
+  /** A un code personnel de connexion. */
+  aCode?: boolean;
 }
 
 export function lireSession(): { jeton: string | null; profil: Profil | null } {
@@ -49,6 +51,55 @@ export function ouvrirSession(jeton: string, profil: Profil) {
   localStorage.setItem(CLE_PROFIL, JSON.stringify(profil));
 }
 
+/** Profil relu sur le serveur : gardé à jour pour les autres onglets et les pages d'impression. */
+export function memoriserProfil(profil: Profil) {
+  try {
+    localStorage.setItem(CLE_PROFIL, JSON.stringify(profil));
+  } catch {
+    /* stockage indisponible */
+  }
+}
+
+/* ------------------------- Session expirée ------------------------- */
+
+/**
+ * Quand la session expire (ou est fermée par l'administrateur), la coquille de l'application
+ * propose de se reconnecter dans une fenêtre, sans quitter la page : la saisie en cours reste.
+ * Hors de la coquille (pages d'impression…), retour à la page de connexion.
+ */
+type GestionnaireExpiration = (message: string) => void;
+let gestionnaireExpiration: GestionnaireExpiration | null = null;
+
+export function surSessionExpiree(g: GestionnaireExpiration) {
+  gestionnaireExpiration = g;
+  return () => {
+    if (gestionnaireExpiration === g) gestionnaireExpiration = null;
+  };
+}
+
+/** Événement envoyé après une reconnexion : les données affichées sont relues. */
+export const SESSION_ROUVERTE = "dgrhas:session-rouverte";
+
+/** Événement envoyé après chaque enregistrement réussi : les compteurs du menu sont relus. */
+export const TRAVAIL_MODIFIE = "dgrhas:travail-modifie";
+
+function sessionExpiree(message: string) {
+  if (gestionnaireExpiration) return gestionnaireExpiration(message);
+  fermerSession();
+  if (typeof window !== "undefined") window.location.href = "/connexion";
+}
+
+/** Réponse du serveur : nouveau jeton (son propre code ou mot de passe vient de changer). */
+function prendreNouveauJeton(rep: Response) {
+  const jeton = rep.headers.get("X-Jeton");
+  if (jeton)
+    try {
+      localStorage.setItem(CLE_JETON, jeton);
+    } catch {
+      /* stockage indisponible */
+    }
+}
+
 export function fermerSession() {
   try {
     localStorage.removeItem(CLE_JETON);
@@ -57,6 +108,10 @@ export function fermerSession() {
     /* stockage indisponible */
   }
 }
+
+/** Message affiché quand le serveur ne répond pas (réseau coupé, serveur arrêté ou en panne). */
+const SERVEUR_INJOIGNABLE =
+  "Impossible de joindre le serveur. Vérifiez votre connexion internet et réessayez. Si le problème persiste, contactez le support de la Direction Générale des Ressources Humaines et de l’Administration Scolaire.";
 
 export class ErreurApi extends Error {
   constructor(
@@ -82,7 +137,12 @@ async function requete<T>(
   if (lecture) return envoyer<T>(chemin, options);
   const p = envoyer<T>(chemin, options);
   ecritures.add(p);
-  return p.finally(() => ecritures.delete(p));
+  return p
+    .then((r) => {
+      if (typeof window !== "undefined" && !chemin.startsWith("/auth/")) window.dispatchEvent(new Event(TRAVAIL_MODIFIE));
+      return r;
+    })
+    .finally(() => ecritures.delete(p));
 }
 
 async function envoyer<T>(
@@ -98,7 +158,7 @@ async function envoyer<T>(
     entetes["Content-Type"] = "application/json";
 
   const injoignable = new ErreurApi(
-    "Serveur injoignable. Vérifiez que l'API (backend) est démarrée.",
+    SERVEUR_INJOIGNABLE,
     0,
   );
   let rep: Response;
@@ -107,10 +167,7 @@ async function envoyer<T>(
   } catch {
     throw injoignable;
   }
-  if (rep.status === 401 && !chemin.startsWith("/auth/connexion")) {
-    fermerSession();
-    if (typeof window !== "undefined") window.location.href = "/connexion";
-  }
+  prendreNouveauJeton(rep);
   const texte = await rep.text();
   let corps: { message?: string | string[] } | null = null;
   try {
@@ -127,12 +184,49 @@ async function envoyer<T>(
   }
   if (!rep.ok) {
     const m = corps?.message;
-    throw new ErreurApi(
-      Array.isArray(m) ? m.join(" ; ") : (m ?? `Erreur ${rep.status}`),
-      rep.status,
-    );
+    const message = Array.isArray(m) ? m.join(" ; ") : (m ?? `Erreur ${rep.status}`);
+    if (rep.status === 401 && !chemin.startsWith("/auth/connexion")) sessionExpiree(message);
+    throw new ErreurApi(message, rep.status);
   }
   return corps as T;
+}
+
+/** Fichier téléchargé avec la session (mêmes règles que les autres appels : 401, nouveau jeton). */
+async function fichier(chemin: string, init: RequestInit = {}): Promise<Blob> {
+  const { jeton } = lireSession();
+  let rep: Response;
+  try {
+    rep = await fetch(`${API_URL}${chemin}`, {
+      ...init,
+      headers: { ...(init.headers as Record<string, string>), ...(jeton ? { Authorization: `Bearer ${jeton}` } : {}) },
+    });
+  } catch {
+    throw new ErreurApi(SERVEUR_INJOIGNABLE, 0);
+  }
+  prendreNouveauJeton(rep);
+  if (!rep.ok) {
+    let message = rep.status === 404 ? "Fichier introuvable" : `Téléchargement impossible (erreur ${rep.status})`;
+    try {
+      const corps = (await rep.json()) as { message?: string | string[] };
+      if (corps?.message) message = Array.isArray(corps.message) ? corps.message.join(" ; ") : corps.message;
+    } catch {
+      /* réponse non JSON */
+    }
+    if (rep.status === 401) sessionExpiree(message);
+    throw new ErreurApi(message, rep.status);
+  }
+  return rep.blob();
+}
+
+function enregistrerSous(blob: Blob, nom: string) {
+  const url = URL.createObjectURL(blob);
+  const lien = document.createElement("a");
+  lien.href = url;
+  lien.download = nom;
+  document.body.appendChild(lien);
+  lien.click();
+  lien.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export const api = {
@@ -149,30 +243,17 @@ export const api = {
   delete: <T>(c: string) => requete<T>(c, { method: "DELETE" }),
   /** Téléchargement authentifié d'un fichier (ouvert dans un nouvel onglet). */
   async ouvrirFichier(c: string) {
-    const { jeton } = lireSession();
-    const rep = await fetch(`${API_URL}${c}`, {
-      headers: jeton ? { Authorization: `Bearer ${jeton}` } : {},
-    });
-    if (!rep.ok) throw new ErreurApi("Fichier introuvable", rep.status);
-    const url = URL.createObjectURL(await rep.blob());
+    const url = URL.createObjectURL(await fichier(c));
     window.open(url, "_blank", "noopener");
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   },
   /** Téléchargement authentifié d'un fichier enregistré sous `nom`. */
   async telecharger(c: string, nom: string) {
-    const { jeton } = lireSession();
-    const rep = await fetch(`${API_URL}${c}`, {
-      headers: jeton ? { Authorization: `Bearer ${jeton}` } : {},
-    });
-    if (!rep.ok) throw new ErreurApi("Téléchargement impossible", rep.status);
-    const url = URL.createObjectURL(await rep.blob());
-    const lien = document.createElement("a");
-    lien.href = url;
-    lien.download = nom;
-    document.body.appendChild(lien);
-    lien.click();
-    lien.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    enregistrerSous(await fichier(c), nom);
+  },
+  /** Fichier produit par le serveur à partir de données envoyées (POST), enregistré sous `nom`. */
+  async telechargerPost(c: string, corps: FormData, nom: string) {
+    enregistrerSous(await fichier(c, { method: "POST", body: corps }), nom);
   },
 };
 
@@ -193,11 +274,15 @@ export function useApi<T>(chemin: string | null) {
       derniere = Date.now();
       setFraicheur((f) => f + 1);
     };
+    // Après une reconnexion (session expirée), la donnée restée en erreur est relue
+    const apresReconnexion = () => setFraicheur((f) => f + 1);
     window.addEventListener("focus", relire);
     document.addEventListener("visibilitychange", relire);
+    window.addEventListener(SESSION_ROUVERTE, apresReconnexion);
     return () => {
       window.removeEventListener("focus", relire);
       document.removeEventListener("visibilitychange", relire);
+      window.removeEventListener(SESSION_ROUVERTE, apresReconnexion);
     };
   }, [chemin]);
   const cle = chemin ? `${chemin}#${version}` : null;

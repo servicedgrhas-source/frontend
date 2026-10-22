@@ -4,6 +4,7 @@ import { ArrowLeftRight, ArrowRight, CheckCircle2, ClipboardCheck, FileText, Lay
 import Link from "next/link";
 import { useState } from "react";
 import { RechercheGlobale } from "@/components/recherche-globale";
+import { TableauDeBordCircuit } from "@/components/tableau-circuit";
 import { useSession } from "@/components/session";
 import { Alerte, Bouton, Carte, Chargement, Chiffre, Pastille, Progression } from "@/components/ui";
 import { useApi } from "@/lib/api";
@@ -15,14 +16,28 @@ interface TableauBord {
   affectations: { statut: string; n: number }[];
   notes: { module: string; statut: StatutNote; n: number }[];
   recommandations: { enAttente: number; total: number };
-  mutations: { total: number; accordees: number; refusees: number; enCours: number };
+  /** Hors demandes retirées : total = en cours + en instance + accordées + refusées. */
+  mutations: { total: number; accordees: number; refusees: number; enCours: number; enInstance: number };
   /** Paquets reçus de la FP (un envoi = une date de réception). */
   lots: { numero: number; dateReception: string | null; agents: number; affectes: number; lots: number }[];
 }
 
 const nf = new Intl.NumberFormat("fr-FR");
 
+/** Paquets montrés sur l'accueil (les plus récents) ; la page « Lots » les a tous. */
+const PAQUETS_HISTOGRAMME = 12;
+const PAQUETS_LISTE = 6;
+
+/** Comptes du circuit (DDEPPSA, cabinet, secrétariat) : leur propre tableau de bord. */
+const ROLES_CIRCUIT_SEUL = ["DDEPPSA", "CABINET", "SECRETARIAT"];
+
 export default function TableauDeBord() {
+  const { profil } = useSession();
+  return ROLES_CIRCUIT_SEUL.includes(profil.role) ? <TableauDeBordCircuit /> : <TableauDeBordDgrhas />;
+}
+
+/** Tableau de bord de la DGRHAS : chiffres de tout le pays. */
+function TableauDeBordDgrhas() {
   const { profil } = useSession();
   const { donnees: t, erreur } = useApi<TableauBord>("/tableau-de-bord");
   // Alertes de dépassement d'enveloppe : visibles du DG seulement
@@ -63,7 +78,7 @@ export default function TableauDeBord() {
             ton="jaune"
             libelle="À affecter"
             valeur={nf.format(aff("A_TRAITER"))}
-            detail={`${nf.format(aff("AFFECTE"))} affectés · ${aff("EXCLU")} exclus`}
+            detail={`${nf.format(aff("AFFECTE"))} affectés · ${nf.format(aff("EXCLU"))} exclus`}
           />
           <Chiffre
             href="/recommandations"
@@ -79,12 +94,27 @@ export default function TableauDeBord() {
             ton="bleu"
             libelle="Demandes de mutation"
             valeur={nf.format(t.mutations.total)}
-            detail={`${t.mutations.enCours} en cours · ${t.mutations.accordees} accordées`}
+            detail={[
+              `${nf.format(t.mutations.enCours)} en cours`,
+              t.mutations.enInstance ? `${nf.format(t.mutations.enInstance)} en instance` : null,
+              `${nf.format(t.mutations.accordees)} accordées`,
+              t.mutations.refusees ? `${nf.format(t.mutations.refusees)} refusées` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           />
         </div>
 
-        <Carte titre="Textes reçus par paquet" actions={<span className="text-xs text-zinc-400">{nf.format(totalTextes)} agents au total</span>}>
-          <Histogramme lots={t.lots} />
+        <Carte
+          titre="Textes reçus par paquet"
+          actions={
+            <span className="text-xs text-zinc-400">
+              {t.lots.length > PAQUETS_HISTOGRAMME ? `${PAQUETS_HISTOGRAMME} derniers paquets · ` : ""}
+              {nf.format(totalTextes)} agents au total
+            </span>
+          }
+        >
+          <Histogramme lots={t.lots.slice(-PAQUETS_HISTOGRAMME)} />
         </Carte>
 
         <Carte
@@ -96,7 +126,7 @@ export default function TableauDeBord() {
           }
         >
           <ul className="divide-y divide-zinc-100">
-            {[...t.lots].reverse().map((l) => {
+            {[...t.lots].reverse().slice(0, PAQUETS_LISTE).map((l) => {
               const fini = l.agents > 0 && l.affectes === l.agents;
               return (
                 <li key={l.numero}>
@@ -117,6 +147,11 @@ export default function TableauDeBord() {
               );
             })}
           </ul>
+          {t.lots.length > PAQUETS_LISTE && (
+            <Link href="/lots" className="mt-2 block text-center text-xs text-zinc-500 hover:text-encre hover:underline">
+              {t.lots.length - PAQUETS_LISTE} paquet(s) plus ancien(s) : voir tous les paquets
+            </Link>
+          )}
         </Carte>
       </div>
 
@@ -126,9 +161,10 @@ export default function TableauDeBord() {
           <h2 className="text-[15px] font-semibold">Avancement des affectations</h2>
           <p className="mb-4 text-xs text-zinc-400">
             {nf.format(totalAffectes)} agents affectés sur {nf.format(totalTextes)}
+            {t.lots.length > PAQUETS_LISTE ? ` · ${PAQUETS_LISTE} derniers paquets` : ""}
           </p>
           <ul className="space-y-4">
-            {t.lots.map((l) => {
+            {[...t.lots].reverse().slice(0, PAQUETS_LISTE).map((l) => {
               const p = l.agents ? (100 * l.affectes) / l.agents : 0;
               return (
                 <li key={l.numero}>
@@ -148,6 +184,7 @@ export default function TableauDeBord() {
           {[
             ["AFFECTATION", "Affectations", "/notes/affectation"],
             ["MUTATION", "Mutations", "/notes/mutation"],
+            ["ENROLEMENT", "Enrôlement", "/notes/enrolement"],
           ].map(([m, lib, href]) => (
             <Link key={m} href={href} className="-mx-2 block rounded-2xl px-2 py-2.5 transition hover:bg-zinc-50">
               <div className="mb-2 flex items-center gap-2.5">
@@ -182,14 +219,16 @@ export default function TableauDeBord() {
             href="/recommandations"
             action="Voir les demandes"
           />
-        ) : (
+        ) : t.agents.anomalies > 0 ? (
           <Encart
             titre="Base à fiabiliser"
-            texte={`${nf.format(t.agents.anomalies)} fiches comportent une anomalie (date de naissance, département, diplôme…).`}
+            texte={`${nf.format(t.agents.anomalies)} fiche${t.agents.anomalies > 1 ? "s comportent" : " comporte"} une anomalie (date de naissance, département, diplôme…).`}
             href="/recrutement?anomalies=1"
             action="Corriger les fiches"
             alerte
           />
+        ) : (
+          <Encart titre="Base fiable" texte="Aucune fiche ne comporte d’anomalie : la base des recrutés est prête." href="/recrutement" action="Voir la base" />
         )}
       </aside>
     </div>
@@ -223,6 +262,12 @@ function Encart({ titre, texte, href, action, alerte }: { titre: string; texte: 
 function Histogramme({ lots }: { lots: TableauBord["lots"] }) {
   const [survol, setSurvol] = useState<number | null>(null);
   const max = Math.max(1, ...lots.map((l) => l.agents));
+  // « jj/mm » ; avec l'année (« jj/mm/aa ») si les paquets montrés couvrent plusieurs années
+  const annees = new Set(lots.map((l) => l.dateReception?.slice(0, 4)));
+  const etiquette = (d: string | null) => {
+    const c = dateCourte(d);
+    return annees.size > 1 && c.length >= 10 ? `${c.slice(0, 6)}${c.slice(8, 10)}` : c.slice(0, 5);
+  };
   const graduations = [0, 0.5, 1].map((f) => Math.round(f * max));
 
   return (
@@ -261,7 +306,7 @@ function Histogramme({ lots }: { lots: TableauBord["lots"] }) {
                   <div className="absolute inset-x-0 bottom-0 bg-marque-500" style={{ height: `${affH}%` }} />
                 </div>
               </div>
-              <span className={`mt-2 text-[11px] ${survol === l.numero ? "font-medium text-encre" : "text-zinc-400"}`}>{dateCourte(l.dateReception).slice(0, 5)}</span>
+              <span className={`mt-2 text-[11px] ${survol === l.numero ? "font-medium text-encre" : "text-zinc-400"}`}>{etiquette(l.dateReception)}</span>
             </div>
           );
         })}

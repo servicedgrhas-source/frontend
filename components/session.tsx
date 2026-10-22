@@ -1,15 +1,15 @@
 "use client";
 
-import { Bell, ChevronDown, Gauge, Inbox, LayoutDashboard, LogOut, UserRound, type LucideIcon } from "lucide-react";
+import { Bell, ChevronDown, Gauge, Inbox, KeyRound, LayoutDashboard, Lock, LogOut, UserRound, type LucideIcon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { api, fermerSession, lireSession, type Profil } from "@/lib/api";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { api, CLE_JETON, fermerSession, lireSession, memoriserProfil, ouvrirSession, SESSION_ROUVERTE, surSessionExpiree, TRAVAIL_MODIFIE, type Profil } from "@/lib/api";
 import { ESPACES, espaceDe, rubriquesVisibles, travailEspace, type Compteurs } from "@/lib/espaces";
 import { peut, ROLES } from "@/lib/libelles";
 import type { Referentiels } from "@/lib/types";
-import { Bouton, Chargement, cx, Modale } from "./ui";
+import { Alerte, Bouton, Champ, Chargement, cx, Modale, Saisie } from "./ui";
 
 interface Session {
   profil: Profil;
@@ -36,6 +36,8 @@ export function Coquille({ children }: { children: ReactNode }) {
   // Circuit des demandes : dossiers à traiter et alertes non lues
   const [circuit, setCircuit] = useState<{ aTraiter: number; alertes: number } | null>(null);
   const [alertesOuvertes, setAlertesOuvertes] = useState(false);
+  // Session expirée pendant le travail : message du serveur, reconnexion sur place
+  const [expiree, setExpiree] = useState<string | null>(null);
 
   useEffect(() => {
     const { jeton, profil } = lireSession();
@@ -44,14 +46,68 @@ export function Coquille({ children }: { children: ReactNode }) {
       return;
     }
     Promise.all([api.get<Profil>("/auth/moi"), api.get<Referentiels>("/referentiels")])
-      .then(([p, refs]) => setSession({ profil: p, refs }))
+      .then(([p, refs]) => {
+        memoriserProfil(p);
+        setSession({ profil: p, refs });
+      })
       .catch((e: Error) => setErreur(e.message));
   }, [router]);
 
-  // Travail en attente, rafraîchi à chaque changement de page
+  // Une fois la session ouverte, une session expirée se rouvre dans une fenêtre (la page reste)
+  useEffect(() => (session ? surSessionExpiree((m) => setExpiree(m)) : undefined), [session]);
+
+  // Profil relu au retour sur l'onglet : un rôle ou un nom changé par l'administrateur s'applique
+  const derniereLecture = useRef(0);
+  const ouvert = !!session;
   useEffect(() => {
-    if (!session) return;
-    if (session.profil.role !== "STRUCTURE")
+    if (!ouvert) return;
+    const relire = () => {
+      if (document.visibilityState !== "visible" || Date.now() - derniereLecture.current < 30_000) return;
+      derniereLecture.current = Date.now();
+      api
+        .get<Profil>("/auth/moi")
+        .then((p) => {
+          memoriserProfil(p);
+          setSession((s) => (s && JSON.stringify(s.profil) !== JSON.stringify(p) ? { ...s, profil: p } : s));
+        })
+        .catch(() => undefined);
+    };
+    derniereLecture.current = Date.now();
+    window.addEventListener("focus", relire);
+    document.addEventListener("visibilitychange", relire);
+    return () => {
+      window.removeEventListener("focus", relire);
+      document.removeEventListener("visibilitychange", relire);
+    };
+  }, [ouvert]);
+
+  // Autres onglets : déconnexion → tous les onglets ; autre compte connecté → rechargement ;
+  // même compte reconnecté ailleurs → cet onglet reprend sans rien demander
+  const idProfil = session?.profil.id;
+  useEffect(() => {
+    if (!idProfil) return;
+    const f = (e: StorageEvent) => {
+      if (e.key !== CLE_JETON && e.key !== null) return;
+      const { jeton, profil } = lireSession();
+      if (!jeton) return window.location.replace("/connexion");
+      if (profil && profil.id !== idProfil) return window.location.replace("/");
+      // Jeton renouvelé dans un autre onglet (reconnexion, code changé) : on reprend
+      setExpiree(null);
+      window.dispatchEvent(new Event(SESSION_ROUVERTE));
+    };
+    window.addEventListener("storage", f);
+    return () => window.removeEventListener("storage", f);
+  }, [idProfil]);
+
+  // Travail en attente (compteurs du menu). Relu : après chaque enregistrement, au retour sur
+  // l'onglet, chaque minute (nouvelles alertes), et en changeant de page s'il date de plus de
+  // 15 s. Plus à chaque clic : en ligne, chaque lecture coûte un aller-retour au serveur.
+  const role = session?.profil.role;
+  const derniersCompteurs = useRef(0);
+  const lireCompteurs = useCallback(() => {
+    if (!role) return;
+    derniersCompteurs.current = Date.now();
+    if (role !== "STRUCTURE")
       api
         .get<Compteurs>("/menu/compteurs")
         .then(setCompteurs)
@@ -59,11 +115,36 @@ export function Coquille({ children }: { children: ReactNode }) {
     // Dossiers du circuit + notes à lire, à imprimer ou à clôturer
     Promise.all([
       api.get<{ aTraiter: number; alertes: number }>("/circuit/compteur"),
-      session.profil.role === "STRUCTURE" ? Promise.resolve({ total: 0 }) : api.get<{ total: number }>("/notes/a-faire").catch(() => ({ total: 0 })),
+      role === "STRUCTURE" ? Promise.resolve({ total: 0 }) : api.get<{ total: number }>("/notes/a-faire").catch(() => ({ total: 0 })),
     ])
       .then(([c, n]) => setCircuit({ ...c, aTraiter: c.aTraiter + n.total }))
       .catch(() => undefined);
-  }, [session, chemin, alertesOuvertes]);
+  }, [role]);
+  useEffect(() => {
+    if (Date.now() - derniersCompteurs.current > 15_000) lireCompteurs();
+  }, [chemin, lireCompteurs]);
+  useEffect(() => {
+    if (!role) return;
+    let attente: ReturnType<typeof setTimeout> | undefined;
+    const apresEcriture = () => {
+      clearTimeout(attente);
+      attente = setTimeout(lireCompteurs, 800);
+    };
+    const auRetour = () => {
+      if (document.visibilityState === "visible" && Date.now() - derniersCompteurs.current > 15_000) lireCompteurs();
+    };
+    const minute = setInterval(() => document.visibilityState === "visible" && lireCompteurs(), 60_000);
+    window.addEventListener(TRAVAIL_MODIFIE, apresEcriture);
+    window.addEventListener("focus", auRetour);
+    document.addEventListener("visibilitychange", auRetour);
+    return () => {
+      clearTimeout(attente);
+      clearInterval(minute);
+      window.removeEventListener(TRAVAIL_MODIFIE, apresEcriture);
+      window.removeEventListener("focus", auRetour);
+      document.removeEventListener("visibilitychange", auRetour);
+    };
+  }, [role, lireCompteurs]);
 
   // Les comptes des structures (écoles, inspections…) n'ont que leurs dossiers
   useEffect(() => {
@@ -190,10 +271,35 @@ export function Coquille({ children }: { children: ReactNode }) {
         <main className="min-w-0 flex-1 px-5 py-6 lg:px-10 lg:py-8">
           {/* Chaque page apparaît en fondu léger lors de la navigation */}
           <div key={chemin} className="animate-apparition">
+            {!p.aCode && (p.role === "ADMIN" || p.role === "DG") && chemin !== "/administration" && (
+              <div className="no-print mb-5">
+                <Alerte ton="jaune">
+                  Votre compte n’a pas encore de <strong>code personnel</strong> : il ne tient qu’à votre mot de passe.{" "}
+                  <Link href="/administration" className="font-semibold underline">
+                    Créez-le dans Administration
+                  </Link>{" "}
+                  (bouton « Créer le code » sur votre ligne), puis gardez-le en lieu sûr.
+                </Alerte>
+              </div>
+            )}
             {children}
           </div>
         </main>
       </div>
+      {expiree !== null && (
+        <Reconnexion
+          profil={p}
+          message={expiree}
+          fermer={() => setExpiree(null)}
+          reussie={(nouveau) => {
+            if (nouveau.id !== p.id) return window.location.replace("/");
+            setSession((s) => (s ? { ...s, profil: nouveau } : s));
+            setExpiree(null);
+            window.dispatchEvent(new Event(SESSION_ROUVERTE));
+          }}
+          changerDeCompte={deconnexion}
+        />
+      )}
       {alertesOuvertes && <PanneauAlertes fermer={() => setAlertesOuvertes(false)} aller={(href) => router.push(href)} />}
       <Modale titre="Se déconnecter ?" ouverte={confirmerSortie} fermer={() => setConfirmerSortie(false)}>
         <p className="text-[13px] leading-relaxed text-zinc-500">
@@ -277,55 +383,212 @@ const TYPE_ALERTE: Record<AlerteCircuit["type"], string> = {
 /** Les alertes du circuit : nouvelle demande, dossier arrivé chez soi, instruction, décision. */
 function PanneauAlertes({ fermer, aller }: { fermer: () => void; aller: (href: string) => void }) {
   const [liste, setListe] = useState<AlerteCircuit[] | null>(null);
-  useEffect(() => {
-    api
-      .get<{ alertes: AlerteCircuit[] }>("/circuit/alertes")
-      .then((r) => setListe(r.alertes))
-      .catch(() => setListe([]));
+  const [nonLues, setNonLues] = useState(0);
+  const [suite, setSuite] = useState(false);
+  const [chargement, setChargement] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  // Par pages de 50, de la plus récente à la plus ancienne
+  type PageAlertes = { alertes: AlerteCircuit[]; nonLues: number; suite: boolean };
+  const recevoir = useCallback((r: PageAlertes, ajouter: boolean) => {
+    setListe((l) => (ajouter && l ? [...l, ...r.alertes] : r.alertes));
+    setNonLues(r.nonLues);
+    setSuite(r.suite);
+    setErreur(null);
   }, []);
+  useEffect(() => {
+    let actif = true;
+    api
+      .get<PageAlertes>("/circuit/alertes")
+      .then((r) => actif && recevoir(r, false))
+      .catch((e: Error) => {
+        if (!actif) return;
+        setErreur(e.message);
+        setListe([]);
+      });
+    return () => {
+      actif = false;
+    };
+  }, [recevoir]);
+  const plusAnciennes = async (avant: number) => {
+    setChargement(true);
+    try {
+      recevoir(await api.get<PageAlertes>(`/circuit/alertes?avant=${avant}`), true);
+    } catch (e) {
+      setErreur((e as Error).message);
+    } finally {
+      setChargement(false);
+    }
+  };
+
   const lire = async (ids: number[]) => {
     if (!ids.length) return;
     await api.post("/circuit/alertes/lues", { ids }).catch(() => undefined);
     setListe((l) => l?.map((a) => (ids.includes(a.id) ? { ...a, lue: true } : a)) ?? null);
+    setNonLues((n) => Math.max(0, n - ids.length));
   };
-  const nonLues = liste?.filter((a) => !a.lue) ?? [];
+  // Toutes, y compris celles des pages pas encore affichées
+  const toutLire = async () => {
+    await api.post("/circuit/alertes/lues", { tout: true }).catch(() => undefined);
+    setListe((l) => l?.map((a) => ({ ...a, lue: true })) ?? null);
+    setNonLues(0);
+  };
   return (
     <Modale titre="Alertes" ouverte fermer={fermer}>
+      {erreur && <Alerte>{erreur}</Alerte>}
       {!liste ? (
         <Chargement />
       ) : !liste.length ? (
         <p className="text-[13px] text-zinc-500">Aucune alerte pour l’instant.</p>
       ) : (
         <div className="space-y-3">
-          {nonLues.length > 0 && (
-            <button type="button" className="text-[12px] font-medium text-marque-700 hover:underline" onClick={() => lire(nonLues.map((a) => a.id))}>
-              Tout marquer comme lu ({nonLues.length})
+          {nonLues > 0 && (
+            <button type="button" className="text-[12px] font-medium text-marque-700 hover:underline" onClick={toutLire}>
+              Tout marquer comme lu ({nonLues})
             </button>
           )}
           <ul className="max-h-[60vh] space-y-1.5 overflow-y-auto">
-            {liste.map((a) => (
-              <li key={a.id}>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await lire([a.id]);
-                    fermer();
-                    aller(`/mutation/${a.demandeId}`);
-                  }}
-                  className={cx("w-full rounded-2xl px-3 py-2 text-left text-[13px] transition hover:bg-zinc-50", !a.lue && "bg-or-100/50")}
-                >
+            {liste.map((a) => {
+              // Demande supprimée depuis : l'alerte reste lisible, mais ne mène plus nulle part
+              const introuvable = a.aujourdhui === "Demande supprimée";
+              const contenu = (
+                <>
                   <span className="flex items-center gap-2 text-[11px] text-zinc-500">
                     {!a.lue && <span className="size-2 rounded-full bg-or-400" />}
-                    <strong className="text-zinc-700">{TYPE_ALERTE[a.type]}</strong> · {new Date(a.creeLe).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}
+                    <strong className="text-zinc-700">{TYPE_ALERTE[a.type] ?? a.type}</strong> ·{" "}
+                    {new Date(a.creeLe).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}
                   </span>
                   <span className="block text-zinc-800">{a.texte}</span>
-                  {a.aujourdhui && <span className="mt-0.5 block text-[12px] font-medium text-marque-700">Aujourd’hui : {a.aujourdhui}</span>}
-                </button>
-              </li>
-            ))}
+                  {a.aujourdhui && (
+                    <span className={cx("mt-0.5 block text-[12px] font-medium", introuvable ? "text-zinc-400" : "text-marque-700")}>Aujourd’hui : {a.aujourdhui}</span>
+                  )}
+                </>
+              );
+              return (
+                <li key={a.id}>
+                  {introuvable ? (
+                    <button
+                      type="button"
+                      onClick={() => lire([a.id])}
+                      title="Cette demande n’existe plus"
+                      className={cx("w-full cursor-default rounded-2xl px-3 py-2 text-left text-[13px] opacity-70", !a.lue && "bg-or-100/50")}
+                    >
+                      {contenu}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await lire([a.id]);
+                        fermer();
+                        aller(`/mutation/${a.demandeId}`);
+                      }}
+                      className={cx("w-full rounded-2xl px-3 py-2 text-left text-[13px] transition hover:bg-zinc-50", !a.lue && "bg-or-100/50")}
+                    >
+                      {contenu}
+                    </button>
+                  )}
+                </li>
+              );
+            })}
           </ul>
+          {suite && (
+            <div className="text-center">
+              <Bouton chargement={chargement} disabled={chargement} onClick={() => plusAnciennes(liste[liste.length - 1].id)}>
+                Alertes plus anciennes
+              </Bouton>
+            </div>
+          )}
         </div>
       )}
+    </Modale>
+  );
+}
+
+/**
+ * Session expirée ou fermée pendant le travail : on se reconnecte sans quitter la page,
+ * la saisie en cours reste à l'écran ; il suffit ensuite de refaire la dernière action.
+ */
+function Reconnexion({
+  profil,
+  message,
+  fermer,
+  reussie,
+  changerDeCompte,
+}: {
+  profil: Profil;
+  message: string;
+  fermer: () => void;
+  reussie: (p: Profil) => void;
+  changerDeCompte: () => void;
+}) {
+  const [motDePasse, setMotDePasse] = useState("");
+  const [code, setCode] = useState("");
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [envoi, setEnvoi] = useState(false);
+  const valider = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      setEnvoi(true);
+      setErreur(null);
+      try {
+        const r = await api.post<{ jeton: string; utilisateur: Profil }>("/auth/connexion", { email: profil.email, motDePasse, code });
+        ouvrirSession(r.jeton, r.utilisateur);
+        reussie(r.utilisateur);
+      } catch (err) {
+        setErreur((err as Error).message);
+      } finally {
+        setEnvoi(false);
+      }
+    },
+    [profil.email, motDePasse, code, reussie],
+  );
+  return (
+    <Modale titre="Reconnectez-vous pour continuer" ouverte fermer={fermer}>
+      <form onSubmit={valider} className="space-y-4">
+        <p className="text-[13px] leading-relaxed text-zinc-600">
+          {message} Votre page reste ouverte : après la reconnexion, refaites simplement votre dernière action (par exemple « Enregistrer »).
+        </p>
+        {erreur && <Alerte>{erreur}</Alerte>}
+        <div className="rounded-xl bg-zinc-50 px-3 py-2 text-[13px] text-zinc-600">
+          {profil.nom} · <span className="text-zinc-500">{profil.email}</span>
+        </div>
+        <Champ libelle="Mot de passe">
+          <div className="relative">
+            <Lock className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-400" />
+            <Saisie type="password" autoComplete="current-password" required autoFocus value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} className="w-full pl-9" />
+          </div>
+        </Champ>
+        <Champ libelle="Code personnel" aide="Laissez vide si vous n’en avez pas reçu.">
+          <div className="relative">
+            <KeyRound className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-400" />
+            <Saisie
+              autoComplete="one-time-code"
+              spellCheck={false}
+              value={code}
+              onChange={(e) => {
+                const brut = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
+                setCode(brut.match(/.{1,4}/g)?.join("-") ?? "");
+              }}
+              placeholder="XXXX-XXXX-XXXX"
+              className="w-full pl-9 font-mono tracking-wider"
+            />
+          </div>
+        </Champ>
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+          <button type="button" onClick={changerDeCompte} className="text-[12px] text-zinc-500 hover:text-encre hover:underline">
+            Changer de compte
+          </button>
+          <div className="flex gap-2">
+            <Bouton type="button" onClick={fermer}>
+              Plus tard
+            </Bouton>
+            <Bouton variante="principal" type="submit" disabled={envoi}>
+              {envoi ? "Connexion…" : "Se reconnecter"}
+            </Bouton>
+          </div>
+        </div>
+      </form>
     </Modale>
   );
 }

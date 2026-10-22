@@ -3,7 +3,7 @@
 import { Coffee, Download, FileSpreadsheet, GitCompare, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Alerte, Badge, Bouton, Carte, Modale, Saisie, Segments, Tableau } from "@/components/ui";
-import { api, API_URL, lireSession } from "@/lib/api";
+import { api } from "@/lib/api";
 
 interface Membre {
   origine: string;
@@ -92,17 +92,11 @@ export function ComparerFichiers() {
   }
 
   async function excel() {
-    const { jeton } = lireSession();
-    const rep = await fetch(`${API_URL}/rapprochement/excel`, { method: "POST", headers: jeton ? { Authorization: `Bearer ${jeton}` } : {}, body: donnees() });
-    if (!rep.ok) return setErreur("Le fichier du résultat n’a pas pu être préparé.");
-    const url = URL.createObjectURL(await rep.blob());
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `Rapprochement ${new Date().toLocaleDateString("fr-FR").replaceAll("/", "-")}.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    try {
+      await api.telechargerPost("/rapprochement/excel", donnees(), `Rapprochement ${new Date().toLocaleDateString("fr-FR").replaceAll("/", "-")}.xlsx`);
+    } catch (e) {
+      setErreur(`Le fichier du résultat n’a pas pu être préparé : ${(e as Error).message}`);
+    }
   }
 
   const q = recherche.trim().toUpperCase();
