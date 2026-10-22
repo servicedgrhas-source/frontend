@@ -136,7 +136,9 @@ export function CorrectionAnomalies({ agent, fermer, apres }: { agent: Agent; fe
                     {libelleAnomalie(a, agent).detail ? null : EXPLICATION[a] ??
                       (a.startsWith("Ressemble à")
                         ? "Le nom ressemble à celui d’une personne déjà enregistrée (un prénom de plus ou de moins, autre ordre, faute de frappe). Comparez les deux dossiers : si c’est la même personne, une des deux fiches est en trop ; sinon, déclarez-la vérifiée."
-                        : "Vérifiez ce point sur le dossier papier.")}
+                        : a.startsWith("N° de texte partagé")
+                          ? "Le même numéro de texte est écrit pour une autre personne. Sauf texte collectif, l’un des deux numéros est faux : la référence imprimée sur la note le serait aussi. Comparez avec les textes de la FP, corrigez le numéro, ou déclarez-la vérifiée."
+                          : "Vérifiez ce point sur le dossier papier.")}
                   </p>
                   <label className="mt-3 flex items-center gap-2 text-[13px] font-medium">
                     <input type="checkbox" checked={verifiees.includes(a)} onChange={() => basculer(a)} />

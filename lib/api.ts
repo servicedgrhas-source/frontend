@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-/** Les appels passent par le serveur Next (voir `rewrites` dans next.config.ts). */
+/**
+ * En ligne : NEXT_PUBLIC_API_URL (adresse de l'API sur Render, « …/api »).
+ * Sur le poste : « /api », relayé par le serveur Next (voir `rewrites` dans next.config.ts).
+ */
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
 const CLE_JETON = "dgrhas.jeton";

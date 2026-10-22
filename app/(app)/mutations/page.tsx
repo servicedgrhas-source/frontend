@@ -170,8 +170,33 @@ function ImportMutations({ apres }: { apres: () => void }) {
     setEnvoi(true);
     setMessage(null);
     try {
-      const r = await api.post<{ lues: number; creees: number; misesAJour: number; feuilles: string[] }>("/mutations/import", fd);
-      setMessage({ ton: "vert", texte: `${r.lues} demandes lues (${r.feuilles.join(", ")}) — ${r.creees} créées, ${r.misesAJour} mises à jour.` });
+      const r = await api.post<{
+        lues: number;
+        creees: number;
+        misesAJour: number;
+        feuilles: string[];
+        parFeuille?: { nom: string; lues: number; retenues: number }[];
+        dejaDansCompilation?: number;
+        doublonsFichier?: string[];
+        numerosAttribues?: number;
+        numerosCorriges?: number;
+        numerosEnDouble?: number[];
+      }>("/mutations/import", fd);
+      // Demandes reprises des feuilles par motif parce que la compilation ne les avait pas
+      const horsCompil = (r.parFeuille ?? []).filter((f) => !/^compil/i.test(f.nom.trim()) && f.retenues > 0);
+      const details = [
+        horsCompil.length
+          ? `${horsCompil.reduce((s, f) => s + f.retenues, 0)} absente(s) de la compilation, reprise(s) des feuilles ${horsCompil.map((f) => `« ${f.nom} » (${f.retenues})`).join(", ")}`
+          : null,
+        r.doublonsFichier?.length ? `${r.doublonsFichier.length} ligne(s) en double ignorée(s) : ${r.doublonsFichier.join(" ; ")}` : null,
+        r.numerosAttribues ? `${r.numerosAttribues} n° d’enregistrement donné(s) par le système (après le plus grand numéro existant)` : null,
+        r.numerosCorriges ? `${r.numerosCorriges} n° d’enregistrement remis d’accord avec le registre (numéros repris par erreur lors d’un import précédent)` : null,
+        r.numerosEnDouble?.length ? `n° d’enregistrement écrits deux fois dans le registre, à vérifier : ${r.numerosEnDouble.join(", ")}` : null,
+      ].filter(Boolean);
+      setMessage({
+        ton: "vert",
+        texte: `${r.lues} demandes retenues — ${r.creees} créées, ${r.misesAJour} mises à jour.${details.length ? " " + details.join(". ") + "." : ""}`,
+      });
       apres();
     } catch (e) {
       setMessage({ ton: "rouge", texte: (e as Error).message });

@@ -25,7 +25,7 @@ type Genre =
 
 function genre(p: string): Genre {
   if (p.startsWith("Département retenu")) return "departement";
-  if (p.startsWith("Date de naissance illisible")) return "naissance";
+  if (p.startsWith("Date de naissance illisible") || p.startsWith("Date de naissance improbable")) return "naissance";
   if (p.startsWith("Diplôme non reconnu") || p.startsWith("Type de note à définir")) return "diplome";
   if (p.startsWith("Grade non défini")) return "grade";
   if (p.startsWith("Structure manquante")) return "structure";
@@ -152,7 +152,7 @@ export function ResoudreProbleme({
 
               {g === "naissance" && (
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Champ libelle="Date de naissance exacte" aide={agent.dateNaissanceBrute ? `Écrit dans le fichier : « ${agent.dateNaissanceBrute} »` : "Absente du fichier"}>
+                  <Champ libelle="Date de naissance exacte" aide={agent.dateNaissanceBrute ? `Écrit dans le fichier : « ${agent.dateNaissanceBrute} »` : agent.dateNaissance ? `Enregistrée : ${agent.dateNaissance.split("-").reverse().join("/")} (âge impossible)` : "Absente du fichier"}>
                     <Saisie autoFocus={enAvant} type="date" value={v.dateNaissance} onChange={maj("dateNaissance")} />
                   </Champ>
                   <Champ libelle="Ou : statut écrit sur le texte" aide="Si le texte de la FP dit « contractuel » ou « fonctionnaire »">

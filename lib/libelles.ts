@@ -188,6 +188,12 @@ export function libelleAnomalie(
         detail: "Dans le fichier, le département et la source étaient l’un à la place de l’autre. Le système les a remis dans l’ordre : vérifiez simplement le département d’affectation.",
       };
     default:
+      if (a.startsWith("Date de naissance improbable"))
+        return {
+          titre: a,
+          detail:
+            "Avec cette date, la personne aurait moins de 18 ans ou plus de 65 ans : c’est sans doute une faute de frappe (« 2018 » pour « 1988 »). Le statut contractuel calculé serait faux. Corrigez la date d’après le dossier, ou indiquez le statut écrit sur le texte de la FP.",
+        };
       return { titre: a, detail: "" };
   }
 }
