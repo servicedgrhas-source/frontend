@@ -1,14 +1,14 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, Suspense } from "react";
 import { type ActePrestation, ActeImprime } from "@/components/acte-prestation";
 import { StyleImpressionA4 } from "@/components/pages-a4";
 import { Alerte, Bouton, Chargement } from "@/components/ui";
 import { lireSession, useApi } from "@/lib/api";
 
 /** Acte d'une prestation accordée, à imprimer et remettre à l'agent. */
-export default function ImpressionActe() {
+function ImpressionActe() {
   const { id } = useParams<{ id: string }>();
   const { donnees: a, erreur } = useApi<ActePrestation>(`/demandes/${id}/acte`);
   useEffect(() => {
@@ -37,5 +37,14 @@ export default function ImpressionActe() {
       </div>
       <ActeImprime a={a} />
     </div>
+  );
+}
+
+/** Les paramètres de l'adresse ne sont connus qu'au chargement : la page attend dans un <Suspense> (exigé au build). */
+export default function Page() {
+  return (
+    <Suspense fallback={<Chargement />}>
+      <ImpressionActe />
+    </Suspense>
   );
 }

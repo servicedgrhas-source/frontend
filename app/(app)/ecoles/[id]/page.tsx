@@ -3,7 +3,7 @@
 import { ArrowLeft, Building2, DoorOpen, PencilLine, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
 import { Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, Chiffre, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, useConfirmation } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
@@ -62,7 +62,7 @@ const annees = (a: string) => {
 };
 
 /** Fiche d'une école : classes de l'année, bâtiments et salles, agents rattachés, besoin en enseignants. */
-export default function FicheEcole() {
+function FicheEcole() {
   const { id } = useParams<{ id: string }>();
   const [annee, setAnnee] = useState("");
   const f = useApi<Fiche>(`/etablissements/${id}${annee ? `?annee=${annee}` : ""}`);
@@ -584,5 +584,14 @@ function EditionLocal({ ecole, edition, fiche, fermer, apres }: { ecole: number;
         </Bouton>
       </div>
     </Modale>
+  );
+}
+
+/** Les paramètres de l'adresse ne sont connus qu'au chargement : la page attend dans un <Suspense> (exigé au build). */
+export default function Page() {
+  return (
+    <Suspense fallback={<Chargement />}>
+      <FicheEcole />
+    </Suspense>
   );
 }
