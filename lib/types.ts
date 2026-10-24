@@ -170,7 +170,15 @@ export interface Affectation {
 
 export interface Recommandation {
   id: string;
-  affectation: Affectation;
+  /** AFFECTATION, MUTATION ou ENROLEMENT */
+  operation: string;
+  affectation: Affectation | null;
+  demandeId: string | null;
+  enroleId: string | null;
+  personne: string | null;
+  /** AVIS_DIRECTEUR puis DECISION_DG */
+  etape: string;
+  avisDirecteur: { avis: "FAVORABLE" | "DEFAVORABLE"; motif: string; par: string; le: string } | null;
   typeNote: string | null;
   departementId: number | null;
   structure: string | null;

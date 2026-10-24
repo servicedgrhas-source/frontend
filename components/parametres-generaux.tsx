@@ -27,12 +27,6 @@ const GROUPES: { titre: string; effet: string; cles: string[] }[] = [
     cles: ["CONTRACTUEL_AGE_LIMITE", "CONTRACTUEL_AGE_LIMITE_CAT_I", "POINT_INDICIAIRE", "AGE_MINIMUM", "AGE_MAXIMUM", "TAILLE_LOT_COMMISSION"],
   },
   {
-    titre: "Enrôlement : bourse mensuelle par cycle",
-    effet:
-      "Sert à calculer le coût des places d’une campagne d’enrôlement (places × bourse × 12 mois), comparé à l’enveloppe. Une campagne prend les nouveaux montants quand le DG la réenregistre.",
-    cles: ["BOURSE_PRESCOLAIRE", "BOURSE_PRIMAIRE", "BOURSE_COLLEGE", "BOURSE_LYCEE", "BOURSE_ADMINISTRATION"],
-  },
-  {
     titre: "Envoi à la Fonction Publique",
     effet: "Imprimé sur les listes et le soit-transmis de la Fonction Publique, à chaque impression (y compris si l’on réimprime une ancienne transmission).",
     cles: ["CAMPAGNE_RECRUTEMENT", "SIGNATAIRE_LISTE_TITRE", "SIGNATAIRE_LISTE_NOM", "SOIT_TRANSMIS_DESTINATAIRE", "SOIT_TRANSMIS_REFERENCE", "SOIT_TRANSMIS_APPEL"],

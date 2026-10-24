@@ -1,12 +1,10 @@
 "use client";
 
-import { ChevronRight, GraduationCap, KeyRound } from "lucide-react";
-import Link from "next/link";
+import { KeyRound } from "lucide-react";
 import { useState } from "react";
 import { useCodesPersonnels } from "@/components/codes-personnels";
-import { ParametresGeneraux } from "@/components/parametres-generaux";
 import { useSession } from "@/components/session";
-import { Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, EnTete, Liste, Modale, Pastille, Saisie, Tableau } from "@/components/ui";
+import { Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, EnTete, Liste, Modale, Saisie, Tableau } from "@/components/ui";
 import { api, useApi, type Role } from "@/lib/api";
 import { peut, ROLES } from "@/lib/libelles";
 
@@ -35,7 +33,8 @@ interface StructureCourte {
   nom: string;
 }
 
-export default function Administration() {
+/** Administration › Utilisateurs : les comptes, leurs rôles, leurs codes personnels et leurs sessions. */
+export default function Utilisateurs() {
   const { profil, refs } = useSession();
   const users = useApi<Utilisateur[]>(peut.administrer(profil.role) ? "/utilisateurs" : null);
   const structures = useApi<StructureCourte[]>(peut.administrer(profil.role) ? "/structures" : null);
@@ -55,14 +54,14 @@ export default function Administration() {
   }
   const codes = useCodesPersonnels(() => users.recharger());
 
-  if (!peut.parametrer(profil.role)) return <Alerte>Accès réservé au DG et à l’administrateur.</Alerte>;
-
-
-
+  if (!peut.administrer(profil.role)) return <Alerte>Accès réservé au DG et à l’administrateur.</Alerte>;
 
   return (
     <div className="space-y-4">
-      <EnTete titre="Administration" sousTitre="Utilisateurs, paramètres des notes et règles diplôme → grade." />
+      <EnTete
+        titre="Utilisateurs"
+        sousTitre="Un compte par personne : son rôle, son département ou sa structure, son code personnel. Les réglages des notes et des calculs sont dans « Administration › Paramètres »."
+      />
       <Annonce ton={message?.ton} fermer={() => setMessage(null)}>{message?.texte}</Annonce>
 
       {peut.administrer(profil.role) &&
@@ -182,21 +181,6 @@ export default function Administration() {
         )}
       </Carte>
       )}
-
-      <ParametresGeneraux />
-
-      <Link href="/administration/regles" className="group flex items-center gap-4 rounded-3xl bg-white p-5 shadow-doux transition-all hover:-translate-y-0.5 hover:shadow-lg">
-        <Pastille ton="vert" taille="lg">
-          <GraduationCap />
-        </Pastille>
-        <div className="min-w-0 flex-1">
-          <div className="text-[15px] font-semibold">Règles des diplômes et grades</div>
-          <div className="text-[13px] text-zinc-500">
-            Ajouter un diplôme, lui attribuer un cycle, une note et un grade, ou modifier la classification d’un grade — avec un assistant pas à pas.
-          </div>
-        </div>
-        <ChevronRight className="size-5 text-zinc-300 group-hover:text-marque-600" />
-      </Link>
 
       {codes.modales}
       <Modale titre="Fermer ses sessions ?" ouverte={!!aDeconnecter} fermer={() => setADeconnecter(null)}>

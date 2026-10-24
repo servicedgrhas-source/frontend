@@ -4,7 +4,7 @@ import { Bell, ChevronDown, Gauge, Inbox, KeyRound, LayoutDashboard, Lock, LogOu
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, CLE_JETON, fermerSession, lireSession, memoriserProfil, ouvrirSession, SESSION_ROUVERTE, surSessionExpiree, TRAVAIL_MODIFIE, type Profil } from "@/lib/api";
 import { ESPACES, espaceDe, rubriquesVisibles, travailEspace, type Compteurs } from "@/lib/espaces";
 import { peut, ROLES } from "@/lib/libelles";
@@ -146,9 +146,19 @@ export function Coquille({ children }: { children: ReactNode }) {
     };
   }, [role, lireCompteurs]);
 
-  // Les comptes des structures (écoles, inspections…) n'ont que leurs dossiers
+  // Les comptes des structures (écoles, inspections…) n'ont que leurs dossiers, leur personnel et leur école
   useEffect(() => {
-    if (session?.profil.role === "STRUCTURE" && !chemin.startsWith("/a-traiter") && !chemin.startsWith("/mutation/") && chemin !== "/compte")
+    if (
+      session?.profil.role === "STRUCTURE" &&
+      !chemin.startsWith("/a-traiter") &&
+      !chemin.startsWith("/mutation/") &&
+      !chemin.startsWith("/personnel") &&
+      !chemin.startsWith("/recensement") &&
+      !(chemin === "/ecoles" || /^\/ecoles\/\d+$/.test(chemin)) &&
+      chemin !== "/demandes/nouvelle" &&
+      chemin !== "/espace/personnel" &&
+      chemin !== "/compte"
+    )
       router.replace("/a-traiter");
   }, [session, chemin, router]);
 
@@ -196,8 +206,8 @@ export function Coquille({ children }: { children: ReactNode }) {
             </button>
             <div className="my-2" />
             {ESPACES.map((e) => {
-              // Comptes des écoles, inspections… : seulement leurs dossiers
-              if (p.role === "STRUCTURE") return null;
+              // Comptes des écoles, inspections… : leurs dossiers et la base de leur personnel
+              if (p.role === "STRUCTURE" && e.cle !== "personnel") return null;
               const liens = rubriquesVisibles(e, p);
               if (!liens.length) return null;
               const ouvert = cleOuverte === e.cle;
@@ -226,9 +236,13 @@ export function Coquille({ children }: { children: ReactNode }) {
                   <div className={cx("grid transition-all duration-300 ease-out", ouvert ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0")}>
                     <div className="overflow-hidden">
                       <div className="mt-0.5 mb-2 ml-[22px] border-l border-white/10 pl-2">
-                        {liens.map((r) => {
+                        {liens.map((r, i) => {
                           const c = compteurs && r.compteur ? r.compteur(compteurs) : null;
+                          // Sous-titre quand un groupe commence (ex. « Chaque mois : payer »)
+                          const titreGroupe = r.groupe && r.groupe !== liens[i - 1]?.groupe ? r.groupe : null;
                           return (
+                            <Fragment key={r.href}>
+                            {titreGroupe && <div className="px-3 pt-3 pb-1 text-[10px] font-semibold tracking-wider text-white/35 uppercase" aria-hidden={!ouvert}>{titreGroupe}</div>}
                             <LienMenu
                               key={r.href}
                               href={r.href}
@@ -239,6 +253,7 @@ export function Coquille({ children }: { children: ReactNode }) {
                               titre={c?.texte}
                               cache={!ouvert}
                             />
+                            </Fragment>
                           );
                         })}
                       </div>
@@ -277,7 +292,7 @@ export function Coquille({ children }: { children: ReactNode }) {
                 <Alerte ton="jaune">
                   Votre compte n’a pas encore de <strong>code personnel</strong> : il ne tient qu’à votre mot de passe.{" "}
                   <Link href="/administration" className="font-semibold underline">
-                    Créez-le dans Administration
+                    Créez-le dans Administration › Utilisateurs
                   </Link>{" "}
                   (bouton « Créer le code » sur votre ligne), puis gardez-le en lieu sûr.
                 </Alerte>

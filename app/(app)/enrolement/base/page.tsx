@@ -1,10 +1,11 @@
 "use client";
 
-import { MapPin } from "lucide-react";
+import { MapPin, Stamp } from "lucide-react";
 import { useState } from "react";
 import { ChoixEtablissement } from "@/components/choix-etablissement";
 import { type Enrole, FicheEnrole, SelecteurCampagne, useCampagne } from "@/components/enrolement/commun";
 import { useSession } from "@/components/session";
+import { ProposerRecommandation } from "@/components/recommandation";
 import { Alerte, Annonce, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Modale, Saisie, Tableau, Vide } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
 import { peut } from "@/lib/libelles";
@@ -64,6 +65,7 @@ export default function BaseEnroles() {
   const dossiers = useApi<Enrole[]>(campagne ? `/enrolement/dossiers${qs({ campagne: campagne.id, etat: "RETENU", recherche, diplome, departement })}` : null);
   const [fiche, setFiche] = useState<Enrole | null>(null);
   const [placer, setPlacer] = useState<Enrole | null>(null);
+  const [recommander, setRecommander] = useState<Enrole | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   if (!peut.traiter(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
 
@@ -145,6 +147,11 @@ export default function BaseEnroles() {
                           <MapPin />
                         </BoutonIcone>
                       )}
+                      {!e.noteId && (
+                        <BoutonIcone libelle="Recommandation (autre département ou établissement, décision du DG)" onClick={() => setRecommander(e)}>
+                          <Stamp />
+                        </BoutonIcone>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -154,6 +161,18 @@ export default function BaseEnroles() {
         </Carte>
       )}
       {fiche && <FicheEnrole e={fiche} fermer={() => setFiche(null)} />}
+      {recommander && (
+        <ProposerRecommandation
+          url={`/enrolement/enroles/${recommander.id}/recommandations`}
+          personne={recommander.nomComplet}
+          avant={[recommander.departementRetenu, recommander.etablissement].filter(Boolean).join(" · ")}
+          fermer={() => setRecommander(null)}
+          apres={() => {
+            setRecommander(null);
+            setMessage("Recommandation proposée : avis du directeur, puis décision du DG (page Recommandations).");
+          }}
+        />
+      )}
       {placer && (
         <Placement
           e={placer}

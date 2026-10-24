@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Clock3 } from "lucide-react";
+import { Check, Clock3, FileText } from "lucide-react";
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -12,6 +12,8 @@ interface Suivi {
   objet: string | null;
   decision: "ACCORDEE" | "REJETEE" | "EN_INSTANCE" | null;
   decisionMotivation: string | null;
+  /** Prestation accordée : l'acte s'imprime depuis le portail. */
+  acteDisponible?: boolean;
   etapes: { sigle: string; nom: string; etat: "FAIT" | "EN_COURS" | "A_VENIR"; date: string | null }[];
 }
 
@@ -106,6 +108,11 @@ function Suivi() {
               {suivi.decisionMotivation && <p className="mt-1 text-[13px] font-normal">{suivi.decisionMotivation}</p>}
             </div>
           )}
+          {suivi.acteDisponible && (
+            <Link href={`/portail/acte?numero=${suivi.numero}&code=${encodeURIComponent(code)}`} className="flex items-center justify-center gap-2 rounded-2xl bg-marque-500 px-5 py-4 text-[15px] font-semibold text-white">
+              <FileText className="size-4" /> Voir et imprimer mon acte
+            </Link>
+          )}
           <ol className="space-y-3">
             {suivi.etapes.map((e, i) => (
               <li key={i} className="flex gap-3">
@@ -119,7 +126,11 @@ function Suivi() {
                 <span className="min-w-0">
                   <span className="block text-[14px] font-medium">{e.sigle}</span>
                   <span className="block text-[12px] text-zinc-500">
-                    {e.etat === "FAIT" ? `Visé le ${e.date ? new Date(e.date).toLocaleDateString("fr-FR") : "—"}` : e.etat === "EN_COURS" ? "Votre dossier est ici" : "À venir"}
+                    {e.etat === "FAIT"
+                      ? `Visé le ${e.date ? new Date(e.date).toLocaleDateString("fr-FR") : "—"}`
+                      : e.etat === "EN_COURS"
+                        ? `Votre dossier est ici${e.date ? ` depuis le ${new Date(e.date).toLocaleDateString("fr-FR")}` : ""}`
+                        : "À venir"}
                   </span>
                 </span>
               </li>

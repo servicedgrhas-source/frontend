@@ -13,6 +13,7 @@ import { Aide, Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Charge
 import { api, qs, useApi } from "@/lib/api";
 import { dateCourte, libelleLot, peut } from "@/lib/libelles";
 import type { Agent } from "@/lib/types";
+import { SaisieReferentiel } from "@/components/saisie-referentiel";
 
 const libelleTransmission = (n: number) => `${n === 1 ? "1ère" : `${n}ème`} transmission`;
 
@@ -25,7 +26,31 @@ type Fiche = Agent & {
   indice: number | null;
   salaireBrut: number | null;
   ageAuDepot: number | null;
+  /** Fiche de la base du personnel choisie à la saisie. */
+  agentRecenseId?: number | null;
+  vagueNumero?: number | null;
+  /** Rendu à la création : une vague récente passe avant des vagues plus anciennes. */
+  avertissementVague?: string | null;
 };
+
+/** Personne de la base du personnel proposée à la commission. */
+interface PersonneBase {
+  id: number;
+  numeroFiche: string;
+  statut: string;
+  nomComplet: string;
+  dateNaissance: string | null;
+  lieuNaissance: string | null;
+  diplome: string | null;
+  diplomeCode: string | null;
+  departementId: number | null;
+  lieuService: string | null;
+  vague: number | null;
+  registre: string | null;
+  candidat: string | null;
+  presentable: boolean;
+}
+const vagueLisible = (n: number | null | undefined) => (n ? `${n}${n === 1 ? "re" : "e"} vague` : n === 0 ? "avant la 1re vague" : "vague inconnue");
 type Etat = "A_CONTROLER" | "CONTROLEE" | "VALIDEE" | "TRANSMISE" | "CONTENTIEUX";
 type Compteurs = { aControler: number; controlees: number; validees: number; transmises: number; contentieux: number };
 
@@ -914,6 +939,8 @@ interface Valeurs {
   lieuServiceBrut: string;
   origineBrute: string;
   observation: string;
+  agentRecenseId: string;
+  personneBase: string;
 }
 
 function valeursDe(f?: Fiche): Valeurs {
@@ -934,6 +961,8 @@ function valeursDe(f?: Fiche): Valeurs {
     lieuServiceBrut: f?.lieuServiceBrut ?? "",
     origineBrute: f?.origineBrute ?? "",
     observation: f?.observation ?? "",
+    agentRecenseId: f?.agentRecenseId ? String(f.agentRecenseId) : "",
+    personneBase: f?.agentRecenseId ? `${f.nomComplet}${f.vagueNumero ? ` · ${vagueLisible(f.vagueNumero)}` : ""}` : "",
   };
 }
 
@@ -1045,13 +1074,16 @@ function FormulaireCandidat({ fiche, apres, annuler }: { fiche?: Fiche; apres: (
       origineBrute: v.origineBrute || null,
       observation: v.observation || null,
       forcerDoublon: forcer,
+      agentRecenseId: v.agentRecenseId ? Number(v.agentRecenseId) : null,
     };
     try {
       const f = fiche ? await api.put<Fiche>(`/candidats/${fiche.id}`, corps) : await api.post<Fiche>("/candidats", corps);
       if (!fiche) {
-        setSucces(`Fiche de ${f.nomComplet} enregistrée${f.numeroOrdre ? ` (n° d’ordre ${f.numeroOrdre}, ${f.lotCommission ?? "sans lot"})` : ""}. Vous pouvez saisir le candidat suivant.`);
+        setSucces(
+          `Fiche de ${f.nomComplet} enregistrée${f.numeroOrdre ? ` (n° d’ordre ${f.numeroOrdre}, ${f.lotCommission ?? "sans lot"})` : ""}. Vous pouvez saisir le candidat suivant.${f.avertissementVague ? ` Attention : ${f.avertissementVague}` : ""}`,
+        );
         // On garde la liste, le quota, le département, le statut, le lot et la date de dépôt
-        setV((s) => ({ ...s, numeroOrdre: "", nomComplet: "", dateNaissance: "", lieuNaissance: "", observation: "", lieuServiceBrut: "", origineBrute: "" }));
+        setV((s) => ({ ...s, numeroOrdre: "", nomComplet: "", dateNaissance: "", lieuNaissance: "", observation: "", lieuServiceBrut: "", origineBrute: "", agentRecenseId: "", personneBase: "" }));
         setDoublons([]);
         champNom.current?.focus();
       }
@@ -1073,6 +1105,27 @@ function FormulaireCandidat({ fiche, apres, annuler }: { fiche?: Fiche; apres: (
         </Aide>
       </p>
 
+      <ChercherDansLaBase
+        choisie={v.agentRecenseId ? v.personneBase : null}
+        retirer={() => setV((s) => ({ ...s, agentRecenseId: "", personneBase: "" }))}
+        choisir={(p) =>
+          setV((s) => ({
+            ...s,
+            agentRecenseId: String(p.id),
+            personneBase: `${p.nomComplet} (${p.numeroFiche}, ${p.statut === "VOLONTAIRE" ? `volontaire, ${vagueLisible(p.vague)}` : "communautaire"})`,
+            nomComplet: p.nomComplet,
+            dateNaissance: p.dateNaissance ?? s.dateNaissance,
+            lieuNaissance: p.lieuNaissance ?? s.lieuNaissance,
+            diplomeCode: p.diplomeCode ?? s.diplomeCode,
+            departementId: p.departementId ? String(p.departementId) : s.departementId,
+            lieuServiceBrut: p.lieuService ?? s.lieuServiceBrut,
+            statut: p.statut === "VOLONTAIRE" ? "Volontaire" : "Communautaire",
+            lotCommission: "",
+            lotNature: "",
+          }))
+        }
+      />
+      {!fiche && meppsa && <OrdreDesVagues quota={v.quota} version={succes} />}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Champ libelle="Nom et prénoms du candidat *" aide="Le nom de famille en MAJUSCULES, puis les prénoms s’il en a" className="md:col-span-2">
           <Saisie ref={champNom} value={v.nomComplet} onChange={(e) => maj("nomComplet", e.target.value)} placeholder="Ex. MOUANDA Jean Paul" autoFocus={!fiche} />
@@ -1106,12 +1159,22 @@ function FormulaireCandidat({ fiche, apres, annuler }: { fiche?: Fiche; apres: (
           <Liste value={v.departementId} onChange={(e) => maj("departementId", e.target.value)} vide="— Choisir —" options={refs.departements.map((d) => ({ valeur: d.id, libelle: d.nom }))} />
         </Champ>
         <Champ libelle="Lieu de service" aide="École ou structure où il travaille (facultatif)">
-          <Saisie value={v.lieuServiceBrut} onChange={(e) => maj("lieuServiceBrut", e.target.value)} placeholder="Ex. EP de Makoua" />
+          <SaisieReferentiel liste="ETABLISSEMENT" valeur={v.lieuServiceBrut} changer={(x) => maj("lieuServiceBrut", x)} departementId={v.departementId} placeholder="Ex. EP de Makoua" />
         </Champ>
 
         <>
-            <Champ libelle={meppsa ? "Statut" : "Statut (facultatif)"} aide={meppsa ? undefined : "Laissé vide : « Autres »"}>
+            <Champ
+              libelle={meppsa ? "Statut" : "Statut (facultatif)"}
+              aide={
+                v.agentRecenseId
+                  ? "Repris de la base du personnel"
+                  : meppsa
+                    ? "Hors de la base : communautaire (un volontaire se choisit dans la base)"
+                    : "Laissé vide : « Autres »"
+              }
+            >
               <Liste
+                disabled={!!v.agentRecenseId}
                 value={v.statut}
                 onChange={(e) => setV((s) => ({ ...s, statut: e.target.value, lotCommission: "", lotNature: "" }))}
                 vide="—"
@@ -1689,3 +1752,88 @@ function MettreApart({ quota, fermer, apres }: { quota: number; fermer: () => vo
  * Origine du dossier : choisie dans la liste tenue par le DG (« Administration › Origines »),
  * ou « Autre » pour l'écrire. « DDEPPSA du département » prend le département du candidat.
  */
+
+/**
+ * La personne présentée par un membre de la commission est en général déjà dans la base du personnel
+ * (volontaire ou communautaire) : on la choisit au lieu de la ressaisir. Une personne absente de la
+ * base est enregistrée comme communautaire (DG, 23/10/2026).
+ */
+function ChercherDansLaBase({ choisie, choisir, retirer }: { choisie: string | null; choisir: (p: PersonneBase) => void; retirer: () => void }) {
+  const { refs } = useSession();
+  const [q, setQ] = useState("");
+  const [liste, setListe] = useState<PersonneBase[] | null>(null);
+  useEffect(() => {
+    if (q.trim().length < 3) return;
+    let actif = true;
+    const t = setTimeout(() => {
+      api
+        .get<PersonneBase[]>(`/candidats/personnel${qs({ recherche: q })}`)
+        .then((r) => actif && setListe(r))
+        .catch(() => actif && setListe([]));
+    }, 350);
+    return () => {
+      actif = false;
+      clearTimeout(t);
+    };
+  }, [q]);
+  if (choisie)
+    return (
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-marque-50 px-4 py-2.5 text-[13px]">
+        <BadgeCheck className="size-4 text-marque-600" />
+        <span>
+          Personne de la base du personnel : <strong>{choisie}</strong>. Ses informations sont reprises ; complétez le reste.
+        </span>
+        <button type="button" className="ml-auto text-[12px] font-medium text-marque-700 hover:underline" onClick={retirer}>
+          Ne plus la lier
+        </button>
+      </div>
+    );
+  return (
+    <div className="space-y-2 rounded-2xl bg-zinc-50 p-3">
+      <div className="text-[12px] font-medium text-zinc-600">Chercher d’abord dans la base du personnel (volontaires et communautaires)</div>
+      <Saisie value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tapez au moins 3 lettres du nom…" className="bg-white" />
+      {q.trim().length >= 3 && liste && (
+        <ul className="max-h-60 divide-y divide-zinc-200/60 overflow-y-auto rounded-xl bg-white text-[13px]">
+          {liste.map((p) => (
+            <li key={p.id} className="flex flex-wrap items-center gap-2 px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <span className="font-medium">{p.nomComplet}</span>{" "}
+                <span className="text-[11px] text-zinc-500">
+                  {p.numeroFiche} · {p.statut === "VOLONTAIRE" ? `volontaire, ${vagueLisible(p.vague)}` : p.statut.toLowerCase()}
+                  {p.dateNaissance && ` · né(e) le ${dateCourte(p.dateNaissance)}`}
+                  {p.diplome && ` · ${p.diplome}`}
+                  {p.departementId && ` · ${refs.departements.find((d) => d.id === p.departementId)?.nom ?? ""}`}
+                  {p.registre === "SORTI" && " · sorti du registre"}
+                </span>
+                {p.candidat && <div className="text-[11px] text-or-700">Déjà candidat : {p.candidat}</div>}
+                {!p.presentable && <div className="text-[11px] text-rouge-600">Déjà agent de l’État : ne passe plus par la commission</div>}
+              </div>
+              <Bouton type="button" variante="discret" disabled={!p.presentable || !!p.candidat} onClick={() => choisir(p)}>
+                Choisir
+              </Bouton>
+            </li>
+          ))}
+          {!liste.length && <li className="px-3 py-2 text-[12px] text-zinc-500">Personne de ce nom dans la base. Saisissez la fiche ci-dessous : elle sera enregistrée comme communautaire.</li>}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** Volontaires en poste par vague : les anciennes vagues sont présentées à la Fonction Publique d’abord. */
+function OrdreDesVagues({ quota, version }: { quota: string; version: string | null }) {
+  const vagues = useApi<{ vague: number | null; enPoste: number; presentes: number; presentesQuota: number }[]>(`/candidats/vagues${qs({ quota, v: version ?? "" })}`);
+  const l = (vagues.donnees ?? []).filter((x) => x.enPoste > 0 || x.presentes > 0);
+  if (!l.length) return null;
+  return (
+    <div className="rounded-2xl bg-zinc-50 px-4 py-2.5 text-[12px] text-zinc-600">
+      <span className="font-medium">Volontaires par vague</span> (les anciennes vagues passent d’abord) :{" "}
+      {l.map((x, i) => (
+        <span key={String(x.vague)}>
+          {i > 0 && " · "}
+          {vagueLisible(x.vague)} : {x.enPoste} en poste, {x.presentesQuota} présenté(s) dans ce quota
+        </span>
+      ))}
+    </div>
+  );
+}

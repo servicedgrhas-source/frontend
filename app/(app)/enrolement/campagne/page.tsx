@@ -38,15 +38,6 @@ interface Edition {
   ouverte: boolean;
 }
 
-/** Paramètre de la bourse mensuelle de chaque cycle (Administration › Paramètres). */
-const PARAM_BOURSE: Record<string, string> = {
-  Préscolaire: "BOURSE_PRESCOLAIRE",
-  Primaire: "BOURSE_PRIMAIRE",
-  Collège: "BOURSE_COLLEGE",
-  Lycée: "BOURSE_LYCEE",
-  Administration: "BOURSE_ADMINISTRATION",
-};
-
 const nombre = (s: string | undefined) => Number((s ?? "").replace(/\D/g, "")) || 0;
 
 function editionDe(c?: Campagne): Edition {
@@ -67,9 +58,9 @@ export default function CampagneEnrolement() {
   const dg = peut.valider(profil.role);
   const { campagnes, liste, campagne, choisir } = useCampagne();
   const membres = useApi<Membre[]>(campagne ? `/enrolement/membres?campagne=${campagne.id}` : null);
-  const parametres = useApi<{ cle: string; valeur: string }[]>("/parametres");
-  // Bourse mensuelle de chaque cycle, réglée dans les paramètres : le coût se calcule tout seul
-  const bourse = (c: string) => Number(parametres.donnees?.find((x) => x.cle === PARAM_BOURSE[c])?.valeur ?? 0) || 0;
+  const config = useApi<{ boursesParCycle: Record<string, number> }>("/enrolement/configuration");
+  // Bourse mensuelle de chaque cycle, réglée dans la configuration de l'enrôlement : le coût se calcule tout seul
+  const bourse = (c: string) => config.donnees?.boursesParCycle[c] ?? 0;
   const budget = useApi<Budget>(campagne ? `/enrolement/campagnes/${campagne.id}/compteurs` : null);
   const [edition, setEdition] = useState<Edition | null>(null);
   const [membre, setMembre] = useState<{ id: string | null; nom: string; fonction: string; places: string } | null>(null);
@@ -343,7 +334,7 @@ export default function CampagneEnrolement() {
             <div className="md:col-span-2">
               <div className="mb-1 text-[13px] font-medium">Places par cycle</div>
               <p className="mb-2 text-[12px] text-zinc-500">
-                Tapez seulement le nombre de places : le coût se calcule tout seul avec la bourse mensuelle du cycle (réglée dans Administration › Paramètres), sur 12 mois.
+                Tapez seulement le nombre de places : le coût se calcule tout seul avec la bourse mensuelle du cycle (réglée dans Enrôlement › Configuration), sur 12 mois.
               </p>
               <div className="overflow-x-auto">
                 <Tableau>

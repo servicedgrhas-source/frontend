@@ -231,3 +231,9 @@ div.page-a4:last-of-type {
     right: 0;
   }
 }
+
+/* Un fieldset prend par défaut la largeur de son contenu (min-width: min-content) : un tableau large
+   le poussait hors de l'écran au lieu de défiler dans sa carte. */
+fieldset {
+  min-width: 0;
+}

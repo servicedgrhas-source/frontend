@@ -24,6 +24,17 @@ export default function AccueilPortail() {
         <ArrowRight className="size-5 text-zinc-300" />
       </Link>
 
+      <Link href="/portail/demande" className="flex items-center gap-4 rounded-3xl bg-white p-5 shadow-doux active:scale-[0.99]">
+        <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-or-400 text-encre">
+          <FileText className="size-6" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[16px] font-semibold">Congé, autorisation, attestation, prime…</span>
+          <span className="block text-[13px] text-zinc-500">Les autres démarches ouvertes en ligne ; l’acte s’imprime ici une fois la demande accordée</span>
+        </span>
+        <ArrowRight className="size-5 text-zinc-300" />
+      </Link>
+
       <Link href="/portail/suivi" className="flex items-center gap-4 rounded-3xl bg-white p-5 shadow-doux active:scale-[0.99]">
         <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-nuit text-white">
           <Search className="size-6" />
@@ -44,7 +55,7 @@ export default function AccueilPortail() {
           <li>Remplissez le formulaire en ligne et joignez la photo ou le scan de la demande et des pièces demandées.</li>
           <li>Gardez précieusement le numéro et le code affichés à la fin : ils permettent de suivre votre dossier.</li>
         </ol>
-        <p className="mt-3 text-[12px] text-zinc-500">D’autres démarches (attestations, congés…) seront ajoutées plus tard.</p>
+        <p className="mt-3 text-[12px] text-zinc-500">Une demande accordée (autorisation, attestation…) : l’acte s’imprime depuis « Suivre ma demande ».</p>
       </section>
     </div>
   );

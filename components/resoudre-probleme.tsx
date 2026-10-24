@@ -8,6 +8,7 @@ import { useSession } from "./session";
 import { Alerte, Bouton, Champ, cx, Liste, Modale, Saisie } from "./ui";
 import { api } from "@/lib/api";
 import type { Affectation, Derive } from "@/lib/types";
+import { SaisieReferentiel } from "@/components/saisie-referentiel";
 
 /** Ce que l'on corrige pour chaque problème d'une ligne d'affectation. */
 type Genre =
@@ -199,7 +200,12 @@ export function ResoudreProbleme({
                   libelle={{ structure: "Structure (personnel administratif)", etablissement: "Établissement", specialite: "Spécialité" }[g]}
                   aide={{ structure: "Ex. DDEPPSA du département", etablissement: "Nom de l’établissement d’affectation", specialite: "Ex. Musique, Arts plastiques, Français…" }[g]}
                 >
-                  <Saisie autoFocus={enAvant} className="max-w-96" value={v[g]} onChange={maj(g)} />
+                  <SaisieReferentiel
+                    className="max-w-96"
+                    liste={g === "structure" ? "STRUCTURE" : g === "etablissement" ? "ETABLISSEMENT" : "MATIERE"}
+                    valeur={v[g]}
+                    changer={(x) => setV({ ...v, [g]: x })}
+                  />
                 </Champ>
               )}
 

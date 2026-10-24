@@ -199,6 +199,7 @@ export function Champ({
   libelle,
   aide,
   bulle,
+  erreur,
   children,
   className,
 }: {
@@ -206,18 +207,75 @@ export function Champ({
   aide?: string;
   /** Explication plus longue, dans un « ? » à côté du libellé. */
   bulle?: ReactNode;
+  /** Champ à remplir ou mal rempli : cadre rouge et message sous le champ. */
+  erreur?: string | null;
   children: ReactNode;
   className?: string;
 }) {
   return (
-    <label className={cx("flex flex-col gap-1.5 text-sm", className)}>
-      <span className="flex items-center gap-1.5 text-xs font-medium text-zinc-500">
+    <label
+      className={cx(
+        "flex flex-col gap-1.5 text-sm",
+        erreur && "[&_input]:border-rouge-600 [&_input]:bg-rouge-100/50 [&_select]:border-rouge-600 [&_select]:bg-rouge-100/50",
+        className,
+      )}
+    >
+      <span className={cx("flex items-center gap-1.5 text-xs font-medium", erreur ? "text-rouge-600" : "text-zinc-500")}>
         {libelle}
         {bulle && <Aide>{bulle}</Aide>}
       </span>
       {children}
-      {aide && <span className="text-[11px] text-zinc-400">{aide}</span>}
+      {erreur ? <span className="text-[11px] font-medium text-rouge-600">{erreur}</span> : aide && <span className="text-[11px] text-zinc-400">{aide}</span>}
     </label>
+  );
+}
+
+const NOMS_MOIS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+
+/**
+ * Choix d'un mois (valeur « AAAA-MM ») par deux listes : mois et année.
+ * Remplace <input type="month">, qui s'affiche comme une simple case de texte dans certains navigateurs.
+ */
+export function ChoixMois({
+  value,
+  onChange,
+  annees = 6,
+  className,
+}: {
+  value: string;
+  onChange: (mois: string) => void;
+  /** Nombre d'années proposées avant l'année en cours (on propose aussi l'année suivante). */
+  annees?: number;
+  className?: string;
+}) {
+  // Choix incomplet (mois sans année, ou l'inverse) : gardé ici tant que la valeur est vide
+  const [partiel, setPartiel] = useState({ a: "", m: "" });
+  const a = value ? value.slice(0, 4) : partiel.a;
+  const m = value ? value.slice(5, 7) : partiel.m;
+  const actuelle = new Date().getFullYear();
+  const liste = Array.from({ length: annees + 2 }, (_, i) => String(actuelle + 1 - i));
+  if (a && !liste.includes(a)) liste.push(a);
+  const changer = (na: string, nm: string) => {
+    setPartiel({ a: na, m: nm });
+    onChange(na && nm ? `${na}-${nm}` : "");
+  };
+  return (
+    <div className={cx("flex gap-2", className)}>
+      <select value={m} onChange={(e) => changer(a, e.target.value)} className={cx(styleSaisie, "min-w-0 flex-1 cursor-pointer pr-8")} aria-label="Mois">
+        <option value="">— Mois —</option>
+        {NOMS_MOIS.map((n, i) => (
+          <option key={n} value={String(i + 1).padStart(2, "0")}>
+            {n}
+          </option>
+        ))}
+      </select>
+      <select value={a} onChange={(e) => changer(e.target.value, m)} className={cx(styleSaisie, "w-36 shrink-0 cursor-pointer pr-8")} aria-label="Année">
+        <option value="">— Année —</option>
+        {liste.map((x) => (
+          <option key={x}>{x}</option>
+        ))}
+      </select>
+    </div>
   );
 }
 

@@ -169,6 +169,27 @@ function decrire(e: Entree, refs: Referentiels, parametres: Record<string, strin
       return { titre: "Codes personnels consultés", icone: Lock, ton: "bleu", texte: d.comptes ? `${lisible(d.comptes)} compte(s)` : undefined };
     case "VERIFICATION_CODES_REFUSEE":
       return { titre: "Accès aux codes refusé (mot de passe ou code faux)", icone: Lock, ton: "rouge" };
+    case "PERSONNEL_CONTENTIEUX_CONTROLE":
+      return {
+        titre: `Recensement : avis ${d.avis === "FAVORABLE" ? "favorable" : "défavorable"} du contrôle sur un agent ajouté`,
+        icone: UserPlus,
+        ton: d.avis === "FAVORABLE" ? "vert" : "rouge",
+        texte: [d.nom ? String(d.nom) : null, d.note ? `« ${String(d.note)} »` : null].filter(Boolean).join(" — ") || undefined,
+      };
+    case "PERSONNEL_CONTENTIEUX":
+      return {
+        titre: d.decision === "CONFIRMER" ? "Recensement : agent ajouté accepté dans la base par le DG" : "Recensement : agent ajouté rejeté par le DG",
+        icone: UserPlus,
+        ton: d.decision === "CONFIRMER" ? "vert" : "rouge",
+        texte: [d.nom ? String(d.nom) : null, d.note ? `« ${String(d.note)} »` : null, d.sansControle ? "décidé sans contrôle" : null].filter(Boolean).join(" — ") || undefined,
+      };
+    case "RECENSEMENT_IMPORT":
+      return {
+        titre: d.recensement ? "Import d’un fichier de recensement" : "Import d’un fichier du personnel",
+        icone: UserPlus,
+        ton: "bleu",
+        texte: `${lisible(d.crees ?? 0)} ajouté(s), ${lisible(d.misAJour ?? 0)} ${d.recensement ? "complété(s)" : "mis à jour"}${d.contentieux ? `, ${lisible(d.contentieux)} envoyé(s) au contrôle` : ""}`,
+      };
     case "NOTE_CONFORMITE":
       return {
         titre: d.conforme ? "Avis de conformité : la note est conforme" : "Avis de conformité : la note n’est PAS conforme",

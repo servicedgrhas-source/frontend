@@ -160,7 +160,7 @@ function Etape({ e, k, d }: { e: EtapeCircuit; k: number; d: EtatCircuit }) {
             <strong>Personne n’a encore de compte pour « {e.sigle} » : le dossier est bloqué ici.</strong> Personne ne peut le viser, il ne montera pas tout seul.
             <ul className="mt-1 list-disc pl-4 text-zinc-700">
               <li>
-                <strong>La bonne solution</strong> : créer un compte pour cette structure (« Administration › Utilisateurs et paramètres », rôle « Responsable de
+                <strong>La bonne solution</strong> : créer un compte pour cette structure (« Administration › Utilisateurs », rôle « Responsable de
                 structure », structure « {e.sigle} »).
               </li>
               <li>
@@ -177,7 +177,7 @@ function Etape({ e, k, d }: { e: EtapeCircuit; k: number; d: EtatCircuit }) {
           <div className="mt-2 rounded-xl bg-or-100 px-3 py-2 text-[12px] leading-relaxed text-or-700">
             Aucun compte n’est rattaché à « {e.sigle} » : <strong>tous les comptes de ce rôle</strong> qui n’ont pas de structure peuvent agir ici (
             {d.responsables.noms.join(", ")}). Pour que seul le responsable de « {e.sigle} » puisse le faire, rattachez son compte à cette structure dans
-            « Administration › Utilisateurs et paramètres ».
+            « Administration › Utilisateurs ».
           </div>
         )}
         {instructions.map((x) => (

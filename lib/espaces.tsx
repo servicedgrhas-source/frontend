@@ -1,10 +1,17 @@
 import {
   ArrowLeftRight,
   Building2,
+  Banknote,
   BarChart3,
+  CalendarCheck,
+  Scale,
+  Star,
+  School,
   ClipboardCheck,
+  ClipboardList,
   CopyCheck,
   FilePlus2,
+  FileSpreadsheet,
   FileText,
   GraduationCap,
   HandHeart,
@@ -42,6 +49,8 @@ export interface Compteurs {
 }
 
 export interface Rubrique {
+  /** Sous-titre du menu (ex. « Chaque mois : payer ») : les rubriques qui le suivent en font partie. */
+  groupe?: string;
   href: string;
   libelle: string;
   icone: LucideIcon;
@@ -73,6 +82,8 @@ const parties = (...p: [number, string][]) =>
 
 const traiter = (p: Profil) => peut.traiter(p.role);
 const parametrer = (p: Profil) => peut.parametrer(p.role);
+/** Personnel : DGRHAS, DDEPPSA (leur département), comptes d’établissement (leurs agents). */
+const recenser = (p: Profil) => peut.traiter(p.role) || p.role === "DDEPPSA" || p.role === "STRUCTURE";
 
 export const ESPACES: Espace[] = [
   {
@@ -149,8 +160,8 @@ export const ESPACES: Espace[] = [
         href: "/recommandations",
         libelle: "Recommandations",
         icone: Stamp,
-        explication: "Les changements de département ou de note proposés pour une personne, à décider par le DG.",
-        compteur: (c) => ({ n: c.recommandations, texte: `${c.recommandations} en attente de la décision du DG` }),
+        explication: "Les changements à la règle (autre département, établissement, note) pour une affectation, une mutation ou un enrôlement : proposés par le chef de service, avis du directeur, décision du DG.",
+        compteur: (c) => ({ n: c.recommandations, texte: `${c.recommandations} en attente (avis du directeur ou décision du DG)` }),
       },
       {
         href: "/statistiques",
@@ -164,10 +175,10 @@ export const ESPACES: Espace[] = [
     cle: "enrolement",
     titre: "Enrôlement",
     icone: HandHeart,
-    description: "Les volontaires (bourse) : ils ne vont pas à la Fonction publique ; la DGRHAS retient les dossiers, qui entrent directement dans les notes de service.",
-    circuit: "Campagne et quota → saisie → contrôle → décision de la DGRHAS → note de service",
+    description: "Les enseignants volontaires (bourse) : chaque année on les enrôle (campagne, dossiers, notes de service), chaque mois on paie leur bourse. Les communautaires ont aussi leur liste de paiement mensuelle (sans note ni vague). Le guide ci-dessous dit, étape par étape, quoi faire, qui le fait et où.",
     rubriques: [
       {
+        groupe: "Chaque année : enrôler",
         href: "/enrolement/campagne",
         libelle: "Campagne, quota et commission",
         icone: Settings,
@@ -175,6 +186,7 @@ export const ESPACES: Espace[] = [
         explication: "Ouvrir l’enrôlement de l’année, fixer le quota (DG) et les places des membres de la commission.",
       },
       {
+        groupe: "Chaque année : enrôler",
         href: "/enrolement/saisie",
         libelle: "Saisie des enrôlements",
         icone: UserPlus,
@@ -182,6 +194,7 @@ export const ESPACES: Espace[] = [
         explication: "Saisir ou importer les dossiers déposés, les contrôler, puis la DGRHAS retient ou non.",
       },
       {
+        groupe: "Chaque année : enrôler",
         href: "/enrolement/base",
         libelle: "Base des enrôlés",
         icone: UserCheck,
@@ -189,10 +202,165 @@ export const ESPACES: Espace[] = [
         explication: "Les volontaires retenus : département et établissement, export Excel.",
       },
       {
+        groupe: "Chaque année : enrôler",
         href: "/notes/enrolement",
         libelle: "Notes d’enrôlement",
         icone: FileText,
         explication: "Préparer les notes de service des volontaires retenus (on choisit l’année), puis validation et signature.",
+      },
+      {
+        groupe: "Chaque mois : payer",
+        href: "/enrolement/volontaires",
+        libelle: "Volontaires et communautaires",
+        icone: Users,
+        visible: traiter,
+        explication: "Les deux listes payées chaque mois : volontaires (bourse, par vague) et communautaires (par département et cycle). Sorties, réintégrations, reprise des listes existantes.",
+      },
+      {
+        groupe: "Chaque mois : payer",
+        href: "/enrolement/bottin",
+        libelle: "Pointage du bottin",
+        icone: CopyCheck,
+        visible: traiter,
+        explication: "Le bottin de la solde du mois comparé aux volontaires encore payés : ceux qui ont reçu leur premier salaire sortent du registre (la bourse s’arrête au premier salaire, pas au texte de la FP).",
+      },
+      {
+        groupe: "Chaque mois : payer",
+        href: "/enrolement/bourse",
+        libelle: "Paiement mensuel",
+        icone: Banknote,
+        visible: traiter,
+        explication: "Chaque mois, l’état des volontaires (bourse) et celui des communautaires : contrôles (doublons, sur les deux listes, salariés au bottin), validation par le DG, Excel par département.",
+      },
+      {
+        groupe: "Chaque mois : payer",
+        href: "/enrolement/mise-en-route",
+        libelle: "Mise en route",
+        icone: Send,
+        visible: traiter,
+        explication: "Fiche de paiement de l’équipement et du transport, par note de service ; reprise des fiches déjà payées ; contrôle des doubles paiements.",
+      },
+      {
+        groupe: "Chaque mois : payer",
+        href: "/enrolement/regularisations",
+        libelle: "Régularisations",
+        icone: Scale,
+        visible: traiter,
+        explication: "Trop-perçus détectés, compléments et retenues imputés sur la bourse, sommes à recouvrer des sortants.",
+      },
+      {
+        groupe: "Suivi et réglages",
+        href: "/enrolement/tableau",
+        libelle: "Tableau de bord",
+        icone: BarChart3,
+        visible: traiter,
+        explication: "Volontaires en poste, coût mensuel, bourses des derniers mois, sorties, régularisations et mises en route.",
+      },
+      {
+        groupe: "Suivi et réglages",
+        href: "/enrolement/besoins",
+        libelle: "Besoins par établissement",
+        icone: School,
+        visible: (p) => peut.traiter(p.role) || p.role === "DDEPPSA",
+        explication: "Les besoins exprimés par les DDEPPSA, comparés aux volontaires en poste.",
+      },
+      {
+        groupe: "Suivi et réglages",
+        href: "/enrolement/configuration",
+        libelle: "Configuration",
+        icone: Settings,
+        visible: traiter,
+        explication: "Barèmes (bourse, mise d’équipement, transport), début et fin de la bourse, motifs de sortie, contrôles.",
+      },
+    ],
+  },
+  {
+    cle: "personnel",
+    titre: "Personnel",
+    icone: ClipboardList,
+    description:
+      "La base générale du personnel : une seule fiche par personne (fonctionnaire, contractuel, volontaire, communautaire), avec ses pièces et son historique. Les autres modules l’alimentent : chaque volontaire du registre y a sa fiche, et le recensement la complète et la met à jour.",
+    circuit: "Recensement (saisie, import, scans) → Contrôles → Fiches complètes",
+    rubriques: [
+      {
+        groupe: "La base du personnel",
+        href: "/recensement",
+        libelle: "Recensement",
+        icone: ClipboardCheck,
+        visible: recenser,
+        explication: "Rechercher un agent et compléter ce qui lui manque, ajouter un agent absent de la base (contrôle, puis décision du DG), importer le fichier d’un recensement.",
+      },
+      {
+        groupe: "La base du personnel",
+        href: "/personnel",
+        libelle: "Tableau de bord",
+        icone: BarChart3,
+        visible: recenser,
+        explication: "Où en est la base : fiches complètes, rubriques et pièces qui manquent, incohérences à corriger (dont les volontaires payés qui sont aussi fonctionnaires).",
+      },
+      {
+        groupe: "La base du personnel",
+        href: "/personnel/agents",
+        libelle: "Base du personnel",
+        icone: Users,
+        visible: recenser,
+        explication: "Une fiche par personne : la créer, la corriger, déposer ses pièces scannées. Les volontaires du registre y sont déjà.",
+      },
+      {
+        groupe: "Suivi des agents",
+        href: "/demandes/nouvelle",
+        libelle: "Déposer une demande",
+        icone: FilePlus2,
+        visible: recenser,
+        explication: "Congé, autorisation d’absence, attestation, prime, mutation… pour un de vos agents : la demande part de votre structure, l’agent la suit sur le portail et y imprime son acte.",
+      },
+      {
+        groupe: "Suivi des agents",
+        href: "/personnel/presence",
+        libelle: "Présence",
+        icone: CalendarCheck,
+        visible: recenser,
+        explication: "Le chef de structure pointe ses agents (chaque jour ou en fin de semaine) et valide sa semaine ; le rapport montre les absences et les chefs qui n’ont pas pointé.",
+      },
+      {
+        groupe: "Suivi des agents",
+        href: "/personnel/evaluations",
+        libelle: "Évaluations",
+        icone: Star,
+        visible: recenser,
+        explication: "L’évaluation annuelle par le chef immédiat : compétence professionnelle et compétence sociale sur 5, la globale et ce que dit leur écart.",
+      },
+      {
+        groupe: "Écoles",
+        href: "/ecoles",
+        libelle: "Écoles et classes",
+        icone: School,
+        visible: recenser,
+        explication: "Pour chaque école : bâtiments, salles, classes ouvertes de l’année, agents rattachés, et le besoin en enseignants qui s’en déduit.",
+      },
+      {
+        groupe: "Écoles",
+        href: "/ecoles/besoins",
+        libelle: "Besoins en enseignants",
+        icone: Scale,
+        visible: (p) => peut.traiter(p.role) || p.role === "DDEPPSA",
+        explication: "Déficit ou pléthore d’enseignants, école par école, par département et par matière : les heures des classes ouvertes divisées par les heures d’un enseignant.",
+      },
+      {
+        groupe: "Recensement",
+        href: "/personnel/import",
+        libelle: "Modèle Excel, import et scans",
+        icone: FileSpreadsheet,
+        visible: recenser,
+        explication: "Le modèle Excel à envoyer aux établissements, l’import d’une liste (nouveaux agents ou corrections), les scans en masse.",
+      },
+      {
+        groupe: "Réglages",
+        href: "/personnel/configuration",
+        libelle: "Configuration",
+        icone: Settings,
+        visible: traiter,
+        explication: "Les rubriques de la fiche, ce qui est obligatoire pour chaque type d’agent, les pièces à joindre et les contrôles. Réglée par le DG.",
       },
     ],
   },
@@ -298,10 +466,17 @@ export const ESPACES: Espace[] = [
     rubriques: [
       {
         href: "/administration",
-        libelle: "Utilisateurs et paramètres",
+        libelle: "Utilisateurs",
+        icone: Users,
+        visible: (p) => peut.administrer(p.role),
+        explication: "Créer les comptes, choisir leur rôle et leur structure, gérer les codes personnels, débloquer ou déconnecter un compte.",
+      },
+      {
+        href: "/administration/parametres",
+        libelle: "Paramètres",
         icone: Settings,
         visible: parametrer,
-        explication: "Créer les comptes, choisir leur rôle, régler les paramètres des notes et des calculs.",
+        explication: "Régler les notes de service (année scolaire, signataire…), le statut contractuel, les âges et calculs, l’envoi à la FP et la fiche de mutation.",
       },
       {
         href: "/administration/regles",
@@ -316,6 +491,13 @@ export const ESPACES: Espace[] = [
         icone: Building2,
         visible: traiter,
         explication: "Écoles, inspections, DDEPPSA, services et directions : le chemin que suivent les demandes, et qui les vise.",
+      },
+      {
+        href: "/administration/referentiels",
+        libelle: "Référentiels",
+        icone: Layers,
+        visible: traiter,
+        explication: "Les listes où l’on choisit une valeur avec une recherche (localités, matières, postes…) et la carte scolaire : cycles, niveaux, matières et programmes (heures par semaine, coefficient). Reprise de l’ancien système.",
       },
       {
         href: "/administration/prestations",

@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Camera, CheckCircle2, Paperclip, Send, X } from 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { appelPublic, type ReferencesPortail } from "@/lib/portail";
+import { SaisieReferentiel } from "@/components/saisie-referentiel";
 
 const GRANDS = "w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-[16px] text-encre outline-none focus:border-marque-300 focus:ring-4 focus:ring-marque-100";
 
@@ -196,7 +197,7 @@ export default function DemandeMutationPortail() {
           <>
             <h2 className="text-[16px] font-semibold">Quelle est votre demande ?</h2>
             <div className="space-y-2">
-              {refs.types.map((t) => (
+              {refs.types.filter((t) => t.mutation).map((t) => (
                 <button
                   key={t.code}
                   type="button"
@@ -312,7 +313,7 @@ export default function DemandeMutationPortail() {
               </Bloc>
             )}
             <Bloc libelle="Lieu de service actuel" aide="École, collège, lycée ou bureau où vous travaillez">
-              <input className={GRANDS} value={f.lieuService} onChange={(e) => maj("lieuService", e.target.value)} />
+              <SaisieReferentiel liste="ETABLISSEMENT" valeur={f.lieuService} changer={(v) => maj("lieuService", v)} placeholder="Tapez le nom de votre école ou de votre bureau" />
             </Bloc>
             <div className="grid grid-cols-2 gap-3">
               <Bloc libelle="Cycle *">
@@ -326,7 +327,7 @@ export default function DemandeMutationPortail() {
                 </select>
               </Bloc>
               <Bloc libelle="Spécialité">
-                <input className={GRANDS} value={f.specialite} onChange={(e) => maj("specialite", e.target.value)} placeholder="Ex. Français" />
+                <SaisieReferentiel liste="MATIERE" valeur={f.specialite} changer={(v) => maj("specialite", v)} placeholder="Ex. Français" />
               </Bloc>
             </div>
             <Bloc libelle="Date de prise de service au poste actuel">
@@ -344,7 +345,7 @@ export default function DemandeMutationPortail() {
               </select>
             </Bloc>
             <Bloc libelle="Lieu demandé (si vous le savez)">
-              <input className={GRANDS} value={f.lieuSollicite} onChange={(e) => maj("lieuSollicite", e.target.value)} placeholder="Ex. Lycée de Ouesso" />
+              <SaisieReferentiel liste="ETABLISSEMENT" valeur={f.lieuSollicite} changer={(v) => maj("lieuSollicite", v)} departementId={f.departementSolliciteId} placeholder="Ex. Lycée de Ouesso" />
             </Bloc>
             {!type?.motif && (
               <Bloc libelle="Motif *">

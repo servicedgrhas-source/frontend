@@ -109,8 +109,8 @@ export default function ReglesEtGrades() {
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/administration" className="text-xs font-medium text-marque-700 hover:underline">
-          ← Administration
+        <Link href="/administration/parametres" className="text-xs font-medium text-marque-700 hover:underline">
+          ← Paramètres
         </Link>
       </div>
       <EnTete

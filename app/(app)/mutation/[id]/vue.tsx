@@ -8,6 +8,7 @@ import { CircuitDemande } from "@/components/circuit-demande";
 import { FormulaireMutation } from "@/components/formulaire-mutation";
 import { PiecesDemande } from "@/components/pieces-demande";
 import { useSession } from "@/components/session";
+import { ProposerRecommandation } from "@/components/recommandation";
 import { Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, Modale, Pastille, Saisie } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { CYCLES, dateCourte, duree, ETAT_MUTATION, peut } from "@/lib/libelles";
@@ -23,6 +24,7 @@ export function VueMutation() {
   // Fenêtre de retrait (motif obligatoire) ou de réintégration
   const [dialogueRetrait, setDialogueRetrait] = useState<"retirer" | "reintegrer" | null>(null);
   const [motifRetrait, setMotifRetrait] = useState("");
+  const [recommander, setRecommander] = useState(false);
 
   if (erreur) return <Alerte>{erreur}</Alerte>;
   if (!d) return <Chargement />;
@@ -86,12 +88,19 @@ export function VueMutation() {
           <Bouton onClick={() => window.open(`/impression/mutation/${id}`, "_blank")}>
             <Printer /> Imprimer la fiche
           </Bouton>
+          {/* Congé, autorisation, attestation… accordés : l'acte à remettre à l'agent (une mutation a sa note de service) */}
+          {accordee && d.motif === "PRESTATION" && (
+            <Bouton variante="principal" onClick={() => window.open(`/impression/acte/${id}`, "_blank")}>
+              <Printer /> Imprimer l’acte
+            </Bouton>
+          )}
           {accordee && profil.role === "DG" && (
             <Bouton variante={d.envoyeSecretariatLe ? "secondaire" : "principal"} onClick={envoyerSecretariat}>
               <Send /> {d.envoyeSecretariatLe ? "Renvoyer au secrétariat" : "Envoyer au secrétariat"}
             </Bouton>
           )}
           {modifiable && <Bouton onClick={() => setEdition(true)}>Modifier</Bouton>}
+          {!verrouillee && !d.retiree && peut.traiter(profil.role) && <Bouton onClick={() => setRecommander(true)}>Recommandation</Bouton>}
           {!verrouillee && peut.traiter(profil.role) && (
             <Bouton
               variante={d.retiree ? "secondaire" : "danger"}
@@ -106,6 +115,19 @@ export function VueMutation() {
         </div>
       </div>
       <Annonce ton={message?.ton} fermer={() => setMessage(null)}>{message?.texte}</Annonce>
+      {recommander && (
+        <ProposerRecommandation
+          url={`/mutations/${d.id}/recommandations`}
+          personne={d.nomComplet}
+          avant={[refs.departements.find((x) => x.id === d.departementSolliciteId)?.nom, d.lieuSollicite].filter(Boolean).join(" · ")}
+          libelleLieu="Lieu demandé (établissement, structure)"
+          fermer={() => setRecommander(false)}
+          apres={() => {
+            setRecommander(false);
+            setMessage({ ton: "vert", texte: "Recommandation proposée : elle est dans la page Recommandations (avis du directeur, puis décision du DG)." });
+          }}
+        />
+      )}
       {d.retiree && <Alerte>Demande retirée : {d.motifRetrait}</Alerte>}
       {accordee && !d.envoyeSecretariatLe && profil.role === "DG" && (
         <Alerte ton="jaune">

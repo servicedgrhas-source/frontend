@@ -25,7 +25,7 @@ export async function appelPublic<T>(chemin: string, options: RequestInit = {}):
 export interface ReferencesPortail {
   departements: { id: number; nom: string }[];
   structures: { id: number; type: string; sigle: string; nom: string; parentId: number | null; departementId: number | null }[];
-  types: { code: string; libelle: string; pieces: string[]; motif: string | null; decision: string }[];
+  types: { code: string; libelle: string; pieces: string[]; motif: string | null; decision: string; acte: string | null; mutation: boolean }[];
   motifs: { code: string; libelle: string }[];
   cycles: { code: string; libelle: string }[];
 }

@@ -3,10 +3,12 @@
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { GuideEnrolement } from "@/components/enrolement/guide";
 import { useSession } from "@/components/session";
 import { Alerte, EnTete, Pastille } from "@/components/ui";
 import { useApi } from "@/lib/api";
 import { ESPACES, rubriquesVisibles, type Compteurs } from "@/lib/espaces";
+import { peut } from "@/lib/libelles";
 
 /** Page d'accueil d'un domaine : ses rubriques, dans l'ordre du travail, avec ce qui attend. */
 export function VueEspace() {
@@ -43,8 +45,14 @@ export function VueEspace() {
         </div>
       )}
 
+      {espace.cle === "enrolement" && peut.traiter(profil.role) && <GuideEnrolement />}
+
+      {/* Rubriques rangées par groupe (« Chaque mois : payer »…) quand le domaine en a */}
+      {[...new Set(rubriques.map((r) => r.groupe ?? ""))].map((groupe) => (
+      <div key={groupe || "tout"} className="space-y-3">
+      {groupe && <h2 className="pt-2 text-[12px] font-semibold tracking-wider text-zinc-400 uppercase">{groupe}</h2>}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {rubriques.map((r, i) => {
+        {rubriques.filter((r) => (r.groupe ?? "") === groupe).map((r, i) => {
           const travail = c && r.compteur ? r.compteur(c) : null;
           const info = c && r.info ? r.info(c) : null;
           const R = r.icone;
@@ -59,7 +67,7 @@ export function VueEspace() {
                   <R />
                 </Pastille>
                 <div className="min-w-0 flex-1">
-                  <div className="text-[11px] text-zinc-400">{rubriques.length > 1 ? `Étape ${i + 1}` : "Rubrique"}</div>
+                  <div className="text-[11px] text-zinc-400">{r.groupe ? "Rubrique" : rubriques.length > 1 ? `Étape ${i + 1}` : "Rubrique"}</div>
                   <div className="text-[16px] font-semibold text-encre">{r.libelle}</div>
                 </div>
                 {!!travail?.n && <span className="rounded-full bg-or-400 px-2.5 py-0.5 text-[13px] font-bold text-zinc-900 tabular-nums">{travail.n}</span>}
@@ -78,6 +86,8 @@ export function VueEspace() {
           );
         })}
       </div>
+      </div>
+      ))}
     </div>
   );
 }

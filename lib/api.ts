@@ -218,11 +218,28 @@ async function fichier(chemin: string, init: RequestInit = {}): Promise<Blob> {
   return rep.blob();
 }
 
+/**
+ * Nom de fichier sûr pour tous les navigateurs : certains refusent les accents ou le tiret long
+ * dans un téléchargement et enregistrent alors un fichier nommé « download ».
+ */
+export function nomDeFichier(nom: string) {
+  return nom
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/[’']/g, " ")
+    .replace(/°/g, "")
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .replace(/[^\x20-\x7e]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function enregistrerSous(blob: Blob, nom: string) {
   const url = URL.createObjectURL(blob);
   const lien = document.createElement("a");
   lien.href = url;
-  lien.download = nom;
+  lien.download = nomDeFichier(nom);
   document.body.appendChild(lien);
   lien.click();
   lien.remove();

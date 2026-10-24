@@ -21,6 +21,7 @@ import { api, qs, useApi } from "@/lib/api";
 import { peut, STATUT_AFFECTATION, libelleAnomalie } from "@/lib/libelles";
 import type { Affectation, Lot, NoteResume } from "@/lib/types";
 import { useParametreUrl } from "@/lib/url";
+import { SaisieReferentiel } from "@/components/saisie-referentiel";
 
 type Resume = Record<
   string,
@@ -704,19 +705,13 @@ function Completer({
           libelle="Spécialité"
           aide="Pour les notes DEMA et décrets (ex. Musique, Arts plastiques, Français…)"
         >
-          <Saisie
-            value={f.specialite}
-            onChange={(e) => setF({ ...f, specialite: e.target.value })}
-          />
+          <SaisieReferentiel liste="MATIERE" valeur={f.specialite} changer={(v) => setF({ ...f, specialite: v })} />
         </Champ>
         <Champ
           libelle="Structure (personnel administratif)"
           aide="Par défaut : DDEPPSA du département"
         >
-          <Saisie
-            value={f.structure}
-            onChange={(e) => setF({ ...f, structure: e.target.value })}
-          />
+          <SaisieReferentiel liste="STRUCTURE" valeur={f.structure} changer={(v) => setF({ ...f, structure: v })} />
         </Champ>
         <Champ
           libelle="Établissement d’affectation"
@@ -827,11 +822,7 @@ function Recommander({
           </Champ>
           {f.typeNote === "PERS_ADM" && (
             <Champ libelle="Structure administrative" className="col-span-2">
-              <Saisie
-                value={f.structure}
-                onChange={(e) => setF({ ...f, structure: e.target.value })}
-                placeholder="Ex. DGEB, DDEPPSA Brazzaville…"
-              />
+              <SaisieReferentiel liste="STRUCTURE" valeur={f.structure} changer={(v) => setF({ ...f, structure: v })} placeholder="Ex. DGEB, DDEPPSA Brazzaville…" />
             </Champ>
           )}
           <Champ libelle="Établissement" className="col-span-2">

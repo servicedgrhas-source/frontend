@@ -8,6 +8,7 @@ import { Alerte, Badge, Bouton, Carte, Champ, Liste, Modale, Saisie, Zone } from
 import { api, useApi } from "@/lib/api";
 import { CYCLES, dateCourte, ETAT_MUTATION } from "@/lib/libelles";
 import type { DemandeMutation } from "@/lib/types";
+import { SaisieReferentiel } from "@/components/saisie-referentiel";
 
 const JUSTIFICATIFS: Record<string, string> = {
   RAPPROCHEMENT_CONJOINT: "Acte de mariage (référence)",
@@ -202,13 +203,13 @@ export function FormulaireMutation({ demande, apres }: { demande?: DemandeMutati
             <Liste required value={f.departementOrigineId} onChange={maj("departementOrigineId")} vide="—" options={deps} />
           </Champ>
           <Champ libelle="Lieu de service (ancien poste)" className="md:col-span-2">
-            <Saisie value={f.lieuService} onChange={maj("lieuService")} placeholder="Ex. CEG de Kinkala" />
+            <SaisieReferentiel liste="ETABLISSEMENT" valeur={f.lieuService} changer={(v) => setF({ ...f, lieuService: v })} departementId={f.departementOrigineId} placeholder="Ex. CEG de Kinkala" />
           </Champ>
           <Champ libelle="Cycle *">
             <Liste required value={f.cycle} onChange={maj("cycle")} vide="—" options={Object.entries(CYCLES).map(([k, v]) => ({ valeur: k, libelle: v }))} />
           </Champ>
           <Champ libelle="Spécialité" aide="Collège / lycée : Français, HG, SVT…">
-            <Saisie value={f.specialite} onChange={maj("specialite")} />
+            <SaisieReferentiel liste="MATIERE" valeur={f.specialite} changer={(v) => setF({ ...f, specialite: v })} />
           </Champ>
           <Champ libelle="Date d’enregistrement">
             <Saisie type="date" value={f.dateEnregistrement} onChange={maj("dateEnregistrement")} />
@@ -217,7 +218,7 @@ export function FormulaireMutation({ demande, apres }: { demande?: DemandeMutati
             <Liste required value={f.departementSolliciteId} onChange={maj("departementSolliciteId")} vide="—" options={deps} />
           </Champ>
           <Champ libelle="Lieu sollicité" className="md:col-span-2">
-            <Saisie value={f.lieuSollicite} onChange={maj("lieuSollicite")} />
+            <SaisieReferentiel liste="ETABLISSEMENT" valeur={f.lieuSollicite} changer={(v) => setF({ ...f, lieuSollicite: v })} departementId={f.departementSolliciteId} />
           </Champ>
           <Champ libelle="Motif *">
             <Liste required value={f.motif} onChange={maj("motif")} vide="—" options={refs.motifs.map((m) => ({ valeur: m.code, libelle: m.libelle }))} />

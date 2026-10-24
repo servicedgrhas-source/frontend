@@ -43,6 +43,8 @@ interface TacheNote {
   action: string;
   detail: string;
   depuis: number | null;
+  /** Page à ouvrir quand ce n'est ni une note ni une demande (agents ajoutés au recensement…). */
+  lien?: string;
 }
 
 const ACTION: Record<string, { libelle: string; ton: "gris" | "vert" | "jaune" | "rouge" | "bleu" }> = {
@@ -54,6 +56,8 @@ const ACTION: Record<string, { libelle: string; ton: "gris" | "vert" | "jaune" |
   SCANNER: { libelle: "Scan de la note signée à joindre", ton: "jaune" },
   ENVOYER: { libelle: "À envoyer au secrétariat", ton: "jaune" },
   IMPRIMER_DOSSIER: { libelle: "Fiche et pièces à imprimer", ton: "bleu" },
+  RECENSEMENT_CONTROLE: { libelle: "Agents ajoutés à contrôler", ton: "jaune" },
+  RECENSEMENT_DECISION: { libelle: "Agents ajoutés à accepter ou rejeter", ton: "bleu" },
 };
 
 /** Actions qui portent sur un dossier (demande), les autres sur une note. */
@@ -174,7 +178,7 @@ export default function ATraiter() {
         <Alerte ton="jaune">
           Votre compte n’est rattaché à aucun bureau : vous voyez les dossiers de <strong>tous</strong> les{" "}
           {profil.role === "AGENT" ? "bureaux" : profil.role === "CHEF_SERVICE" ? "services" : "directions"} de la DGRHAS. Demandez au DG de rattacher votre compte à
-          votre bureau (« Administration › Utilisateurs et paramètres ») : vous ne verrez plus que les vôtres.
+          votre bureau (« Administration › Utilisateurs ») : vous ne verrez plus que les vôtres.
         </Alerte>
       )}
 
@@ -192,7 +196,7 @@ export default function ATraiter() {
               const retard = (x.depuis ?? 0) > 7;
               return (
                 <li key={`${x.action}-${x.id}`}>
-                  <Link href={dossier ? `/mutation/${x.id}` : `/note/${x.id}`} className="flex flex-wrap items-center gap-4 rounded-3xl bg-white px-5 py-4 shadow-doux transition hover:-translate-y-0.5">
+                  <Link href={x.lien ?? (dossier ? `/mutation/${x.id}` : `/note/${x.id}`)} className="flex flex-wrap items-center gap-4 rounded-3xl bg-white px-5 py-4 shadow-doux transition hover:-translate-y-0.5">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[14px] font-semibold">{dossier ? x.nomComplet : x.libelle}</span>
