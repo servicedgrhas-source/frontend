@@ -10,7 +10,7 @@ import { Fragment, useLayoutEffect, useRef, useState, type ReactNode } from "rea
  */
 export type Bloc =
   /** Bloc insécable (en-tête, paragraphe, signature…). */
-  | { cle: string; type: "libre"; contenu: ReactNode; garderAvecSuivant?: boolean }
+  | { cle: string; type: "libre"; contenu: ReactNode; garderAvecSuivant?: boolean; /** Commence une nouvelle page (l'emploi du temps de chaque enseignant). */ nouvellePage?: boolean }
   /** Ligne d'un tableau : le tableau continue sur la page suivante, avec son en-tête. */
   | { cle: string; type: "ligne"; tableau: string; contenu: ReactNode };
 
@@ -98,7 +98,7 @@ export function PagesA4({ blocs, tableaux, pied, classeFeuille, margeHaut = 12, 
           const suivant = blocs[i + 1];
           if (b.garderAvecSuivant && suivant)
             besoin += suivant.type === "ligne" ? (hauteur.get(suivant.cle) ?? 0) + (entete.get(suivant.tableau) ?? 0) : (hauteur.get(suivant.cle) ?? 0);
-          if (h + besoin > dispo && page.length) nouvellePage();
+          if ((b.nouvellePage || h + besoin > dispo) && page.length) nouvellePage();
           resultat[resultat.length - 1].push(b.cle);
           h += hauteur.get(b.cle) ?? 0;
           tableauOuvert = null;

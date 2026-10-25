@@ -1,9 +1,10 @@
 "use client";
 
-import { Download, FileUp, Plus } from "lucide-react";
+import { Download, FileUp, Plus, Printer } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { Pagination } from "@/components/pagination";
 import { libelleStatut, peutRecenser, Taux, useConfigRecensement, type Manques } from "@/components/recensement/commun";
 import { useSession } from "@/components/session";
 import { Alerte, Bouton, Carte, Chargement, EnTete, Liste, Saisie, Tableau, Vide } from "@/components/ui";
@@ -20,6 +21,8 @@ interface Ligne {
   departementId: number | null;
   structureNom: string | null;
   lieuService: string | null;
+  genre: string | null;
+  lieuNaissance: string | null;
   taux: number;
   complet: boolean;
   manques: Manques;
@@ -28,7 +31,7 @@ interface Ligne {
 
 const dateFr = (d: string | null) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : "—");
 
-/** Base du personnel : recherche, filtres (ce qui manque, contrôles), accès aux fiches. */
+/** Base du personnel, par ordre alphabétique : recherche, filtres (ce qui manque, contrôles), accès aux fiches, export et bottin. */
 export function VueAgents() {
   const { profil, refs } = useSession();
   const config = useConfigRecensement();
@@ -67,7 +70,10 @@ export function VueAgents() {
         actions={
           <>
             <Bouton onClick={() => api.telecharger(`/recensement/export${qs(f)}`, "Base du personnel.xlsx")}>
-              <Download /> Excel (pour corriger)
+              <Download /> Exporter en Excel
+            </Bouton>
+            <Bouton onClick={() => window.open(`/impression/bottin${qs({ ...f, page: undefined })}`, "_blank")} title="Liste imprimable (en-tête, pages numérotées, signature), avec les filtres choisis">
+              <Printer /> Imprimer le bottin
             </Bouton>
             <Link href="/personnel/import">
               <Bouton>
@@ -142,8 +148,10 @@ export function VueAgents() {
                 <tr>
                   <th>N° fiche</th>
                   <th>Noms et prénoms</th>
+                  <th>Genre</th>
                   <th>Type</th>
-                  <th>Naissance</th>
+                  <th>Date de naissance</th>
+                  <th>Lieu de naissance</th>
                   <th>Lieu de service</th>
                   <th>Département</th>
                   <th>Fiche</th>
@@ -159,6 +167,9 @@ export function VueAgents() {
                       </Link>
                       {l.matricule && <div className="text-[11px] text-zinc-400">Matricule {l.matricule}</div>}
                     </td>
+                    <td className="text-[12px]" title={l.genre === "F" ? "Féminin" : l.genre === "M" ? "Masculin" : undefined}>
+                      {l.genre === "F" ? "F" : l.genre === "M" ? "M" : "—"}
+                    </td>
                     <td className="text-[12px]">
                       {libelleStatut(c, l.statut)}
                       {l.contentieux === "EN_COURS" && <div className="text-[11px] font-medium text-or-700">Ajouté au recensement : à contrôler</div>}
@@ -166,6 +177,7 @@ export function VueAgents() {
                       {l.contentieux === "REJETE" && <div className="text-[11px] font-medium text-rouge-600">Rejeté par le DG</div>}
                     </td>
                     <td className="text-[12px] whitespace-nowrap tabular-nums">{dateFr(l.dateNaissance)}</td>
+                    <td className="max-w-40 truncate text-[12px]">{l.lieuNaissance ?? "—"}</td>
                     <td className="max-w-64 truncate text-[12px]">{l.structureNom ?? l.lieuService ?? "—"}</td>
                     <td className="text-[12px]">{nomDep(l.departementId)}</td>
                     <td title={!l.complet ? `${(l.manques.champs ?? []).length} rubrique(s) et ${(l.manques.pieces ?? []).length} pièce(s) à fournir` : undefined}>
@@ -175,17 +187,7 @@ export function VueAgents() {
                 ))}
               </tbody>
             </Tableau>
-            {pages > 1 && (
-              <div className="mt-4 flex items-center justify-end gap-2 text-[12px] text-zinc-500">
-                <Bouton variante="discret" disabled={f.page <= 1} onClick={() => aller({ ...f, page: f.page - 1 })}>
-                  Précédente
-                </Bouton>
-                Page {f.page} sur {pages}
-                <Bouton variante="discret" disabled={f.page >= pages} onClick={() => aller({ ...f, page: f.page + 1 })}>
-                  Suivante
-                </Bouton>
-              </div>
-            )}
+            <Pagination page={f.page} pages={pages} aller={(p) => aller({ ...f, page: p })} />
           </>
         )}
       </Carte>

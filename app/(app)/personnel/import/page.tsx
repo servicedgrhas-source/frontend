@@ -16,6 +16,13 @@ interface ResultatPieces {
 
 const nf = new Intl.NumberFormat("fr-FR");
 
+/** Un scan : 15 Mo au plus (même limite que le serveur). */
+const SCAN_MAX = 15 * 1024 * 1024;
+/** Un envoi : 25 Mo et 50 fichiers au plus. */
+const PAQUET_MAX = 25 * 1024 * 1024;
+const PAQUET_FICHIERS = 50;
+const mo = (octets: number) => new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 }).format(octets / 1024 / 1024);
+
 /** Modèle Excel, import (création et réactualisation), export pour corriger et dépôt de pièces en masse. */
 export default function ImportRecensement() {
   const { profil } = useSession();
@@ -31,20 +38,47 @@ export default function ImportRecensement() {
   async function deposerPieces(liste: File[]) {
     setPieces(null);
     const total: ResultatPieces = { resultats: [], deposees: 0, refusees: 0 };
-    // Par paquets de 20 : de gros dossiers de scans passent sans dépasser les limites d'envoi
-    for (let i = 0; i < liste.length; i += 20) {
-      setEnvoiPieces(`Envoi ${Math.min(i + 20, liste.length)} / ${liste.length}…`);
+    const refuser = (f: File, message: string) => {
+      total.resultats.push({ fichier: f.name, ok: false, message });
+      total.refusees++;
+    };
+    // Tri avant l'envoi : ce que le serveur refuserait n'est pas envoyé pour rien
+    const valides: File[] = [];
+    for (const f of liste) {
+      if (!/\.(pdf|jpe?g|png)$/i.test(f.name)) refuser(f, "Seuls les PDF, JPG et PNG sont acceptés.");
+      else if (!/^[^_]+_.+\.[a-z]+$/i.test(f.name)) refuser(f, "Nom non reconnu : « N° de fiche_TYPE » attendu (ex. REC-000123_CNI.pdf).");
+      else if (f.size > SCAN_MAX) refuser(f, `Fichier trop lourd (${mo(f.size)} Mo, ${mo(SCAN_MAX)} Mo au plus) : rescannez-le moins lourd (200 à 300 ppp, noir et blanc ou niveaux de gris).`);
+      else if (f.size === 0) refuser(f, "Fichier vide.");
+      else valides.push(f);
+    }
+    // Paquets limités en poids (et en nombre) : un gros dossier de scans passe sans dépasser les limites du relais
+    const paquets: File[][] = [];
+    let poids = PAQUET_MAX;
+    for (const f of valides) {
+      if (poids + f.size > PAQUET_MAX || paquets[paquets.length - 1].length >= PAQUET_FICHIERS) {
+        paquets.push([]);
+        poids = 0;
+      }
+      paquets[paquets.length - 1].push(f);
+      poids += f.size;
+    }
+    const aEnvoyer = valides.reduce((s, f) => s + f.size, 0);
+    let envoyes = 0;
+    let fichiersEnvoyes = 0;
+    for (const paquet of paquets) {
+      setEnvoiPieces(`Envoi ${fichiersEnvoyes + paquet.length} / ${valides.length} fichiers (${mo(envoyes)} / ${mo(aEnvoyer)} Mo)…`);
       const fd = new FormData();
-      for (const f of liste.slice(i, i + 20)) fd.append("fichiers", f);
+      for (const f of paquet) fd.append("fichiers", f);
       try {
         const r = await api.post<ResultatPieces>("/recensement/pieces", fd);
         total.resultats.push(...r.resultats);
         total.deposees += r.deposees;
         total.refusees += r.refusees;
       } catch (x) {
-        for (const f of liste.slice(i, i + 20)) total.resultats.push({ fichier: f.name, ok: false, message: (x as Error).message });
-        total.refusees += Math.min(20, liste.length - i);
+        for (const f of paquet) refuser(f, (x as Error).message);
       }
+      fichiersEnvoyes += paquet.length;
+      envoyes += paquet.reduce((s, f) => s + f.size, 0);
     }
     setEnvoiPieces(null);
     setPieces(total);
@@ -95,7 +129,7 @@ export default function ImportRecensement() {
 
       <Carte titre="4. Déposer beaucoup de scans d’un coup (facultatif)">
         <p className="-mt-2 mb-4 text-[13px] leading-relaxed text-zinc-600">
-          Pour <strong>un</strong> agent, le plus simple est d’ouvrir sa fiche et de cliquer « Déposer un scan » devant chaque pièce. Cette rubrique sert quand un établissement apporte
+          Pour <strong>un</strong> agent, le plus simple est d’ouvrir sa fiche et de cliquer « Déposer un scan » devant chaque pièce. Cette rubrique sert quand une structure (école, inspection, direction…) apporte
           <strong> les scans de beaucoup d’agents</strong> (une clé USB, un dossier) : au lieu de les déposer un par un, on les envoie tous ensemble, et le système range chaque
           scan dans la bonne fiche. Pour cela, il lit le <strong>nom du fichier</strong>.
         </p>
@@ -135,7 +169,11 @@ export default function ImportRecensement() {
           <li className="flex gap-3">
             <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-marque-100 text-[12px] font-semibold text-marque-700">2</span>
             <div className="min-w-0 flex-1">
-              <strong>Le code de chaque pièce</strong> (à écrire après le tiret du bas) :
+              <strong>Le code de chaque pièce</strong> (à écrire après le tiret du bas). Donnez cette liste aux structures avant qu’elles scannent :{" "}
+              <button type="button" className="font-medium text-marque-700 hover:underline" onClick={() => window.open("/impression/codes-pieces", "_blank")}>
+                imprimer la liste des codes
+              </button>
+              .
               {c && (
                 <div className="mt-3 overflow-x-auto">
                   <Tableau>

@@ -70,13 +70,19 @@ export interface StatutAgent {
 }
 export interface ConfigRecensement {
   version: 1;
+  revision?: number;
   statuts: StatutAgent[];
-  sections: { code: string; libelle: string }[];
+  /** colonnes : cases par ligne à l'écran (3 par défaut ; 5 pour un diplôme sur une ligne). */
+  sections: { code: string; libelle: string; colonnes?: number }[];
   champs: ChampFiche[];
   pieces: PieceExigee[];
   regles: RegleCoherence[];
   ageMinimum: number;
-  ageRetraite: number;
+  /** Vide : aucun âge supposé quand la catégorie de l'agent est inconnue. */
+  ageRetraite: number | null;
+  /** Promotion du fonctionnaire (24 mois) et avancement du contractuel (28 mois). */
+  delaiPromotionMois: number;
+  delaiAvancementMois: number;
   telephonePartage: number;
   contentieuxHorsBase: boolean;
 }
@@ -210,11 +216,14 @@ export function SaisieRubrique({
   manquant,
   desactive,
   departementId,
+  extraLigne,
 }: {
   ch: ChampFiche;
   valeur: unknown;
   changer: (v: unknown) => void;
   requis: boolean;
+  /** Tableau : une case de plus au bout de chaque ligne (l'acte de naissance de l'enfant…). */
+  extraLigne?: (i: number) => React.ReactNode;
   /** Rubrique obligatoire encore vide (après une tentative d'enregistrement). */
   manquant: boolean;
   desactive?: boolean;
@@ -296,7 +305,7 @@ export function SaisieRubrique({
       );
       break;
     case "TABLEAU":
-      saisie = <SaisieTableau ch={ch} valeur={valeur} changer={changer} desactive={desactive} />;
+      saisie = <SaisieTableau ch={ch} valeur={valeur} changer={changer} desactive={desactive} extraLigne={extraLigne} />;
       break;
     case "DEPARTEMENT":
       saisie = (
@@ -316,6 +325,10 @@ export function SaisieRubrique({
       saisie = <Saisie inputMode="numeric" value={enTexte(valeur)} disabled={desactive} onChange={(e) => changer(e.target.value.replace(/[^\d]/g, "") || null)} placeholder={ch.exemple ? `Ex. ${ch.exemple}` : undefined} />;
       break;
     case "TEXTE":
+      if (ch.code === "NOMS_PRENOMS") {
+        saisie = <SaisieNom valeur={enTexte(valeur)} changer={(v) => changer(v || null)} desactive={desactive} />;
+        break;
+      }
       if (ch.referentiel) {
         saisie = (
           <SaisieReferentiel
@@ -352,9 +365,46 @@ export function SaisieRubrique({
       );
   }
   return (
-    <Champ libelle={libelle} aide={aide || undefined} erreur={erreur} className={large ? "sm:col-span-2" : undefined}>
+    <Champ libelle={libelle} aide={aide || undefined} erreur={erreur} className={large ? "col-span-full" : ch.code === "NOMS_PRENOMS" ? "sm:col-span-2" : undefined}>
       {saisie}
     </Champ>
+  );
+}
+
+/* ------------------------------ Noms et prénoms ------------------------------ */
+
+const lettres = (m: string) => m.replace(/[^\p{L}]/gu, "");
+const enMajuscules = (m: string) => !!lettres(m) && lettres(m) === lettres(m).toUpperCase();
+/** « jEAN-pierre » → « Jean-Pierre » : majuscule au début de chaque prénom. */
+export const prenomsJolis = (t: string) => t.toLowerCase().replace(/(^|[\s'’-])(\p{L})/gu, (_, sep: string, l: string) => sep + l.toUpperCase());
+
+/** « MOUKOKO Jean Pierre » → nom « MOUKOKO », prénoms « Jean Pierre » (tout en majuscules : tout dans le nom). */
+export function couperNom(v: string) {
+  const mots = v.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  let n = 0;
+  while (n < mots.length && enMajuscules(mots[n])) n++;
+  return { nom: mots.slice(0, n).join(" "), prenoms: mots.slice(n).join(" ") };
+}
+
+/**
+ * Le nom et les prénoms dans deux cases (DG, 24/10/2026) : le NOM s'écrit tout seul en majuscules,
+ * les Prénoms avec une majuscule au début ; on voit ainsi où finit le nom, même avec plusieurs noms.
+ */
+function SaisieNom({ valeur, changer, desactive }: { valeur: string; changer: (v: string) => void; desactive?: boolean }) {
+  const [p, setP] = useState(() => couperNom(valeur));
+  const maj = (x: { nom: string; prenoms: string }) => {
+    setP(x);
+    changer(`${x.nom.toUpperCase()} ${x.prenoms}`.replace(/\s+/g, " ").trim());
+  };
+  const toutEnMajuscules = !!p.nom && !p.prenoms && p.nom.includes(" ");
+  return (
+    <div className="space-y-1">
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Saisie aria-label="Nom" value={p.nom.toUpperCase()} disabled={desactive} onChange={(e) => maj({ ...p, nom: e.target.value.toUpperCase() })} placeholder="NOM (ex. MOUKOKO)" />
+        <Saisie aria-label="Prénoms" value={p.prenoms} disabled={desactive} onChange={(e) => maj({ ...p, prenoms: prenomsJolis(e.target.value) })} placeholder="Prénoms (ex. Jean Pierre)" />
+      </div>
+      {toutEnMajuscules && <p className="text-[11px] text-or-700">Tout est écrit en majuscules : laissez le nom à gauche et écrivez les prénoms dans la case de droite.</p>}
+    </div>
   );
 }
 
@@ -362,18 +412,38 @@ export function SaisieRubrique({
 
 type LigneTableau = Record<string, unknown>;
 
-/** Lignes d'un tableau : un ancien historique en texte (« Arrêté n° 12 du 03/02/2020 ») devient une ligne. */
+/**
+ * Lignes d'un tableau : un ancien historique en texte (« Arrêté n° 12 du 03/02/2020 ») devient une
+ * ligne ; une ancienne valeur d'une liste (« CEPE » d'une liste de diplômes) va dans la case de la liste.
+ */
 export function lignesTableau(ch: ChampFiche, v: unknown): LigneTableau[] {
   if (!Array.isArray(v)) return [];
   const texte = ch.colonnes.find((c) => c.type === "TEXTE") ?? ch.colonnes[0];
-  return v.map((l) => (l && typeof l === "object" ? (l as LigneTableau) : texte ? { [texte.code]: String(l) } : {}));
+  const liste = ch.colonnes.find((c) => c.type === "LISTE");
+  return v.map((l) => {
+    if (l && typeof l === "object") return l as LigneTableau;
+    if (liste?.options.some((o) => o.code === String(l))) return { [liste.code]: String(l) };
+    return texte ? { [texte.code]: String(l) } : {};
+  });
 }
 
 /** Une ligne par élément (une promotion : date, texte, nature), ajoutée ou retirée à la main. */
-function SaisieTableau({ ch, valeur, changer, desactive }: { ch: ChampFiche; valeur: unknown; changer: (v: unknown) => void; desactive?: boolean }) {
+function SaisieTableau({
+  ch,
+  valeur,
+  changer,
+  desactive,
+  extraLigne,
+}: {
+  ch: ChampFiche;
+  valeur: unknown;
+  changer: (v: unknown) => void;
+  desactive?: boolean;
+  extraLigne?: (i: number) => React.ReactNode;
+}) {
   const lignes = lignesTableau(ch, valeur);
   const maj = (i: number, code: string, v: unknown) => changer(lignes.map((l, j) => (j === i ? { ...l, [code]: v === "" ? null : v } : l)));
-  const grille = { gridTemplateColumns: `repeat(${ch.colonnes.length}, minmax(0, 1fr)) 2rem` };
+  const grille = { gridTemplateColumns: `repeat(${ch.colonnes.length}, minmax(0, 1fr))${extraLigne ? " 10.5rem" : ""} 2rem` };
   return (
     <div className="space-y-2 rounded-xl bg-zinc-100/80 p-2">
       {!!lignes.length && (
@@ -381,6 +451,7 @@ function SaisieTableau({ ch, valeur, changer, desactive }: { ch: ChampFiche; val
           {ch.colonnes.map((c) => (
             <span key={c.code}>{c.libelle}</span>
           ))}
+          {extraLigne && <span>Pièce</span>}
         </div>
       )}
       {lignes.map((l, i) => (
@@ -414,6 +485,7 @@ function SaisieTableau({ ch, valeur, changer, desactive }: { ch: ChampFiche; val
               />
             ),
           )}
+          {extraLigne?.(i)}
           <button
             type="button"
             disabled={desactive}

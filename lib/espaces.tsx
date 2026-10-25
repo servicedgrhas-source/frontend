@@ -13,6 +13,7 @@ import {
   FilePlus2,
   FileSpreadsheet,
   FileText,
+  Gauge,
   GraduationCap,
   HandHeart,
   History,
@@ -23,6 +24,7 @@ import {
   Settings,
   ShieldCheck,
   Stamp,
+  Network,
   UserCheck,
   UserPlus,
   Users,
@@ -88,9 +90,9 @@ const recenser = (p: Profil) => peut.traiter(p.role) || p.role === "DDEPPSA" || 
 export const ESPACES: Espace[] = [
   {
     cle: "recrutement",
-    titre: "Recrutement",
+    titre: "Recrutement FP",
     icone: UserPlus,
-    description: "Des candidats retenus par la commission jusqu’au retour des textes de la Fonction Publique.",
+    description: "Le recrutement à la Fonction Publique : des candidats retenus par la commission jusqu’au retour des textes, avec la gestion du quota.",
     circuit: "Saisie → contrôle → validation du DG → envoi à la FP → réception des textes",
     rubriques: [
       {
@@ -133,6 +135,13 @@ export const ESPACES: Espace[] = [
         visible: traiter,
         explication: "Les membres de la commission de chaque quota et leurs places : dossiers apportés, validés et envoyés à la FP.",
       },
+      {
+        href: "/pilotage",
+        libelle: "Gestion du quota",
+        icone: Gauge,
+        visible: parametrer,
+        explication: "Le quota de recrutement et sa répartition (par département, par cycle, par membre de la commission), l’avancement de la campagne.",
+      },
     ],
   },
   {
@@ -173,9 +182,9 @@ export const ESPACES: Espace[] = [
   },
   {
     cle: "enrolement",
-    titre: "Enrôlement",
+    titre: "Volontaires et communautaires",
     icone: HandHeart,
-    description: "Les enseignants volontaires (bourse) : chaque année on les enrôle (campagne, dossiers, notes de service), chaque mois on paie leur bourse. Les communautaires ont aussi leur liste de paiement mensuelle (sans note ni vague). Le guide ci-dessous dit, étape par étape, quoi faire, qui le fait et où.",
+    description: "La gestion des volontaires et des communautaires : chaque année on enrôle les volontaires (campagne, dossiers, notes de service), chaque mois on paie leur bourse. Les communautaires ont aussi leur liste de paiement mensuelle (sans note ni vague). Le guide ci-dessous dit, étape par étape, quoi faire, qui le fait et où.",
     rubriques: [
       {
         groupe: "Chaque année : enrôler",
@@ -258,14 +267,6 @@ export const ESPACES: Espace[] = [
       },
       {
         groupe: "Suivi et réglages",
-        href: "/enrolement/besoins",
-        libelle: "Besoins par établissement",
-        icone: School,
-        visible: (p) => peut.traiter(p.role) || p.role === "DDEPPSA",
-        explication: "Les besoins exprimés par les DDEPPSA, comparés aux volontaires en poste.",
-      },
-      {
-        groupe: "Suivi et réglages",
         href: "/enrolement/configuration",
         libelle: "Configuration",
         icone: Settings,
@@ -276,7 +277,7 @@ export const ESPACES: Espace[] = [
   },
   {
     cle: "personnel",
-    titre: "Personnel",
+    titre: "Base du personnel",
     icone: ClipboardList,
     description:
       "La base générale du personnel : une seule fiche par personne (fonctionnaire, contractuel, volontaire, communautaire), avec ses pièces et son historique. Les autres modules l’alimentent : chaque volontaire du registre y a sa fiche, et le recensement la complète et la met à jour.",
@@ -308,14 +309,6 @@ export const ESPACES: Espace[] = [
       },
       {
         groupe: "Suivi des agents",
-        href: "/demandes/nouvelle",
-        libelle: "Déposer une demande",
-        icone: FilePlus2,
-        visible: recenser,
-        explication: "Congé, autorisation d’absence, attestation, prime, mutation… pour un de vos agents : la demande part de votre structure, l’agent la suit sur le portail et y imprime son acte.",
-      },
-      {
-        groupe: "Suivi des agents",
         href: "/personnel/presence",
         libelle: "Présence",
         icone: CalendarCheck,
@@ -329,22 +322,6 @@ export const ESPACES: Espace[] = [
         icone: Star,
         visible: recenser,
         explication: "L’évaluation annuelle par le chef immédiat : compétence professionnelle et compétence sociale sur 5, la globale et ce que dit leur écart.",
-      },
-      {
-        groupe: "Écoles",
-        href: "/ecoles",
-        libelle: "Écoles et classes",
-        icone: School,
-        visible: recenser,
-        explication: "Pour chaque école : bâtiments, salles, classes ouvertes de l’année, agents rattachés, et le besoin en enseignants qui s’en déduit.",
-      },
-      {
-        groupe: "Écoles",
-        href: "/ecoles/besoins",
-        libelle: "Besoins en enseignants",
-        icone: Scale,
-        visible: (p) => peut.traiter(p.role) || p.role === "DDEPPSA",
-        explication: "Déficit ou pléthore d’enseignants, école par école, par département et par matière : les heures des classes ouvertes divisées par les heures d’un enseignant.",
       },
       {
         groupe: "Recensement",
@@ -390,6 +367,71 @@ export const ESPACES: Espace[] = [
         libelle: "Statistiques",
         icone: BarChart3,
         explication: "Les chiffres des mutations par motif et par département.",
+      },
+    ],
+  },
+  {
+    cle: "demandes",
+    titre: "Demandes et prestations",
+    icone: FilePlus2,
+    description: "Les demandes des agents autres que les mutations : congés, autorisations d’absence, attestations, primes… de leur dépôt à l’acte signé.",
+    circuit: "Dépôt par la structure ou sur le portail → avis → décision → acte",
+    rubriques: [
+      {
+        href: "/demandes/nouvelle",
+        libelle: "Déposer une demande de prestation",
+        icone: FilePlus2,
+        visible: recenser,
+        explication: "Congé, autorisation d’absence, attestation, prime, mutation… pour un de vos agents : la demande part de votre structure, l’agent la suit sur le portail et y imprime son acte.",
+      },
+      {
+        href: "/mutations?motif=PRESTATION",
+        libelle: "Suivi des prestations",
+        icone: ListChecks,
+        visible: traiter,
+        explication: "Les demandes de prestations en cours et accordées : où en est chacune, qui doit donner son avis.",
+      },
+    ],
+  },
+  {
+    cle: "structures",
+    titre: "Structures et besoins",
+    icone: Network,
+    description:
+      "Les structures du ministère, du cabinet jusqu’à l’école : les structures administratives (directions, services) et les structures scolaires (écoles, avec leurs classes et leurs salles), le personnel de chacune, et les besoins en personnel qui s’en déduisent.",
+    circuit: "Structures → classes ouvertes → heures de cours → besoin en enseignants",
+    rubriques: [
+      {
+        groupe: "Besoins en personnel",
+        href: "/ecoles/besoins",
+        libelle: "Besoins en enseignants",
+        icone: Scale,
+        visible: (p) => peut.traiter(p.role) || p.role === "DDEPPSA",
+        explication: "Déficit ou pléthore d’enseignants par école, par cycle, par département et par matière : les heures des classes ouvertes divisées par les heures d’un enseignant.",
+      },
+      {
+        groupe: "Besoins en personnel",
+        href: "/enrolement/besoins",
+        libelle: "Besoins par établissement",
+        icone: School,
+        visible: (p) => peut.traiter(p.role) || p.role === "DDEPPSA",
+        explication: "Les besoins en volontaires exprimés par les DDEPPSA, comparés aux volontaires en poste.",
+      },
+      {
+        groupe: "Les structures",
+        href: "/structures",
+        libelle: "Structures administratives",
+        icone: Building2,
+        visible: traiter,
+        explication: "Du cabinet aux services : directions générales, directions centrales et départementales, inspections. Pour chacune, son personnel.",
+      },
+      {
+        groupe: "Les structures",
+        href: "/ecoles",
+        libelle: "Structures scolaires",
+        icone: School,
+        visible: recenser,
+        explication: "Pour chaque école : bâtiments, salles, classes ouvertes de l’année, agents rattachés, et le besoin en enseignants qui s’en déduit.",
       },
     ],
   },
@@ -462,7 +504,7 @@ export const ESPACES: Espace[] = [
     cle: "administration",
     titre: "Administration",
     icone: Settings,
-    description: "Les utilisateurs, les paramètres, les règles des diplômes et le journal des actions.",
+    description: "Les utilisateurs, les paramètres, les règles des diplômes, le menu et le journal des actions.",
     rubriques: [
       {
         href: "/administration",
@@ -514,6 +556,13 @@ export const ESPACES: Espace[] = [
         explication: "La liste des origines proposées à la saisie d’un candidat (Cabinet du Ministre, Primature, DDEPPSA…).",
       },
       {
+        href: "/administration/menu",
+        libelle: "Menu",
+        icone: ListChecks,
+        visible: parametrer,
+        explication: "Renommer et ranger les rubriques du menu, les domaines et leurs volets : les noms choisis valent pour tout le monde.",
+      },
+      {
         href: "/journal",
         libelle: "Journal",
         icone: History,
@@ -523,6 +572,34 @@ export const ESPACES: Espace[] = [
     ],
   },
 ];
+
+/**
+ * Grande rubrique du menu qui regroupe plusieurs domaines (DG, 24/10/2026) : « Personnel » réunit
+ * tout ce qui touche aux agents. Sa page montre une case par domaine, avec ce qu'on y fait.
+ */
+export interface Pole {
+  cle: string;
+  titre: string;
+  icone: LucideIcon;
+  description: string;
+  espaces: string[];
+}
+
+export const POLES: Pole[] = [
+  {
+    cle: "rh",
+    titre: "Personnel",
+    icone: Users,
+    description:
+      "Tout ce qui touche aux agents du ministère : leur base et leur recensement, leur recrutement à la Fonction Publique, leurs affectations et mutations, les volontaires et communautaires, leurs demandes, et les structures où ils servent avec les besoins en personnel.",
+    espaces: ["personnel", "recrutement", "affectations", "mutations", "enrolement", "demandes", "structures"],
+  },
+];
+
+/** Ordre du menu, après le tableau de bord, les dossiers à traiter et les alertes. */
+export const MENU: { pole?: string; espace?: string }[] = [{ pole: "rh" }, { espace: "notes" }, { espace: "controle" }, { espace: "administration" }];
+
+export const poleDe = (cleEspace: string | null | undefined) => (cleEspace ? (POLES.find((p) => p.espaces.includes(cleEspace)) ?? null) : null);
 
 /** Rubriques d'un espace que ce profil peut voir. */
 export const rubriquesVisibles = (e: Espace, p: Profil) => e.rubriques.filter((r) => !r.visible || r.visible(p));
@@ -536,6 +613,8 @@ export function espaceDe(chemin: string): Espace | null {
       if ((chemin === r.href || chemin.startsWith(`${r.href}/`)) && (!meilleur || r.href.length > meilleur.long)) meilleur = { e, long: r.href.length };
   // Pages de détail rattachées à un domaine
   if (!meilleur) {
+    if (chemin === "/pilotage") return ESPACES.find((e) => e.cle === "recrutement")!;
+    if (chemin.startsWith("/structures")) return ESPACES.find((e) => e.cle === "structures")!;
     if (chemin.startsWith("/note/")) return ESPACES.find((e) => e.cle === "notes")!;
     if (chemin.startsWith("/mutation/")) return ESPACES.find((e) => e.cle === "mutations")!;
   }
@@ -546,4 +625,88 @@ export function espaceDe(chemin: string): Espace | null {
 export function travailEspace(e: Espace, p: Profil, c: Compteurs | null) {
   if (!c) return 0;
   return rubriquesVisibles(e, p).reduce((n, r) => n + (r.compteur?.(c).n ?? 0), 0);
+}
+
+/** Pages de détail : ce qui s'affiche au bout du chemin (après la rubrique). */
+const DETAILS: [RegExp, string][] = [
+  [/^\/personnel\/agents\/nouveau$/, "Nouvelle fiche"],
+  [/^\/personnel\/agents\/\d+$/, "Fiche de l’agent"],
+  [/^\/ecoles\/\d+$/, "Fiche de l’école"],
+  [/^\/mutations\/nouvelle$/, "Nouvelle demande"],
+  [/^\/mutation\//, "Demande"],
+  [/^\/note\//, "Note de service"],
+];
+
+/**
+ * Chemin de la page affiché en haut (fil d'Ariane) : grande rubrique (Personnel), domaine, rubrique,
+ * puis la page de détail. Vide pour le tableau de bord et les dossiers à traiter.
+ */
+export function cheminDe(chemin: string, p: Profil): { libelle: string; href?: string }[] {
+  const poleDirect = POLES.find((x) => chemin === `/espace/${x.cle}`);
+  if (poleDirect) return [{ libelle: poleDirect.titre, href: `/espace/${poleDirect.cle}` }];
+  const e = espaceDe(chemin);
+  if (!e) return [];
+  const etapes: { libelle: string; href?: string }[] = [];
+  const pole = poleDe(e.cle);
+  if (pole) etapes.push({ libelle: pole.titre, href: `/espace/${pole.cle}` });
+  etapes.push({ libelle: e.titre, href: `/espace/${e.cle}` });
+  if (chemin === `/espace/${e.cle}`) return etapes;
+  // La rubrique dont l'adresse correspond le mieux à la page
+  const r = rubriquesVisibles(e, p)
+    .filter((x) => {
+      const base = x.href.split("?")[0];
+      return chemin === base || chemin.startsWith(`${base}/`);
+    })
+    .sort((a, b) => b.href.length - a.href.length)[0];
+  // Même nom que le domaine (« Base du personnel ») : une seule étape
+  if (r && r.libelle !== e.titre) etapes.push({ libelle: r.libelle, href: r.href });
+  const detail = DETAILS.find(([re]) => re.test(chemin));
+  if (detail && (!r || chemin !== r.href.split("?")[0])) etapes.push({ libelle: detail[1] });
+  return etapes;
+}
+
+/* ------------------------------ Menu réglé par l'administrateur ou le DG ------------------------------ */
+
+/** Noms et ordre du menu choisis à l'écran (Administration › Menu) ; seuls les écarts sont gardés. */
+export interface ConfigMenu {
+  /** « pole:rh », « espace:recrutement », « rubrique:/pilotage » → nouveau nom. */
+  noms: Record<string, string>;
+  /** « menu » (ses entrées « pole:rh », « espace:notes »…), « pole:rh » (ses domaines), « espace:… » (ses rubriques, par adresse). */
+  ordres: Record<string, string[]>;
+}
+export const MENU_MODIFIE = "dgrhas:menu-modifie";
+
+/** Le menu d'origine, gardé pour rétablir les noms et l'ordre. */
+export const MENU_ORIGINE = {
+  menu: MENU.map((m) => (m.pole ? `pole:${m.pole}` : `espace:${m.espace}`)),
+  poles: Object.fromEntries(POLES.map((p) => [p.cle, { titre: p.titre, espaces: [...p.espaces] }])),
+  espaces: Object.fromEntries(ESPACES.map((e) => [e.cle, { titre: e.titre, rubriques: e.rubriques.map((r) => ({ href: r.href, libelle: r.libelle })) }])),
+};
+const RUBRIQUES_ORIGINE = new Map(ESPACES.map((e) => [e.cle, [...e.rubriques]]));
+
+/** Range une liste selon un ordre choisi ; ce qui n'y est pas garde sa place d'origine, à la fin. */
+function ranger<T>(liste: T[], cle: (x: T) => string, ordre?: string[]) {
+  if (!ordre?.length) return liste;
+  const rang = new Map(ordre.map((k, i) => [k, i]));
+  return [...liste].sort((a, b) => (rang.get(cle(a)) ?? 999) - (rang.get(cle(b)) ?? 999));
+}
+
+/** Applique les noms et l'ordre choisis (en repartant toujours du menu d'origine). */
+export function appliquerMenu(c: ConfigMenu | null | undefined) {
+  const noms = c?.noms ?? {};
+  const ordres = c?.ordres ?? {};
+  for (const p of POLES) {
+    const o = MENU_ORIGINE.poles[p.cle];
+    p.titre = noms[`pole:${p.cle}`] || o.titre;
+    p.espaces = ranger(o.espaces, (x) => x, ordres[`pole:${p.cle}`]);
+  }
+  for (const e of ESPACES) {
+    const o = MENU_ORIGINE.espaces[e.cle];
+    e.titre = noms[`espace:${e.cle}`] || o.titre;
+    const rubriques = RUBRIQUES_ORIGINE.get(e.cle)!;
+    for (const r of rubriques) r.libelle = noms[`rubrique:${r.href}`] || o.rubriques.find((x) => x.href === r.href)!.libelle;
+    e.rubriques = ranger(rubriques, (r) => r.href, ordres[`espace:${e.cle}`]);
+  }
+  const menu = ranger(MENU_ORIGINE.menu, (x) => x, ordres.menu).map((k) => (k.startsWith("pole:") ? { pole: k.slice(5) } : { espace: k.slice(7) }));
+  MENU.splice(0, MENU.length, ...menu);
 }

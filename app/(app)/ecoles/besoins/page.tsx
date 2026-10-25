@@ -13,6 +13,8 @@ interface Consolidation {
   heuresEnseignant: number;
   ecoles: { id: number; nom: string; cycle: string | null; departement: string | null; classes: number; besoin: number; enPlace: number; ecart: number; etat: string; alertes: number }[];
   departements: { departement: string; ecoles: number; besoin: number; enPlace: number; deficit: number; plethore: number }[];
+  /** Par cycle : préscolaire, primaire, collège, lycée… */
+  cycles: { cycle: string; ecoles: number; classes: number; besoin: number; enPlace: number; ecart: number; deficit: number; plethore: number }[];
   matieres: { cycle: string; libelle: string; heures: number; besoin: number; enPlace: number; ecart: number }[];
 }
 const arrondi = (n: number) => Math.round(n * 10) / 10;
@@ -25,7 +27,7 @@ export default function BesoinsEnseignants() {
   const { profil, refs } = useSession();
   const [departement, setDepartement] = useState("");
   const [cycle, setCycle] = useState("");
-  const [vue, setVue] = useState<"ecoles" | "departements" | "matieres">("ecoles");
+  const [vue, setVue] = useState<"ecoles" | "cycles" | "departements" | "matieres">("ecoles");
   const d = useApi<Consolidation>(`/etablissements/besoins?departement=${departement}&cycle=${cycle}`);
   if (!peut.traiter(profil.role) && profil.role !== "DDEPPSA") return <Alerte>Accès réservé à la DGRHAS et aux DDEPPSA.</Alerte>;
   const deficit = arrondi((d.donnees?.ecoles ?? []).reduce((t, e) => t + (e.ecart < 0 ? -e.ecart : 0), 0));
@@ -83,11 +85,42 @@ export default function BesoinsEnseignants() {
             changer={setVue}
             options={[
               { valeur: "ecoles", libelle: "Par école" },
+              { valeur: "cycles", libelle: "Par cycle" },
               { valeur: "departements", libelle: "Par département" },
               { valeur: "matieres", libelle: "Par matière (collège, lycée)" },
             ]}
           />
-          <Carte titre={vue === "ecoles" ? "Écoles (les plus en déficit d’abord)" : vue === "departements" ? "Départements" : "Matières"}>
+          <Carte titre={vue === "ecoles" ? "Écoles (les plus en déficit d’abord)" : vue === "cycles" ? "Cycles" : vue === "departements" ? "Départements" : "Matières"}>
+            {vue === "cycles" && (
+              <Tableau>
+                <thead>
+                  <tr>
+                    <th>Cycle</th>
+                    <th className="text-right">Écoles calculées</th>
+                    <th className="text-right">Classes</th>
+                    <th className="text-right">Besoin</th>
+                    <th className="text-right">Existant</th>
+                    <th className="text-right">Écart</th>
+                    <th className="text-right">Manquants</th>
+                    <th className="text-right">En trop</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.donnees.cycles.map((x) => (
+                    <tr key={x.cycle}>
+                      <td className="font-medium">{CYCLES[x.cycle] ?? x.cycle}</td>
+                      <td className="text-right tabular-nums">{x.ecoles}</td>
+                      <td className="text-right tabular-nums">{x.classes}</td>
+                      <td className="text-right tabular-nums">{decimal(x.besoin)}</td>
+                      <td className="text-right tabular-nums">{x.enPlace}</td>
+                      <td className={`text-right font-semibold tabular-nums ${x.ecart < 0 ? "text-rouge-600" : x.ecart > 0 ? "text-or-700" : ""}`}>{ecartTexte(x.ecart)}</td>
+                      <td className="text-right font-semibold text-rouge-600 tabular-nums">{decimal(x.deficit)}</td>
+                      <td className="text-right text-or-700 tabular-nums">{decimal(x.plethore)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Tableau>
+            )}
             {vue === "ecoles" && (
               <Tableau>
                 <thead>
@@ -96,7 +129,7 @@ export default function BesoinsEnseignants() {
                     <th>Département</th>
                     <th className="text-right">Classes</th>
                     <th className="text-right">Besoin</th>
-                    <th className="text-right">En poste</th>
+                    <th className="text-right">Existant</th>
                     <th className="text-right">Écart</th>
                     <th />
                   </tr>
@@ -131,7 +164,7 @@ export default function BesoinsEnseignants() {
                     <th>Département</th>
                     <th className="text-right">Écoles calculées</th>
                     <th className="text-right">Besoin</th>
-                    <th className="text-right">En poste</th>
+                    <th className="text-right">Existant</th>
                     <th className="text-right">Manquants</th>
                     <th className="text-right">En trop</th>
                   </tr>
@@ -157,9 +190,9 @@ export default function BesoinsEnseignants() {
                     <tr>
                       <th>Matière</th>
                       <th>Cycle</th>
-                      <th className="text-right">Heures / semaine</th>
+                      <th className="text-right">Heures par semaine</th>
                       <th className="text-right">Besoin</th>
-                      <th className="text-right">En poste</th>
+                      <th className="text-right">Existant</th>
                       <th className="text-right">Écart</th>
                     </tr>
                   </thead>

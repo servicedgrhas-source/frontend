@@ -33,7 +33,7 @@ interface Fiche {
   agent: AgentRecense;
   volontaire: { id: string; statut: string; motifSortie: string | null; dateSortie: string | null; categorie: string | null; etablissement: string | null } | null;
   structure: { id: number; nom: string; sigle: string } | null;
-  pieces: { id: string; type: string; nomOrigine: string; mime: string; taille: number; ajoutePar: string | null; creeLe: string }[];
+  pieces: { id: string; type: string; nomOrigine: string; mime: string; taille: number; ligne: number | null; ajoutePar: string | null; creeLe: string }[];
   historique: { date: string; utilisateurNom: string | null; action: string; details: Record<string, unknown> | null }[];
 }
 interface MemePersonne {
@@ -62,6 +62,19 @@ const ACTIONS: Record<string, string> = {
   PERSONNEL_RECRUTE_FP: "Recruté à la Fonction Publique",
 };
 const dateFr = (d: string | null | undefined) => (d ? d.slice(0, 10).split("-").reverse().join("/") : "");
+/** Contrôles fixes du serveur (pas dans les règles de cohérence réglables). */
+const REGLES_FIXES: Record<string, string> = {
+  "REGLE:INTEGRATION_PAR_ARRETE": "Fonctionnaire entré par une note de service : son texte d’intégration est un arrêté ou un décret",
+};
+/** Cases par ligne d'une section (classes écrites en entier pour Tailwind). */
+const GRILLES: Record<number, string> = {
+  1: "grid gap-4",
+  2: "grid gap-4 sm:grid-cols-2",
+  3: "grid gap-4 sm:grid-cols-2 xl:grid-cols-3",
+  4: "grid gap-4 sm:grid-cols-2 xl:grid-cols-4",
+  5: "grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5",
+  6: "grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6",
+};
 
 /** Fiche de renseignements d'un agent : saisie, pièces justificatives et historique. */
 export function VueFiche() {
@@ -88,6 +101,7 @@ export function VueFiche() {
       precedente={nouveau ? precedente : null}
       ajout={ajout}
       nomPropose={nouveau ? (params.get("nom") ?? "") : ""}
+      structurePropose={nouveau ? (params.get("structure") ?? "") : ""}
       key={nouveau ? `nouveau-${params.get("t") ?? ""}` : `${fiche.donnees!.agent.id}-${fiche.donnees!.agent.modifieLe}`}
       fiche={nouveau ? null : fiche.donnees}
       structures={structures.donnees}
@@ -107,6 +121,7 @@ function Formulaire({
   precedente,
   ajout = false,
   nomPropose = "",
+  structurePropose = "",
   fiche,
   structures,
   recharger,
@@ -117,6 +132,8 @@ function Formulaire({
   precedente?: string | null;
   ajout?: boolean;
   nomPropose?: string;
+  /** Nouvelle fiche ouverte depuis une structure (Structures administratives › « Enregistrer un agent ici »). */
+  structurePropose?: string;
   fiche: Fiche | null;
   structures: StructureCourte[];
   recharger: () => void;
@@ -127,7 +144,7 @@ function Formulaire({
   const a = fiche?.agent ?? null;
   const statuts = c.statuts.filter((s) => s.actif || s.code === a?.statut);
   const [statut, setStatut] = useState(a?.statut ?? statuts[0]?.code ?? "");
-  const [structureId, setStructureId] = useState<string>(String(a?.structureId ?? (profil.role === "STRUCTURE" ? (profil.structureId ?? "") : "")));
+  const [structureId, setStructureId] = useState<string>(String(a?.structureId ?? (profil.role === "STRUCTURE" ? (profil.structureId ?? "") : structurePropose)));
   const [d, setD] = useState<Record<string, unknown>>(() => ({ ...(a?.donnees ?? (nomPropose.trim() ? { NOMS_PRENOMS: nomPropose.trim() } : {})) }));
   const [verifier, setVerifier] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -171,7 +188,8 @@ function Formulaire({
     }
   }
 
-  const structuresProposees = structures.filter((s) => profil.role === "STRUCTURE" || s.type === "ETABLISSEMENT" || s.type === "INSPECTION" || s.type === "DDEPPSA" || String(s.id) === structureId);
+  // Écoles, inspections, DDEPPSA, mais aussi directions et services (le personnel administratif)
+  const structuresProposees = structures.filter((s) => profil.role === "STRUCTURE" || s.type !== "MINISTERE" || String(s.id) === structureId);
 
   return (
     <div className="space-y-6 pb-24">
@@ -190,9 +208,16 @@ function Formulaire({
         actions={
           a && (
             <div className="flex items-center gap-3">
-              <Link href={`/demandes/nouvelle?agent=${a.id}`} className="text-[13px] font-medium text-marque-700 hover:underline">
-                Déposer une demande
-              </Link>
+              {/* Agent ajouté au recensement : pas de demande avant son acceptation dans la base */}
+              {!a.contentieux || a.contentieux.etat === "CONFIRME" ? (
+                <Link href={`/demandes/nouvelle?agent=${a.id}`} className="text-[13px] font-medium text-marque-700 hover:underline">
+                  Déposer une demande de prestation
+                </Link>
+              ) : (
+                <span className="text-[12px] text-zinc-400" title="L’agent doit d’abord être contrôlé, puis accepté dans la base par le DG.">
+                  Demandes possibles après l’acceptation dans la base
+                </span>
+              )}
               <Taux taux={a.taux} complet={a.complet} />
             </div>
           )
@@ -225,7 +250,7 @@ function Formulaire({
           {a.manques.aVerifier
             .map((k) =>
               k.startsWith("REGLE:")
-                ? (c.regles.find((r) => `REGLE:${r.code}` === k)?.libelle ?? k)
+                ? (c.regles.find((r) => `REGLE:${r.code}` === k)?.libelle ?? REGLES_FIXES[k] ?? k)
                 : `« ${c.champs.find((x) => x.code === k)?.libelle ?? k} » : valeur hors liste`,
             )
             .join(" · ")}
@@ -284,7 +309,7 @@ function Formulaire({
         if (!liste.length) return null;
         return (
           <Carte key={sec.code} titre={sec.libelle}>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className={GRILLES[sec.colonnes ?? 3] ?? GRILLES[3]}>
               {liste.map((ch) => {
                 const requis = obligatoire(ch, statut, d);
                 return (
@@ -296,6 +321,11 @@ function Formulaire({
                     requis={requis}
                     manquant={verifier && requis && estVide(nettoyer(ch, d[ch.code]))}
                     departementId={refs.departements.find((x) => x.code === d.DEPARTEMENT)?.id ?? null}
+                    extraLigne={
+                      ch.code === "ENFANTS" && c.pieces.some((p) => p.code === "ACTE_NAISSANCE_ENFANT" && p.actif)
+                        ? (i) => <ActeEnfant fiche={fiche} ligne={i + 1} attente={!a ? "Enregistrez d’abord la fiche." : modifie ? "Enregistrez d’abord les modifications de la fiche." : null} recharger={recharger} />
+                        : undefined
+                    }
                   />
                 );
               })}
@@ -414,6 +444,81 @@ function nettoyer(ch: ChampFiche, v: unknown): unknown {
   return v ?? null;
 }
 
+/**
+ * Acte de naissance d'un enfant, déposé sur sa ligne (DG, 24/10/2026) : il ne bloque pas la fiche,
+ * il peut venir plus tard. Un nouveau scan remplace celui de cet enfant.
+ */
+function ActeEnfant({ fiche, ligne, attente, recharger }: { fiche: Fiche | null; ligne: number; attente: string | null; recharger: () => void }) {
+  const fichier = useRef<HTMLInputElement>(null);
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const piece = fiche?.pieces.find((p) => p.type === "ACTE_NAISSANCE_ENFANT" && p.ligne === ligne);
+  async function deposer(f: File) {
+    if (!fiche) return;
+    setErreur(null);
+    setEnvoi(true);
+    try {
+      const fd = new FormData();
+      fd.append("type", "ACTE_NAISSANCE_ENFANT");
+      fd.append("ligne", String(ligne));
+      fd.append("fichier", f);
+      await api.post(`/recensement/agents/${fiche.agent.id}/pieces`, fd);
+      recharger();
+    } catch (x) {
+      setErreur((x as Error).message);
+    } finally {
+      setEnvoi(false);
+    }
+  }
+  return (
+    <div className="flex items-center gap-1" title={erreur ?? attente ?? undefined}>
+      <input
+        ref={fichier}
+        type="file"
+        accept=".pdf,.jpg,.jpeg,.png"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (f) void deposer(f);
+        }}
+      />
+      {piece ? (
+        <>
+          <button
+            type="button"
+            onClick={() => api.ouvrirFichier(`/recensement/agents/${fiche!.agent.id}/pieces/${piece.id}`)}
+            title={`Acte de naissance déposé : ${piece.nomOrigine}`}
+            className="inline-flex items-center gap-1 rounded-lg bg-marque-50 px-2 py-1.5 text-[11px] font-medium whitespace-nowrap text-marque-700 hover:bg-marque-100"
+          >
+            <Paperclip className="size-3" /> Voir l’acte
+          </button>
+          <button
+            type="button"
+            disabled={!!attente || envoi}
+            onClick={() => fichier.current?.click()}
+            title="Remplacer l’acte par un autre scan"
+            aria-label="Remplacer l’acte"
+            className="rounded-lg p-1.5 text-zinc-400 hover:bg-white hover:text-marque-700 disabled:opacity-50"
+          >
+            <Upload className="size-3.5" />
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          disabled={!!attente || envoi}
+          onClick={() => fichier.current?.click()}
+          className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1.5 text-[11px] font-medium whitespace-nowrap text-zinc-600 ring-1 ring-zinc-200 hover:text-marque-700 disabled:opacity-50"
+        >
+          <Upload className="size-3" /> {envoi ? "Envoi…" : "Déposer l’acte"}
+        </button>
+      )}
+      {erreur && <span className="text-[10px] text-rouge-600">!</span>}
+    </div>
+  );
+}
+
 /** Pièces justificatives : exigées (avec leur nombre), puis facultatives ; dépôt d'un scan par type. */
 function Pieces({ c, fiche, statut, donnees, recharger }: { c: ConfigRecensement; fiche: Fiche; statut: string; donnees: Record<string, unknown>; recharger: () => void }) {
   const [erreur, setErreur] = useState<string | null>(null);
@@ -487,6 +592,7 @@ function Pieces({ c, fiche, statut, donnees, recharger }: { c: ConfigRecensement
                     {fournies.map((p) => (
                       <li key={p.id} className="flex items-center gap-2 text-[12px] text-zinc-600">
                         <Paperclip className="size-3.5 text-zinc-400" />
+                        {p.ligne && <span className="rounded bg-zinc-100 px-1.5 text-[11px] font-medium">enfant n° {p.ligne}</span>}
                         <span className="truncate">{p.nomOrigine}</span>
                         <span className="text-zinc-400">· {Math.round(p.taille / 1024)} Ko</span>
                         <BoutonIcone libelle="Ouvrir" onClick={() => api.ouvrirFichier(`/recensement/agents/${a.id}/pieces/${p.id}`)}>

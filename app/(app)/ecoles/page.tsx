@@ -69,7 +69,8 @@ export default function Ecoles() {
                 <tr>
                   <th>École</th>
                   <th>Cycle</th>
-                  <th>Inspection · localité</th>
+                  <th>Inspection</th>
+                  <th>Localité</th>
                   <th className="text-right">Classes</th>
                   <th className="text-right">Salles</th>
                   <th className="text-right">Agents rattachés</th>
@@ -85,7 +86,8 @@ export default function Ecoles() {
                       </Link>
                     </td>
                     <td>{l.cycle ? <Badge ton="gris">{CYCLES[l.cycle] ?? l.cycle}</Badge> : "—"}</td>
-                    <td className="text-[12px] text-zinc-600">{[l.inspection, l.localite, l.departement].filter(Boolean).join(" · ")}</td>
+                    <td className="text-[12px] text-zinc-600">{l.inspection ?? "—"}</td>
+                    <td className="text-[12px] text-zinc-600">{[l.localite, l.departement].filter(Boolean).join(" · ") || "—"}</td>
                     <td className="text-right tabular-nums">{l.classes || <span className="text-zinc-400">0</span>}</td>
                     <td className="text-right tabular-nums">{l.salles || <span className="text-zinc-400">0</span>}</td>
                     <td className="text-right tabular-nums">{l.agents || <span className="text-zinc-400">0</span>}</td>

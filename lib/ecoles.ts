@@ -19,6 +19,23 @@ export const ETATS_BESOIN: Record<string, { libelle: string; ton: Ton }> = {
 };
 
 /** « -1,5 » : il manque un enseignant et demi ; « +2 » : deux de trop. */
+/**
+ * Nom court d'un niveau pour nommer ses classes (même règle que le serveur) : le niveau reste en
+ * toutes lettres (« Troisième »), la classe en chiffres (« 3ème 1 ») ; « 2nde C », « Tle D » au lycée.
+ */
+export function nomCourtNiveau(code: string, libelle: string) {
+  const c = /^(\d)\s*E?ME$/i.exec(code.trim());
+  if (c) return c[1] === "1" ? "1ère" : `${c[1]}ème`;
+  const l = libelle.replace(/\s+/g, " ").trim();
+  const lycee = l
+    .replace(/^seconde\b/i, "2nde")
+    .replace(/^premi[eè]re\b/i, "1ère")
+    .replace(/^terminale\b/i, "Tle");
+  if (lycee !== l) return lycee;
+  if (l.length > 12 && /^[A-Z]{1,4}\d?$/i.test(code.trim())) return code.trim();
+  return l;
+}
+
 export const ecartTexte = (n: number) => `${n > 0 ? "+" : ""}${String(n).replace(".", ",")}`;
 export const decimal = (n: number | null | undefined) => (n === null || n === undefined ? "—" : String(n).replace(".", ","));
 

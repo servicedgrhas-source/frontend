@@ -21,11 +21,14 @@ function Acte() {
   const code = params.get("code") ?? "";
   const [a, setA] = useState<ActePrestation | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
+  // Lien incomplet : rien à demander au serveur
+  const manque = !numero || !code;
   useEffect(() => {
+    if (manque) return;
     appelPublic<ActePrestation>(`/acte?numero=${encodeURIComponent(numero)}&code=${encodeURIComponent(code)}`)
       .then(setA)
       .catch((e: Error) => setErreur(e.message));
-  }, [numero, code]);
+  }, [numero, code, manque]);
   return (
     <div className="space-y-4">
       <div className="print:hidden">
@@ -33,8 +36,9 @@ function Acte() {
           ← Mon dossier
         </Link>
       </div>
+      {manque && <div className="rounded-2xl bg-rouge-100 px-4 py-3 text-[14px] text-rouge-600">Lien incomplet : ouvrez l’acte depuis « Mon dossier », avec votre numéro et votre code de suivi.</div>}
       {erreur && <div className="rounded-2xl bg-rouge-100 px-4 py-3 text-[14px] text-rouge-600">{erreur}</div>}
-      {!a && !erreur && <p className="py-10 text-center text-zinc-400">Chargement…</p>}
+      {!a && !erreur && !manque && <p className="py-10 text-center text-zinc-400">Chargement…</p>}
       {a && (
         <>
           <ActeImprime a={a} a4={false} />

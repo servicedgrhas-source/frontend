@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarClock, ChevronLeft, ChevronRight, Clock, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { ChoixStructure, type StructureCourte } from "@/components/recensement/commun";
@@ -21,10 +21,26 @@ interface Semaine {
     fonction: string | null;
     horaire: Record<string, { debut: string | null; fin: string | null }> | null;
     attendus: boolean[];
-    saisies: Record<string, { statut: string; motif: string | null }>;
+    saisies: Record<string, { statut: string; motif: string | null; arrivee: string | null; depart: string | null; retard: number | null }>;
+    bilan: Bilan;
   }[];
   manquantes: number;
+  /** Semaine validée ou terminée : ses alertes sont calculées. */
+  finie: boolean;
+  alertes: number;
   validee: { par: string | null; le: string } | null;
+}
+interface AlertePresence {
+  code: "JOURS" | "HEURES" | "DEUX_SEMAINES";
+  texte: string;
+}
+interface Bilan {
+  joursAttendus: number;
+  joursAbsent: number;
+  minutesPrevues: number | null;
+  minutesFaites: number | null;
+  minutesRetard: number;
+  alertes: AlertePresence[];
 }
 interface Rapport {
   du: string;
@@ -47,7 +63,16 @@ interface Rapport {
     semainesNonValidees: string[];
   }[];
   absents: { agentId: number; nomComplet: string; structure: string; absences: number }[];
+  /** Alertes de fin de semaine (semaines validées de la période). */
+  alertes: { agentId: number; nomComplet: string; structure: string; lundi: string; alertes: AlertePresence[] }[];
 }
+
+/** 465 → « 7 h 45 ». */
+const heures = (min: number) => {
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  return m ? `${h} h ${String(m).padStart(2, "0")}` : `${h} h`;
+};
 
 const dateFr = (d: string) => d.split("-").reverse().join("/");
 const jourCourt = (d: string) => d.slice(8, 10) + "/" + d.slice(5, 7);
@@ -96,6 +121,7 @@ function Pointage() {
   const [message, setMessage] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [horaire, setHoraire] = useState<Semaine["agents"][number] | null>(null);
+  const [heuresDe, setHeuresDe] = useState<Semaine["agents"][number] | null>(null);
   const cle = (a: number, d: string) => `${a}|${d}`;
   const valeur = (a: Semaine["agents"][number], d: string) => changes[cle(a.id, d)] ?? a.saisies[d]?.statut ?? "";
   const nbChanges = Object.keys(changes).length;
@@ -108,7 +134,8 @@ function Pointage() {
         structureId: Number(structure),
         saisies: Object.entries(changes).map(([k, statut]) => {
           const [agentId, d] = k.split("|");
-          return { agentId: Number(agentId), date: d, statut: statut || null };
+          const avant = s.donnees!.agents.find((a) => a.id === Number(agentId))?.saisies[d];
+          return { agentId: Number(agentId), date: d, statut: statut || null, motif: avant?.motif ?? null, arrivee: avant?.arrivee ?? null, depart: avant?.depart ?? null };
         }),
       });
       setChanges({});
@@ -179,13 +206,13 @@ function Pointage() {
           <div className="-mt-2 mb-3 flex flex-wrap items-center gap-2 text-[12px] text-zinc-500">
             {s.donnees.validee && (
               <Badge ton="vert">
-                Semaine validée par {s.donnees.validee.par} le {new Date(s.donnees.validee.le).toLocaleDateString("fr-FR")}
+                Semaine validée par {s.donnees.validee.par} le {new Date(s.donnees.validee.le).toLocaleDateString("fr-FR")} : plus modifiable
               </Badge>
             )}
-            {/* Un agent rattaché après la validation reste à pointer : la semaine se valide à nouveau */}
-            {s.donnees.manquantes > 0 && <Badge ton="jaune">{s.donnees.manquantes} journée(s) attendue(s) à pointer</Badge>}
+            {/* Une semaine validée est close : ce qui n'y est pas pointé le reste */}
+            {!s.donnees.validee && s.donnees.manquantes > 0 && <Badge ton="jaune">{s.donnees.manquantes} journée(s) attendue(s) à pointer</Badge>}
             {!s.donnees.validee && !s.donnees.manquantes && <Badge ton="gris">Pas encore validée</Badge>}
-            <span>
+            <span className={s.donnees.validee ? "hidden" : ""}>
               Touchez une case pour passer de vide à{" "}
               {CYCLE_PRESENCE.filter(Boolean)
                 .map((k) => `${STATUTS_PRESENCE[k].court} (${STATUTS_PRESENCE[k].libelle.toLowerCase()})`)
@@ -213,6 +240,7 @@ function Pointage() {
                         <div className="text-[10px] font-normal">{jourCourt(d)}</div>
                       </th>
                     ))}
+                    <th className="min-w-36 text-left text-[11px] font-medium text-zinc-500">Semaine</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -226,6 +254,11 @@ function Pointage() {
                           <BoutonIcone libelle="Jours et heures de travail" onClick={() => setHoraire(a)}>
                             <CalendarClock />
                           </BoutonIcone>
+                          {!s.donnees!.validee && (
+                            <BoutonIcone libelle="Heures d’arrivée et de départ de la semaine" onClick={() => setHeuresDe(a)}>
+                              <Clock />
+                            </BoutonIcone>
+                          )}
                         </div>
                         <div className="text-[11px] text-zinc-400">{a.fonction ?? ""}</div>
                       </td>
@@ -237,7 +270,7 @@ function Pointage() {
                           <td key={d} className="text-center">
                             <button
                               type="button"
-                              disabled={futur}
+                              disabled={futur || !!s.donnees!.validee}
                               title={v ? STATUTS_PRESENCE[v].libelle : a.attendus[i] ? "À pointer" : "Pas un jour de travail"}
                               onClick={() => setChanges((c) => ({ ...c, [cle(a.id, d)]: CYCLE_PRESENCE[(CYCLE_PRESENCE.indexOf(v) + 1) % CYCLE_PRESENCE.length] }))}
                               className={`h-9 w-full rounded-lg text-[12px] font-semibold transition ${
@@ -246,16 +279,40 @@ function Pointage() {
                             >
                               {v ? STATUTS_PRESENCE[v].court : a.attendus[i] && !futur ? "·" : ""}
                             </button>
+                            {/* Heures notées et retard de la journée */}
+                            {!modifie && a.saisies[d]?.arrivee && (
+                              <div className="mt-0.5 text-[10px] leading-tight text-zinc-500 tabular-nums">
+                                {a.saisies[d].arrivee}
+                                {a.saisies[d].depart ? `–${a.saisies[d].depart}` : ""}
+                                {!!a.saisies[d].retard && <div className="text-or-700">+{a.saisies[d].retard} min</div>}
+                              </div>
+                            )}
                           </td>
                         );
                       })}
+                      <td className="align-top text-[11px] leading-snug text-zinc-600">
+                        <div>
+                          {a.bilan.joursAbsent ? <span className="font-medium text-rouge-600">{a.bilan.joursAbsent} absence(s)</span> : "aucune absence"} sur {a.bilan.joursAttendus} jour(s)
+                        </div>
+                        {a.bilan.minutesPrevues !== null && (
+                          <div className="tabular-nums">
+                            {heures(a.bilan.minutesFaites ?? 0)} / {heures(a.bilan.minutesPrevues)}
+                            {!!a.bilan.minutesRetard && <span className="text-or-700"> · {a.bilan.minutesRetard} min de retard</span>}
+                          </div>
+                        )}
+                        {a.bilan.alertes.map((x) => (
+                          <div key={x.code} className="mt-0.5 flex items-start gap-1 font-medium text-rouge-600">
+                            <TriangleAlert className="mt-px size-3 shrink-0" /> {x.texte}
+                          </div>
+                        ))}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-          {!!s.donnees.agents.length && (
+          {!!s.donnees.agents.length && !s.donnees.validee && (
             <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
               <Bouton onClick={() => toutPresent(true)}>Tous présents aujourd’hui</Bouton>
               <Bouton onClick={() => toutPresent(false)}>Compléter la semaine : présents</Bouton>
@@ -267,8 +324,12 @@ function Pointage() {
                 onClick={async () => {
                   if (!(await enregistrer())) return;
                   try {
-                    await api.post("/presence/semaine/valider", { structureId: Number(structure), date: s.donnees!.lundi });
-                    setMessage("Semaine validée.");
+                    const r = await api.post<{ alertes: { agent: string; alertes: AlertePresence[] }[] }>("/presence/semaine/valider", { structureId: Number(structure), date: s.donnees!.lundi });
+                    setMessage(
+                      r.alertes.length
+                        ? `Semaine validée. ${r.alertes.length} agent(s) en alerte : ${r.alertes.map((x) => `${x.agent} (${x.alertes.map((a) => a.texte.toLowerCase()).join(" ; ")})`).join(" · ")}.`
+                        : "Semaine validée. Aucune alerte.",
+                    );
                     s.recharger();
                   } catch (e) {
                     setErreur((e as Error).message);
@@ -280,6 +341,21 @@ function Pointage() {
             </div>
           )}
         </Carte>
+      )}
+      {heuresDe && s.donnees && (
+        <HeuresSemaine
+          agent={heuresDe}
+          semaine={s.donnees}
+          statuts={Object.fromEntries(s.donnees.dates.map((d) => [d, valeur(heuresDe, d)]))}
+          structureId={Number(structure)}
+          fermer={() => setHeuresDe(null)}
+          apres={() => {
+            // Les cases de cet agent sont enregistrées avec leurs heures
+            setChanges((c) => Object.fromEntries(Object.entries(c).filter(([k]) => !k.startsWith(`${heuresDe.id}|`))));
+            setHeuresDe(null);
+            s.recharger();
+          }}
+        />
       )}
       {horaire && s.donnees && (
         <Horaire
@@ -297,6 +373,96 @@ function Pointage() {
   );
 }
 
+/**
+ * Heures d'arrivée et de départ d'un agent pour chaque jour où il est venu (facultatives) : elles
+ * donnent ses retards et ses heures faites dans la semaine. Arrivé après l'heure prévue : en retard.
+ */
+function HeuresSemaine({
+  agent,
+  semaine,
+  statuts,
+  structureId,
+  fermer,
+  apres,
+}: {
+  agent: Semaine["agents"][number];
+  semaine: Semaine;
+  statuts: Record<string, string>;
+  structureId: number;
+  fermer: () => void;
+  apres: () => void;
+}) {
+  const venus = semaine.dates.filter((d) => ["PRESENT", "RETARD"].includes(statuts[d] ?? "") && d <= semaine.aujourdhui);
+  const [h, setH] = useState<Record<string, { arrivee: string; depart: string }>>(() =>
+    Object.fromEntries(venus.map((d) => [d, { arrivee: agent.saisies[d]?.arrivee ?? "", depart: agent.saisies[d]?.depart ?? "" }])),
+  );
+  const [erreur, setErreur] = useState<string | null>(null);
+  const prevu = (d: string) => agent.horaire?.[String(semaine.dates.indexOf(d) + 1)];
+  return (
+    <Modale titre={`Heures de la semaine — ${agent.nomComplet}`} ouverte fermer={fermer}>
+      <p className="mb-3 text-[12px] text-zinc-500">
+        Pour chaque jour où l’agent est venu : son heure d’arrivée et son heure de départ (facultatives). Arrivé après l’heure prévue, il est noté en retard ; les heures faites comptent pour
+        l’alerte « moins de la moitié des heures ».
+      </p>
+      {!venus.length ? (
+        <Vide>Aucun jour pointé « présent » ou « en retard » cette semaine : pointez d’abord ses jours de présence.</Vide>
+      ) : (
+        <div className="space-y-2">
+          <div className="grid grid-cols-[8rem_1fr_1fr] gap-2 text-[11px] font-medium text-zinc-400">
+            <span />
+            <span>Arrivée</span>
+            <span>Départ</span>
+          </div>
+          {venus.map((d) => (
+            <div key={d} className="grid grid-cols-[8rem_1fr_1fr] items-center gap-2">
+              <div className="text-[13px]">
+                {semaine.jours[semaine.dates.indexOf(d)]} {jourCourt(d)}
+                {prevu(d)?.debut && (
+                  <div className="text-[11px] text-zinc-400">
+                    prévu {prevu(d)!.debut}–{prevu(d)!.fin}
+                  </div>
+                )}
+              </div>
+              <Saisie type="time" aria-label="Heure d’arrivée" value={h[d]?.arrivee ?? ""} onChange={(e) => setH((x) => ({ ...x, [d]: { ...x[d], arrivee: e.target.value } }))} />
+              <Saisie type="time" aria-label="Heure de départ" value={h[d]?.depart ?? ""} onChange={(e) => setH((x) => ({ ...x, [d]: { ...x[d], depart: e.target.value } }))} />
+            </div>
+          ))}
+          {erreur && <Alerte>{erreur}</Alerte>}
+        </div>
+      )}
+      <div className="mt-5 flex justify-end gap-2">
+        <Bouton onClick={fermer}>Annuler</Bouton>
+        {!!venus.length && (
+          <Bouton
+            variante="principal"
+            onClick={async () => {
+              setErreur(null);
+              try {
+                await api.put("/presence/semaine", {
+                  structureId,
+                  saisies: venus.map((d) => ({
+                    agentId: agent.id,
+                    date: d,
+                    statut: statuts[d],
+                    motif: agent.saisies[d]?.motif ?? null,
+                    arrivee: h[d]?.arrivee || null,
+                    depart: h[d]?.depart || null,
+                  })),
+                });
+                apres();
+              } catch (e) {
+                setErreur((e as Error).message);
+              }
+            }}
+          >
+            Enregistrer les heures
+          </Bouton>
+        )}
+      </div>
+    </Modale>
+  );
+}
+
 /** Jours et heures de travail d'un agent (un professeur ne vient pas tous les jours). */
 function Horaire({ agent, structureId, jours, fermer, apres }: { agent: Semaine["agents"][number]; structureId: number; jours: string[]; fermer: () => void; apres: () => void }) {
   const [h, setH] = useState<Record<string, { debut: string | null; fin: string | null }>>(
@@ -305,7 +471,10 @@ function Horaire({ agent, structureId, jours, fermer, apres }: { agent: Semaine[
   const [erreur, setErreur] = useState<string | null>(null);
   return (
     <Modale titre={`Jours et heures de travail — ${agent.nomComplet}`} ouverte fermer={fermer}>
-      <p className="mb-3 text-[12px] text-zinc-500">Cochez les jours où l’agent est attendu. Sans horaire saisi, il est attendu du lundi au vendredi.</p>
+      <p className="mb-3 text-[12px] text-zinc-500">
+        Cochez les jours où l’agent est attendu et ses heures (un professeur peut ne venir que trois jours ; l’administration du lundi au vendredi, parfois le samedi). Sans horaire saisi, il est
+        attendu du lundi au vendredi.
+      </p>
       <div className="space-y-2">
         {jours.map((j, i) => {
           const k = String(i + 1);
@@ -429,6 +598,43 @@ function RapportPresence() {
                         ) : (
                           <span className="text-marque-700">à jour</span>
                         )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Tableau>
+            )}
+          </Carte>
+          <Carte titre={`Alertes de fin de semaine (${r.donnees.alertes.length})`}>
+            <p className="-mt-2 mb-3 text-[12px] text-zinc-500">
+              Pour chaque semaine validée : absent plus de la moitié des jours attendus, moins de la moitié des heures prévues, ou deux semaines d’affilée sans travailler.
+            </p>
+            {!r.donnees.alertes.length ? (
+              <Vide>Aucune alerte sur les semaines validées de la période.</Vide>
+            ) : (
+              <Tableau>
+                <thead>
+                  <tr>
+                    <th>Agent</th>
+                    <th>Structure</th>
+                    <th>Semaine</th>
+                    <th>Alerte</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {r.donnees.alertes.map((a) => (
+                    <tr key={`${a.agentId}-${a.lundi}`}>
+                      <td>
+                        <Link href={`/personnel/agents/${a.agentId}`} className="font-medium text-marque-700 hover:underline">
+                          {a.nomComplet}
+                        </Link>
+                      </td>
+                      <td className="text-[12px] text-zinc-600">{a.structure}</td>
+                      <td className="text-[12px] whitespace-nowrap">du {dateFr(a.lundi)}</td>
+                      <td className="text-[12px] text-rouge-600">
+                        {a.alertes.map((x) => (
+                          <div key={x.code}>{x.texte}</div>
+                        ))}
                       </td>
                     </tr>
                   ))}

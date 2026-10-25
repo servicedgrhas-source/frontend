@@ -1,6 +1,6 @@
 "use client";
 
-import { Award, Briefcase, Star, CircleDot, FileText, MapPin, Paperclip, Pencil, Printer, Trash2, Upload, UserRound } from "lucide-react";
+import { Award, Briefcase, Star, CircleDot, FileText, MapPin, Paperclip, Pencil, Printer, Trash2, TrendingUp, Upload, UserRound } from "lucide-react";
 import { useRef, useState } from "react";
 import { type ChampFiche, type ConfigRecensement, SaisieRubrique } from "@/components/recensement/commun";
 import { Alerte, Badge, BoutonIcone, Bouton, Carte, Champ, Chargement, Liste, Modale, Saisie, Zone, useConfirmation } from "@/components/ui";
@@ -8,10 +8,12 @@ import { api, useApi } from "@/lib/api";
 import type { Ton } from "@/lib/libelles";
 
 export interface ElementCarriere {
-  genre: "STATUT" | "AFFECTATION" | "MUTATION" | "PRESTATION" | "EVENEMENT" | "EVALUATION";
+  genre: "STATUT" | "GRADE" | "AFFECTATION" | "MUTATION" | "PRESTATION" | "EVENEMENT" | "EVALUATION";
   id: string;
   date: string | null;
   type: string | null;
+  /** Colonne « Nature » : intégration, engagement, promotion, affectation… */
+  nature: string;
   intitule: string;
   acte: string | null;
   lieu: string | null;
@@ -37,6 +39,8 @@ interface Saisie {
   nouveau: Record<string, unknown>;
   commentaire: string | null;
   reporter?: boolean;
+  /** Événement saisi avec un ancien type : il se modifie sans changer de type. */
+  ancienAccepte?: boolean;
 }
 export interface DossierCarriere {
   agent: {
@@ -44,12 +48,30 @@ export interface DossierCarriere {
     numeroFiche: string | null;
     nomComplet: string;
     dateNaissance: string | null;
+    lieuNaissance: string | null;
+    genre: string | null;
+    nationalite: string | null;
     matricule: string | null;
     statut: string;
     libelleStatut: string;
   };
+  famille: {
+    situationMatrimoniale: string | null;
+    nombreEnfants: string | null;
+    enfants: { nom: string | null; naissance: string | null; pere: string | null; mere: string | null }[];
+  };
+  /** Signature de la fiche imprimée : le Directeur général. */
+  signature: { titre: string; nom: string | null; lieu: string };
   situation: {
     valeurs: Record<string, { libelle: string; valeur: string | null }>;
+    /** Dernière promotion (fonctionnaire) ou dernier avancement (contractuel), et le prochain. */
+    avancement: {
+      nature: "PROMOTION" | "AVANCEMENT";
+      libelle: string;
+      depuis: string;
+      origine: "DERNIER" | "ENTREE";
+      prochain: string;
+    } | null;
     echelonDepuis: string | null;
     echelle: {
       libelle: string;
@@ -64,6 +86,8 @@ export interface DossierCarriere {
     code: string;
     libelle: string;
     aide: string | null;
+    /** Ancien type : affiché, mais plus proposé pour un nouvel événement. */
+    ancien?: boolean;
     rubriques: { code: string }[];
   }[];
   actes: { code: string; libelle: string }[];
@@ -72,7 +96,8 @@ export interface DossierCarriere {
 export const dateFr = (d: string | null | undefined) => (d ? d.slice(0, 10).split("-").reverse().join("/") : "");
 
 export const GENRES: Record<ElementCarriere["genre"], { libelle: string; ton: Ton }> = {
-  STATUT: { libelle: "Statut", ton: "vert" },
+  STATUT: { libelle: "Entrée", ton: "vert" },
+  GRADE: { libelle: "Grade et échelon", ton: "jaune" },
   AFFECTATION: { libelle: "Affectation", ton: "bleu" },
   MUTATION: { libelle: "Mutation", ton: "bleu" },
   PRESTATION: { libelle: "Prestation", ton: "gris" },
@@ -81,6 +106,7 @@ export const GENRES: Record<ElementCarriere["genre"], { libelle: string; ton: To
 };
 const ICONES: Record<ElementCarriere["genre"], typeof CircleDot> = {
   STATUT: UserRound,
+  GRADE: TrendingUp,
   AFFECTATION: MapPin,
   MUTATION: MapPin,
   PRESTATION: FileText,
@@ -159,7 +185,7 @@ export function CarteCarriere({
                 setEdition({
                   id: null,
                   saisie: {
-                    type: "AVANCEMENT_ECHELON",
+                    type: "PROMOTION",
                     dateEffet: "",
                     acteNature: "ARRETE",
                     acteNumero: "",
@@ -184,8 +210,9 @@ export function CarteCarriere({
         <>
           <Situation d={d.donnees} />
           <p className="mt-4 mb-3 text-[12px] text-zinc-500">
-            Tout ce qui est arrivé à l’agent depuis son entrée, avec l’acte de chaque étape. Les statuts, les notes d’affectation et les mutations accordées s’ajoutent seuls ; les avancements,
-            reclassements, nominations et changements de position se saisissent ici (y compris les anciens, pour reconstituer le dossier) et mettent la fiche à jour.
+            Tout ce qui est arrivé à l’agent depuis son entrée, avec l’acte de chaque étape. L’intégration ou l’engagement, les grades et échelons successifs de la fiche, les notes d’affectation et
+            les mutations accordées s’ajoutent seuls ; les promotions, avancements, reclassements, nominations et changements de position se saisissent ici (y compris les anciens, pour
+            reconstituer le dossier) et mettent la fiche à jour.
           </p>
           <Frise
             elements={d.donnees.elements}
@@ -195,7 +222,7 @@ export function CarteCarriere({
               setCible(e.id);
               fichier.current?.click();
             }}
-            modifier={(e) => e.saisie && setEdition({ id: e.id, saisie: { ...e.saisie, reporter: e.reporte !== false } })}
+            modifier={(e) => e.saisie && setEdition({ id: e.id, saisie: { ...e.saisie, reporter: e.reporte !== false, ancienAccepte: !!d.donnees?.types.find((t) => t.code === e.saisie?.type)?.ancien } })}
             supprimer={async (e) => {
               const ch = e.changements.length && e.reporte ? " La fiche reprendra les valeurs d’avant (si elles n’ont pas été changées depuis)." : "";
               if (!(await demander(`Annuler « ${e.intitule} » du ${dateFr(e.date)} ?${ch}`, "Annuler l’événement"))) return;
@@ -250,22 +277,24 @@ export function Situation({ d }: { d: DossierCarriere }) {
   const v = d.situation.valeurs;
   const val = (k: string) => v[k]?.valeur ?? null;
   const classement = [val("CATEGORIE") && `Catégorie ${val("CATEGORIE")}`, val("ECHELLE") && `Échelle ${val("ECHELLE")}`, val("ECHELON") && `Échelon ${val("ECHELON")}`].filter(Boolean).join(" · ");
+  const av = d.situation.avancement;
   const du = d.situation.prochainEchelon && d.situation.prochainEchelon <= new Date().toISOString().slice(0, 10);
+  const mot = av?.nature === "AVANCEMENT" ? "avancement" : "promotion";
   const cases: { l: string; v: React.ReactNode }[] = [
     { l: "Statut", v: d.agent.libelleStatut },
     { l: "Matricule solde", v: d.agent.matricule ?? "—" },
     { l: "Grade", v: val("GRADE") ?? "—" },
     { l: "Classement", v: classement || "—" },
     {
-      l: "Échelon",
-      v: d.situation.echelonDepuis ? (
+      l: av?.libelle ?? (d.agent.statut === "CONTRACTUEL" ? "Date du dernier avancement" : "Date de dernière promotion"),
+      v: av ? (
         <>
-          depuis le {dateFr(d.situation.echelonDepuis)}
+          {av.origine === "DERNIER" ? dateFr(av.depuis) : <span className="text-zinc-500">aucune (entrée le {dateFr(av.depuis)})</span>}
           {d.situation.dernierEchelon ? (
             <span className="block text-[11px] text-zinc-500">dernier échelon de l’échelle</span>
           ) : d.situation.prochainEchelon ? (
             <span className={`block text-[11px] ${du ? "font-semibold text-or-700" : "text-zinc-500"}`}>
-              {du ? "avancement dû depuis le " : "prochain avancement le "}
+              {du ? (mot === "avancement" ? "avancement dû depuis le " : "promotion due depuis le ") : mot === "avancement" ? "prochain avancement le " : "prochaine promotion le "}
               {dateFr(d.situation.prochainEchelon)}
             </span>
           ) : null}
@@ -321,7 +350,7 @@ function Frise({
             </span>
             <div className="flex flex-wrap items-center gap-2">
               <span className="w-20 text-[12px] font-semibold tabular-nums text-zinc-700">{e.date ? dateFr(e.date) : "date ?"}</span>
-              <Badge ton={g.ton}>{g.libelle}</Badge>
+              <Badge ton={g.ton}>{e.nature || g.libelle}</Badge>
               <span className="text-[13px] font-semibold text-encre">{e.intitule}</span>
               {e.lieu && <span className="text-[13px] text-zinc-600">· {e.lieu}</span>}
               {e.modifiable && peutModifier && (
@@ -406,6 +435,8 @@ function Edition({
   const [scan, setScan] = useState<File | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
+  /** Événement déjà enregistré dont seul le scan a échoué : réessayer ne renvoie que le scan. */
+  const [sansScan, setSansScan] = useState<string | null>(null);
   const t = dossier.types.find((x) => x.code === s.type);
   const rubriques = (t?.rubriques ?? []).map((r) => c.champs.find((x) => x.code === r.code)).filter((x): x is ChampFiche => !!x);
   const maj = (p: Partial<Saisie>) => setS((x) => ({ ...x, ...p }));
@@ -422,11 +453,16 @@ function Edition({
         acteDate: s.acteDate || null,
         acteNature: s.acteNature || null,
       };
-      const e = id ? await api.put<{ id: string }>(`/recensement/agents/${agentId}/carriere/${id}`, corps) : await api.post<{ id: string }>(`/recensement/agents/${agentId}/carriere`, corps);
+      const e = sansScan ? { id: sansScan } : id ? await api.put<{ id: string }>(`/recensement/agents/${agentId}/carriere/${id}`, corps) : await api.post<{ id: string }>(`/recensement/agents/${agentId}/carriere`, corps);
       if (scan) {
         const fd = new FormData();
         fd.append("fichier", scan);
-        await api.post(`/recensement/agents/${agentId}/carriere/${e.id}/acte`, fd);
+        try {
+          await api.post(`/recensement/agents/${agentId}/carriere/${e.id}/acte`, fd);
+        } catch (x) {
+          setSansScan(e.id);
+          throw new Error(`L’événement est enregistré, mais pas le scan de l’acte : ${(x as Error).message} « Réessayer » ne renvoie que le scan ; vous pouvez aussi fermer et le joindre plus tard.`);
+        }
       }
       apres();
     } catch (x) {
@@ -443,10 +479,12 @@ function Edition({
           <Liste
             value={s.type}
             onChange={(e) => maj({ type: e.target.value })}
-            options={dossier.types.map((x) => ({
-              valeur: x.code,
-              libelle: x.libelle,
-            }))}
+            options={dossier.types
+              .filter((x) => !x.ancien || x.code === depart.type)
+              .map((x) => ({
+                valeur: x.code,
+                libelle: x.libelle,
+              }))}
           />
         </Champ>
         <Champ libelle="Date d’effet *" aide="Un événement plus ancien que le dernier ne change pas la fiche : il complète l’historique.">
@@ -512,9 +550,10 @@ function Edition({
         </div>
       )}
       <div className="mt-5 flex justify-end gap-2">
-        <Bouton onClick={fermer}>Annuler</Bouton>
+        {/* Événement déjà enregistré : fermer met aussi la liste à jour */}
+        <Bouton onClick={sansScan ? apres : fermer}>{sansScan ? "Fermer" : "Annuler"}</Bouton>
         <Bouton variante="principal" disabled={envoi} onClick={enregistrer}>
-          {id ? "Enregistrer" : "Ajouter au dossier"}
+          {sansScan ? "Réessayer" : id ? "Enregistrer" : "Ajouter au dossier"}
         </Bouton>
       </div>
     </Modale>

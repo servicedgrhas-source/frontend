@@ -4,10 +4,11 @@ import { ArrowLeft, Building2, DoorOpen, PencilLine, Plus, Trash2 } from "lucide
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, Suspense } from "react";
+import { CarteEmploiDuTemps } from "@/components/ecoles/emploi-du-temps";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
 import { Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, Chiffre, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, useConfirmation } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
-import { type Besoins, CYCLES, decimal, ecartTexte, ETATS_BESOIN, ETATS_LOCAL } from "@/lib/ecoles";
+import { type Besoins, CYCLES, decimal, ecartTexte, ETATS_BESOIN, ETATS_LOCAL, nomCourtNiveau } from "@/lib/ecoles";
 
 interface Batiment {
   id: number;
@@ -53,7 +54,7 @@ interface Fiche {
   niveaux: { code: string; libelle: string }[];
   besoins: Besoins;
 }
-type Onglet = "classes" | "locaux" | "personnel" | "besoins";
+type Onglet = "classes" | "locaux" | "personnel" | "besoins" | "edt";
 type Edition = { quoi: "batiments" | "salles" | "classes"; v: Record<string, unknown> } | null;
 
 const annees = (a: string) => {
@@ -140,6 +141,7 @@ function FicheEcole() {
           { valeur: "locaux", libelle: `Bâtiments et salles (${d.salles.length})` },
           { valeur: "personnel", libelle: `Personnel (${d.agents.length})` },
           { valeur: "besoins", libelle: "Besoin en enseignants" },
+          ...(["COLLEGE", "LYCEE"].includes(s.cycle ?? "") ? [{ valeur: "edt" as const, libelle: "Emploi du temps" }] : []),
         ]}
       />
 
@@ -242,7 +244,7 @@ function FicheEcole() {
                       {bt?.type && <Badge ton="gris">{bt.type}</Badge>}
                       {bt && (
                         <span className="text-[12px] text-zinc-500">
-                          {bt.niveaux > 1 ? `${bt.niveaux} niveaux · ` : ""}
+                          {`${bt.niveaux} niveau${bt.niveaux > 1 ? "x" : ""} · `}
                           {bt.anneeConstruction ? `construit en ${bt.anneeConstruction} · ` : ""}
                           {ETATS_LOCAL[bt.etat]}
                         </span>
@@ -269,7 +271,7 @@ function FicheEcole() {
                             <span className="font-medium">{x.nom}</span>
                             {x.type && <span className="text-zinc-500">· {x.type}</span>}
                             {x.capacite && <span className="text-zinc-500">· {x.capacite} places</span>}
-                            {x.etat !== "BON" && <Badge ton={x.etat === "MAUVAIS" ? "rouge" : "jaune"}>{ETATS_LOCAL[x.etat]}</Badge>}
+                            <Badge ton={x.etat === "MAUVAIS" ? "rouge" : x.etat === "MOYEN" ? "jaune" : "vert"}>{ETATS_LOCAL[x.etat] ?? x.etat}</Badge>
                             <span className="text-[12px] text-zinc-400">
                               {d.classes
                                 .filter((c) => c.salleId === x.id)
@@ -340,6 +342,8 @@ function FicheEcole() {
 
       {onglet === "besoins" && <CarteBesoins b={b} annee={d.annee} />}
 
+      {onglet === "edt" && <CarteEmploiDuTemps ecole={s.id} annee={d.annee} peutGenerer />}
+
       {edition && (
         <EditionLocal
           ecole={s.id}
@@ -375,9 +379,16 @@ function CarteBesoins({ b, annee }: { b: Besoins; annee: string }) {
   return (
     <Carte titre={`Besoin en enseignants (${annee})`}>
       <p className="-mt-2 mb-4 text-[12px] text-zinc-500">
-        {b.mode === "CLASSE"
-          ? "Un maître par classe : il faut autant d’enseignants que de classes ouvertes."
-          : `Pour chaque matière, les heures du programme de chaque classe ouverte sont additionnées, puis divisées par ${b.heuresEnseignant} h (heures de cours d’un enseignant par semaine, réglables dans les paramètres). On compare aux enseignants de la matière rattachés à l’école.`}
+        {b.mode === "CLASSE" ? (
+          "Un maître par classe : il faut autant d’enseignants que de classes ouvertes."
+        ) : (
+          <>
+            <strong>Comment le besoin est calculé.</strong> Pour chaque matière, on additionne ses heures de cours dans toutes les classes ouvertes (quotas horaires des Référentiels › Programmes :
+            par exemple 3 classes de 6ème × 8 h de français = 24 h). On divise par {b.heuresEnseignant} h, les heures de cours d’un enseignant par semaine (réglables dans les paramètres) : 24 h ÷{" "}
+            {b.heuresEnseignant} h = {decimal(Math.round((24 / b.heuresEnseignant) * 10) / 10)} enseignant. On compare aux enseignants de cette matière rattachés à l’école (d’après la spécialité de
+            leur fiche) : l’écart négatif est le déficit.
+          </>
+        )}
       </p>
       {b.alertes.map((a) => (
         <div key={a} className="mb-2">
@@ -388,14 +399,14 @@ function CarteBesoins({ b, annee }: { b: Besoins; annee: string }) {
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl bg-zinc-50 px-4 py-3 text-[13px] ring-1 ring-zinc-200">
           {b.total.heures !== null && (
             <span>
-              <strong>{b.total.heures} h</strong> de cours par semaine
+              Masse horaire globale : <strong>{b.total.heures} h</strong> de cours par semaine
             </span>
           )}
           <span>
-            besoin : <strong>{decimal(b.total.besoin)}</strong> enseignant(s)
+            Besoin : <strong>{decimal(b.total.besoin)}</strong> enseignant(s)
           </span>
           <span>
-            en poste : <strong>{b.total.enPlace}</strong>
+            Existant : <strong>{b.total.enPlace}</strong>
           </span>
           <Badge ton={ETATS_BESOIN[b.total.etat].ton}>
             {ETATS_BESOIN[b.total.etat].libelle} ({ecartTexte(b.total.ecart)})
@@ -407,9 +418,9 @@ function CarteBesoins({ b, annee }: { b: Besoins; annee: string }) {
           <thead>
             <tr>
               <th>Matière</th>
-              <th className="text-right">Heures / semaine</th>
-              <th className="text-right">Enseignants nécessaires</th>
-              <th className="text-right">En poste</th>
+              <th className="text-right">Heures par semaine</th>
+              <th className="text-right">Besoin</th>
+              <th className="text-right">Existant</th>
               <th className="text-right">Écart</th>
               <th />
             </tr>
@@ -438,22 +449,32 @@ function OuvrirClasses({ ecole, annee, niveaux, fermer, apres }: { ecole: number
   const [niveau, setNiveau] = useState(niveaux[0]?.code ?? "");
   const [nombre, setNombre] = useState("1");
   const [prefixe, setPrefixe] = useState("");
+  const [vague, setVague] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
-  const lib = niveaux.find((n) => n.code === niveau)?.libelle ?? "";
+  const n = niveaux.find((x) => x.code === niveau);
+  // Le niveau en lettres, la classe en chiffres : « Troisième » → « 3ème 1 »
+  const lib = n ? nomCourtNiveau(n.code, n.libelle) : "";
   return (
     <Modale titre={`Ouvrir des classes (${annee})`} ouverte fermer={fermer}>
       <div className="space-y-3">
         <Champ libelle="Niveau">
           <Liste value={niveau} onChange={(e) => setNiveau(e.target.value)} options={niveaux.map((n) => ({ valeur: n.code, libelle: n.libelle }))} />
         </Champ>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <Champ libelle="Nombre de classes">
             <Saisie type="number" min={1} max={30} value={nombre} onChange={(e) => setNombre(e.target.value)} />
           </Champ>
-          <Champ libelle="Nom des classes" aide={`Ex. « ${prefixe || lib} 1 », « ${prefixe || lib} 2 »…`}>
+          <Champ libelle="Nom des classes" aide="Le niveau en chiffres, puis le numéro.">
             <Saisie value={prefixe} onChange={(e) => setPrefixe(e.target.value)} placeholder={lib} />
           </Champ>
+          <Champ libelle="Vague (facultatif)" aide="S’il y a deux vagues (matin, après-midi).">
+            <Liste value={vague} onChange={(e) => setVague(e.target.value)} vide="Une seule vague" options={["A", "B", "C", "D"].map((x) => ({ valeur: x, libelle: `Vague ${x}` }))} />
+          </Champ>
         </div>
+        <p className="text-[12px] text-zinc-500">
+          Classes créées : {[1, 2, 3].slice(0, Math.max(1, Math.min(3, Number(nombre) || 1))).map((i) => `« ${prefixe || lib} ${i}${vague} »`).join(", ")}
+          {Number(nombre) > 3 ? "…" : ""}
+        </p>
         {erreur && <Alerte>{erreur}</Alerte>}
       </div>
       <div className="mt-5 flex justify-end gap-2">
@@ -463,7 +484,7 @@ function OuvrirClasses({ ecole, annee, niveaux, fermer, apres }: { ecole: number
           onClick={async () => {
             setErreur(null);
             try {
-              const r = await api.post<{ ouvertes: number }>(`/etablissements/${ecole}/classes/ouvrir`, { niveau, nombre: Number(nombre), prefixe: prefixe || null, anneeScolaire: annee });
+              const r = await api.post<{ ouvertes: number }>(`/etablissements/${ecole}/classes/ouvrir`, { niveau, nombre: Number(nombre), prefixe: prefixe || null, vague: vague || null, anneeScolaire: annee });
               apres(r.ouvertes);
             } catch (e) {
               setErreur((e as Error).message);
@@ -492,7 +513,7 @@ function EditionLocal({ ecole, edition, fiche, fermer, apres }: { ecole: number;
             <Champ libelle="Niveau *">
               <Liste value={txt("niveau")} vide="— Choisir —" onChange={(e) => maj("niveau", e.target.value)} options={fiche.niveaux.map((n) => ({ valeur: n.code, libelle: n.libelle }))} />
             </Champ>
-            <Champ libelle="Nom *" aide="Ex. 6e 1, 2nde C 2, CM1 A.">
+            <Champ libelle="Nom *" aide="Ex. 6ème 1, 2nde C 2, CM1 1 ; avec deux vagues : 6ème 1A, 6ème 1B.">
               <Saisie value={txt("nom")} onChange={(e) => maj("nom", e.target.value)} />
             </Champ>
             <Champ libelle="Salle">
@@ -522,7 +543,7 @@ function EditionLocal({ ecole, edition, fiche, fermer, apres }: { ecole: number;
               <SaisieReferentiel liste="TYPE_BATIMENT" valeur={txt("type")} changer={(x) => maj("type", x)} />
             </Champ>
             <div className="grid grid-cols-3 gap-3">
-              <Champ libelle="Niveaux">
+              <Champ libelle="Nombre de niveaux" aide="1 : rez-de-chaussée seul ; 2 : un étage…">
                 <Saisie type="number" min={1} value={txt("niveaux")} onChange={(e) => maj("niveaux", e.target.value)} />
               </Champ>
               <Champ libelle="Construit en">

@@ -13,7 +13,8 @@ import type { DemandeMutation } from "@/lib/types";
 export default function Mutations() {
   const { profil, refs } = useSession();
   const router = useRouter();
-  const [motif, setMotif] = useState("");
+  // « Demandes et prestations › Suivi des prestations » ouvre la liste filtrée (?motif=PRESTATION)
+  const [motif, setMotif] = useState(() => (typeof window === "undefined" ? "" : (new URLSearchParams(window.location.search).get("motif") ?? "")));
   const [etat, setEtat] = useState("");
   const [groupe, setGroupe] = useState("");
   const [departementId, setDepartementId] = useState(profil.role === "DDEPPSA" && profil.departementId ? String(profil.departementId) : "");
@@ -51,7 +52,7 @@ export default function Mutations() {
             <Saisie value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder="Nom ou matricule" />
           </Champ>
           <Champ libelle="Motif" className="w-48">
-            <Liste value={motif} onChange={(e) => setMotif(e.target.value)} vide="Tous" options={refs.motifs.map((m) => ({ valeur: m.code, libelle: m.libelle }))} />
+            <Liste value={motif} onChange={(e) => setMotif(e.target.value)} vide="Tous" options={[...refs.motifs.map((m) => ({ valeur: m.code, libelle: m.libelle })), { valeur: "PRESTATION", libelle: "Prestations (congés, attestations, primes…)" }]} />
           </Champ>
           <Champ libelle="Étape" className="w-52">
             <Liste value={etat} onChange={(e) => setEtat(e.target.value)} vide="Toutes" options={Object.entries(ETAT_MUTATION).map(([k, v]) => ({ valeur: k, libelle: v.libelle }))} />

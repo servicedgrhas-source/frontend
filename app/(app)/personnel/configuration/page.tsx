@@ -264,7 +264,7 @@ export default function ConfigurationRecensement() {
                         </td>
                       ))}
                       <td className="text-[12px] text-zinc-600">
-                        {[resumeCondition(x.si), x.nombreSelon && `une par unité de « ${nomChamp(x.nombreSelon)} »`].filter(Boolean).join(" ; ") || "—"}
+                        {[resumeCondition(x.si), x.nombreSelon && (x.nombreSelon === "NOMBRE_ENFANTS" || x.nombreSelon === "ENFANTS" ? "une par enfant" : `une par ligne de « ${nomChamp(x.nombreSelon)} »`)].filter(Boolean).join(" ; ") || "—"}
                       </td>
                       <td className="text-center">
                         <input type="checkbox" className="size-4 accent-marque-600" checked={x.actif} onChange={(e) => set({ actif: e.target.checked })} />
@@ -355,7 +355,7 @@ export default function ConfigurationRecensement() {
                       <td>
                         <Saisie
                           value={x.libelle}
-                          onChange={(e) => maj({ sections: c.sections.map((y, j) => (j === i ? { code: y.code || "", libelle: e.target.value } : y)) })}
+                          onChange={(e) => maj({ sections: c.sections.map((y, j) => (j === i ? { ...y, code: y.code || "", libelle: e.target.value } : y)) })}
                           onBlur={() => !x.code && x.libelle && maj({ sections: c.sections.map((y, j) => (j === i ? { ...y, code: versCode(y.libelle) } : y)) })}
                           className="w-full"
                         />
@@ -383,8 +383,17 @@ export default function ConfigurationRecensement() {
                 <Champ libelle="Âge minimum" aide="En dessous : date de naissance à vérifier.">
                   <Saisie inputMode="numeric" value={String(c.ageMinimum)} onChange={(e) => maj({ ageMinimum: Number(e.target.value.replace(/\D/g, "")) || 0 })} />
                 </Champ>
-                <Champ libelle="Âge de la retraite (catégorie inconnue)" aide="Chaque catégorie a son âge dans Administration › Référentiels › Catégories d’agents. Celui-ci sert seulement quand la catégorie de l’agent n’est pas renseignée.">
-                  <Saisie inputMode="numeric" value={String(c.ageRetraite)} onChange={(e) => maj({ ageRetraite: Number(e.target.value.replace(/\D/g, "")) || 0 })} />
+                <Champ
+                  libelle="Âge de la retraite (catégorie inconnue)"
+                  aide="Chaque catégorie a son âge dans Administration › Référentiels › Catégories d’agents. Laissez vide : un agent sans catégorie n’a pas d’âge de retraite supposé (sa catégorie est signalée manquante)."
+                >
+                  <Saisie inputMode="numeric" value={c.ageRetraite ? String(c.ageRetraite) : ""} placeholder="Vide : aucun âge supposé" onChange={(e) => maj({ ageRetraite: Number(e.target.value.replace(/\D/g, "")) || null })} />
+                </Champ>
+                <Champ libelle="Promotion du fonctionnaire (mois)" aide="Délai entre deux promotions ordinaires : 24 mois (2 ans). Au-delà, la promotion est signalée « due ».">
+                  <Saisie inputMode="numeric" value={String(c.delaiPromotionMois ?? 24)} onChange={(e) => maj({ delaiPromotionMois: Number(e.target.value.replace(/\D/g, "")) || 0 })} />
+                </Champ>
+                <Champ libelle="Avancement du contractuel (mois)" aide="Délai entre deux avancements ordinaires : 28 mois (2 ans et 4 mois).">
+                  <Saisie inputMode="numeric" value={String(c.delaiAvancementMois ?? 28)} onChange={(e) => maj({ delaiAvancementMois: Number(e.target.value.replace(/\D/g, "")) || 0 })} />
                 </Champ>
                 <Champ libelle="Téléphone partagé" aide="Même numéro pour ce nombre d’agents ou plus : signalé.">
                   <Saisie inputMode="numeric" value={String(c.telephonePartage)} onChange={(e) => maj({ telephonePartage: Number(e.target.value.replace(/\D/g, "")) || 0 })} />

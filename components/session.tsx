@@ -1,13 +1,13 @@
 "use client";
 
-import { Bell, ChevronDown, Gauge, Inbox, KeyRound, LayoutDashboard, Lock, LogOut, UserRound, type LucideIcon } from "lucide-react";
+import { Bell, Inbox, KeyRound, LayoutDashboard, Lock, LogOut, UserRound, type LucideIcon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, CLE_JETON, fermerSession, lireSession, memoriserProfil, ouvrirSession, SESSION_ROUVERTE, surSessionExpiree, TRAVAIL_MODIFIE, type Profil } from "@/lib/api";
-import { ESPACES, espaceDe, rubriquesVisibles, travailEspace, type Compteurs } from "@/lib/espaces";
-import { peut, ROLES } from "@/lib/libelles";
+import { appliquerMenu, cheminDe, ESPACES, espaceDe, MENU, MENU_MODIFIE, POLES, poleDe, rubriquesVisibles, travailEspace, type Compteurs, type ConfigMenu } from "@/lib/espaces";
+import { ROLES } from "@/lib/libelles";
 import type { Referentiels } from "@/lib/types";
 import { Alerte, Bouton, Champ, Chargement, cx, Modale, Saisie } from "./ui";
 
@@ -31,7 +31,6 @@ export function Coquille({ children }: { children: ReactNode }) {
   const [erreur, setErreur] = useState<string | null>(null);
   const [confirmerSortie, setConfirmerSortie] = useState(false);
   // Menu en accordéon : un seul domaine ouvert, celui de la page affichée par défaut
-  const [ouvertChoisi, setOuvert] = useState<{ cle: string | null; pour: string } | null>(null);
   const [compteurs, setCompteurs] = useState<Compteurs | null>(null);
   // Circuit des demandes : dossiers à traiter et alertes non lues
   const [circuit, setCircuit] = useState<{ aTraiter: number; alertes: number } | null>(null);
@@ -45,13 +44,26 @@ export function Coquille({ children }: { children: ReactNode }) {
       router.replace("/connexion");
       return;
     }
-    Promise.all([api.get<Profil>("/auth/moi"), api.get<Referentiels>("/referentiels")])
-      .then(([p, refs]) => {
+    Promise.all([
+      api.get<Profil>("/auth/moi"),
+      api.get<Referentiels>("/referentiels"),
+      // Noms et ordre du menu réglés par l'administrateur ou le DG (sinon le menu d'origine)
+      api.get<ConfigMenu>("/menu/configuration").catch(() => null),
+    ])
+      .then(([p, refs, menu]) => {
+        appliquerMenu(menu);
         memoriserProfil(p);
         setSession({ profil: p, refs });
       })
       .catch((e: Error) => setErreur(e.message));
   }, [router]);
+
+  // Menu renommé dans Administration › Menu : tout l'écran prend les nouveaux noms
+  useEffect(() => {
+    const apres = () => setSession((s) => (s ? { ...s } : s));
+    window.addEventListener(MENU_MODIFIE, apres);
+    return () => window.removeEventListener(MENU_MODIFIE, apres);
+  }, []);
 
   // Une fois la session ouverte, une session expirée se rouvre dans une fenêtre (la page reste)
   useEffect(() => (session ? surSessionExpiree((m) => setExpiree(m)) : undefined), [session]);
@@ -156,7 +168,7 @@ export function Coquille({ children }: { children: ReactNode }) {
       !chemin.startsWith("/recensement") &&
       !(chemin === "/ecoles" || /^\/ecoles\/\d+$/.test(chemin)) &&
       chemin !== "/demandes/nouvelle" &&
-      chemin !== "/espace/personnel" &&
+      !["/espace/personnel", "/espace/rh", "/espace/demandes", "/espace/structures"].includes(chemin) &&
       chemin !== "/compte"
     )
       router.replace("/a-traiter");
@@ -174,7 +186,6 @@ export function Coquille({ children }: { children: ReactNode }) {
   };
   const p = session.profil;
   const espaceCourant = espaceDe(chemin);
-  const cleOuverte = ouvertChoisi && ouvertChoisi.pour === chemin ? ouvertChoisi.cle : (espaceCourant?.cle ?? null);
 
   return (
     <Contexte.Provider value={session}>
@@ -205,68 +216,33 @@ export function Coquille({ children }: { children: ReactNode }) {
               {!!circuit?.alertes && <span className="rounded-full bg-or-400 px-1.5 py-px text-[10px] font-bold text-zinc-900 tabular-nums">{circuit.alertes > 99 ? "99+" : circuit.alertes}</span>}
             </button>
             <div className="my-2" />
-            {ESPACES.map((e) => {
+            {/* Le menu ne se déroule pas (DG, 25/10/2026) : chaque rubrique ouvre sa page d'accueil, ses cases
+                mènent aux volets ; le chemin en haut de la page dit où l'on est */}
+            {MENU.map((m) => {
+              if (m.pole) {
+                const pole = POLES.find((x) => x.cle === m.pole)!;
+                const espaces = pole.espaces
+                  .map((c) => ESPACES.find((e) => e.cle === c)!)
+                  .filter((e) => (p.role !== "STRUCTURE" || ESPACES_STRUCTURE.includes(e.cle)) && rubriquesVisibles(e, p).length);
+                if (!espaces.length) return null;
+                const travail = espaces.reduce((n, e) => n + travailEspace(e, p, compteurs), 0);
+                return (
+                  <LienMenu
+                    key={pole.cle}
+                    href={`/espace/${pole.cle}`}
+                    libelle={pole.titre}
+                    icone={pole.icone}
+                    actif={chemin === `/espace/${pole.cle}` || poleDe(espaceCourant?.cle)?.cle === pole.cle}
+                    principal
+                    nombre={travail}
+                  />
+                );
+              }
+              const e = ESPACES.find((x) => x.cle === m.espace)!;
               // Comptes des écoles, inspections… : leurs dossiers et la base de leur personnel
-              if (p.role === "STRUCTURE" && e.cle !== "personnel") return null;
-              const liens = rubriquesVisibles(e, p);
-              if (!liens.length) return null;
-              const ouvert = cleOuverte === e.cle;
-              const travail = travailEspace(e, p, compteurs);
-              const Icone = e.icone;
-              const courant = espaceCourant?.cle === e.cle;
-              return (
-                <div key={e.cle} className="mb-1">
-                  <Link
-                    href={`/espace/${e.cle}`}
-                    onClick={() => setOuvert({ cle: ouvert && chemin === `/espace/${e.cle}` ? null : e.cle, pour: chemin })}
-                    aria-expanded={ouvert}
-                    className={cx(
-                      "group flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-[14px] font-semibold whitespace-nowrap transition-colors duration-200",
-                      courant ? "bg-white/[0.09] text-white" : "text-white/80 hover:bg-white/[0.05] hover:text-white",
-                    )}
-                  >
-                    <Icone className={cx("size-[18px] shrink-0", courant ? "text-or-400" : "text-white/50 group-hover:text-white/80")} />
-                    <span className="flex-1">{e.titre}</span>
-                    {travail > 0 && !ouvert && (
-                      <span className="rounded-full bg-or-400 px-1.5 py-px text-[10px] font-bold text-zinc-900 tabular-nums">{travail > 999 ? "999+" : travail}</span>
-                    )}
-                    <ChevronDown className={cx("size-4 shrink-0 text-white/40 transition-transform duration-300", ouvert && "rotate-180")} />
-                  </Link>
-                  {/* Rubriques du domaine : s'ouvrent en douceur */}
-                  <div className={cx("grid transition-all duration-300 ease-out", ouvert ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0")}>
-                    <div className="overflow-hidden">
-                      <div className="mt-0.5 mb-2 ml-[22px] border-l border-white/10 pl-2">
-                        {liens.map((r, i) => {
-                          const c = compteurs && r.compteur ? r.compteur(compteurs) : null;
-                          // Sous-titre quand un groupe commence (ex. « Chaque mois : payer »)
-                          const titreGroupe = r.groupe && r.groupe !== liens[i - 1]?.groupe ? r.groupe : null;
-                          return (
-                            <Fragment key={r.href}>
-                            {titreGroupe && <div className="px-3 pt-3 pb-1 text-[10px] font-semibold tracking-wider text-white/35 uppercase" aria-hidden={!ouvert}>{titreGroupe}</div>}
-                            <LienMenu
-                              key={r.href}
-                              href={r.href}
-                              libelle={r.libelle}
-                              icone={r.icone}
-                              actif={chemin === r.href || (chemin.startsWith(`${r.href}/`) && !liens.some((x) => x.href !== r.href && chemin.startsWith(x.href) && x.href.length > r.href.length))}
-                              nombre={c?.n}
-                              titre={c?.texte}
-                              cache={!ouvert}
-                            />
-                            </Fragment>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                  {/* Pilotage : juste après « Contrôle et vérification » */}
-                  {e.cle === "controle" && peut.parametrer(p.role) && (
-                    <div className="mt-2">
-                      <LienMenu href="/pilotage" libelle="Pilotage" icone={Gauge} actif={chemin === "/pilotage"} principal />
-                    </div>
-                  )}
-                </div>
-              );
+              if (p.role === "STRUCTURE" && !ESPACES_STRUCTURE.includes(e.cle)) return null;
+              if (!rubriquesVisibles(e, p).length) return null;
+              return <LienMenu key={e.cle} href={`/espace/${e.cle}`} libelle={e.titre} icone={e.icone} actif={espaceCourant?.cle === e.cle} principal nombre={travailEspace(e, p, compteurs)} />;
             })}
           </nav>
 
@@ -287,6 +263,7 @@ export function Coquille({ children }: { children: ReactNode }) {
         <main className="min-w-0 flex-1 px-5 py-6 lg:px-10 lg:py-8">
           {/* Chaque page apparaît en fondu léger lors de la navigation */}
           <div key={chemin} className="animate-apparition">
+            <FilAriane chemin={chemin} profil={p} />
             {!p.aCode && (p.role === "ADMIN" || p.role === "DG") && chemin !== "/administration" && (
               <div className="no-print mb-5">
                 <Alerte ton="jaune">
@@ -333,6 +310,9 @@ export function Coquille({ children }: { children: ReactNode }) {
 }
 
 /** Une ligne du menu (rubrique, ou lien principal comme le tableau de bord). */
+/** Domaines ouverts aux comptes des écoles, inspections… : leur personnel, leurs demandes, leur école. */
+const ESPACES_STRUCTURE = ["personnel", "demandes", "structures"];
+
 function LienMenu({
   href,
   libelle,
@@ -606,5 +586,54 @@ function Reconnexion({
         </div>
       </form>
     </Modale>
+  );
+}
+
+/**
+ * Où l'on est (DG, 25/10/2026) : le menu ne se déroule pas, le chemin en haut de la page le dit —
+ * Personnel › Base du personnel › Présence ; chaque étape se clique pour remonter.
+ */
+function FilAriane({ chemin, profil }: { chemin: string; profil: Profil }) {
+  const etapes = cheminDe(chemin, profil);
+  if (!etapes.length) return null;
+  // Une petite frise : l'accueil, puis chaque étape numérotée, reliées par un trait ; on est sur la dernière
+  return (
+    <nav aria-label="Où vous êtes" className="no-print mb-5 overflow-x-auto">
+      <ol className="inline-flex min-w-max items-center rounded-2xl bg-white px-3 py-2 shadow-doux ring-1 ring-zinc-100">
+        <li className="flex items-center">
+          <Link href="/" title="Tableau de bord" className="flex size-7 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 transition hover:bg-marque-50 hover:text-marque-700">
+            <LayoutDashboard className="size-3.5" />
+          </Link>
+        </li>
+        {etapes.map((x, i) => {
+          const derniere = i === etapes.length - 1;
+          const contenu = (
+            <>
+              <span
+                className={cx(
+                  "flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold tabular-nums transition",
+                  derniere ? "bg-marque-600 text-white shadow-sm shadow-marque-600/30" : "bg-marque-50 text-marque-700 ring-1 ring-marque-200 group-hover:bg-marque-100",
+                )}
+              >
+                {i + 1}
+              </span>
+              <span className={cx("text-[13px] whitespace-nowrap", derniere ? "font-semibold text-encre" : "font-medium text-zinc-600 group-hover:text-marque-700")}>{x.libelle}</span>
+            </>
+          );
+          return (
+            <li key={`${x.libelle}-${i}`} className="flex items-center" aria-current={derniere ? "page" : undefined}>
+              <span className={cx("mx-2 h-0.5 w-6 rounded-full", derniere ? "bg-marque-300" : "bg-zinc-200")} aria-hidden />
+              {x.href && !derniere ? (
+                <Link href={x.href} className="group flex items-center gap-2 rounded-full py-0.5 pr-2 pl-0.5 transition hover:bg-marque-50/60">
+                  {contenu}
+                </Link>
+              ) : (
+                <span className="flex items-center gap-2 rounded-full bg-marque-50/70 py-0.5 pr-3 pl-0.5">{contenu}</span>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
   );
 }

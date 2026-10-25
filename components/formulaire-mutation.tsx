@@ -61,6 +61,8 @@ export function FormulaireMutation({ demande, apres }: { demande?: DemandeMutati
   const deps = refs.departements.map((d) => ({ valeur: d.id, libelle: d.nom }));
   const [doublons, setDoublons] = useState<(DemandeMutation & { memeMatricule: boolean })[]>([]);
   const [confirmerDoublon, setConfirmerDoublon] = useState(false);
+  /** Demande déjà créée dont seules les pièces ont échoué : réessayer ne renvoie que les pièces. */
+  const [sansPieces, setSansPieces] = useState<DemandeMutation | null>(null);
   const libMotif = (c: string) => refs.motifs.find((m) => m.code === c)?.libelle ?? c;
 
   // Recherche des demandes déjà enregistrées pour la même personne (pendant la saisie)
@@ -78,7 +80,8 @@ export function FormulaireMutation({ demande, apres }: { demande?: DemandeMutati
 
   async function enregistrer(e: React.FormEvent, forcer = false) {
     e.preventDefault();
-    if (doublons.length && !forcer) {
+    // Après une demande déjà créée, la « ressemblante » trouvée est elle-même
+    if (doublons.length && !forcer && !sansPieces) {
       setConfirmerDoublon(true);
       return;
     }
@@ -98,14 +101,19 @@ export function FormulaireMutation({ demande, apres }: { demande?: DemandeMutati
       objet: f.objet || (f.departementSolliciteId ? `Mutation à ${refs.departements.find((d) => String(d.id) === f.departementSolliciteId)?.nom ?? ""}` : null),
     };
     try {
-      const d = demande ? await api.put<DemandeMutation>(`/mutations/${demande.id}`, corps) : await api.post<DemandeMutation>("/mutations", corps);
+      const d = sansPieces ?? (demande ? await api.put<DemandeMutation>(`/mutations/${demande.id}`, corps) : await api.post<DemandeMutation>("/mutations", corps));
       if (!demande && pieces.length) {
         const fd = new FormData();
         for (const x of pieces) {
           fd.append("fichiers", x.fichier);
           fd.append("libelles", x.libelle);
         }
-        await api.post(`/mutations/${d.id}/pieces`, fd);
+        try {
+          await api.post(`/mutations/${d.id}/pieces`, fd);
+        } catch (x) {
+          setSansPieces(d);
+          throw new Error(`La demande est enregistrée, mais pas ses pièces : ${(x as Error).message} « Réessayer l’envoi des pièces » ne recrée pas la demande ; vous pouvez aussi continuer et les joindre depuis le dossier.`);
+        }
       }
       apres(d);
     } catch (err) {
@@ -274,7 +282,9 @@ export function FormulaireMutation({ demande, apres }: { demande?: DemandeMutati
                       accept=".pdf,.jpg,.jpeg,.png"
                       className="hidden"
                       onChange={(e) => {
-                        const liste = Array.from(e.target.files ?? []);
+                        const tous = Array.from(e.target.files ?? []);
+                        const liste = tous.filter((x) => x.size <= 10 * 1024 * 1024);
+                        setErreur(liste.length < tous.length ? `Trop lourd (10 Mo au plus), non joint : ${tous.filter((x) => !liste.includes(x)).map((x) => x.name).join(", ")}.` : null);
                         setPieces((l) => [...l, ...liste.map((fichier) => ({ libelle: lib, fichier }))]);
                         e.target.value = "";
                       }}
@@ -288,9 +298,14 @@ export function FormulaireMutation({ demande, apres }: { demande?: DemandeMutati
         </Carte>
       )}
       {f.motif === "ANCIENNETE" && <Alerte ton="jaune">Une mutation pour ancienneté exige au moins 5 ans dans le poste actuel.</Alerte>}
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        {sansPieces && (
+          <Bouton type="button" onClick={() => apres(sansPieces)}>
+            Continuer sans les pièces
+          </Bouton>
+        )}
         <Bouton variante="principal" type="submit" disabled={envoi}>
-          {envoi ? "Enregistrement…" : demande ? "Enregistrer les modifications" : "Enregistrer la demande"}
+          {envoi ? "Enregistrement…" : sansPieces ? "Réessayer l’envoi des pièces" : demande ? "Enregistrer les modifications" : "Enregistrer la demande"}
         </Bouton>
       </div>
       <Modale titre="Enregistrer malgré le doublon possible ?" ouverte={confirmerDoublon} fermer={() => setConfirmerDoublon(false)}>

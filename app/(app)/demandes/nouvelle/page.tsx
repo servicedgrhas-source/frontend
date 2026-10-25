@@ -239,7 +239,9 @@ function Formulaire() {
                         multiple
                         className="hidden"
                         onChange={(e) => {
-                          const l = Array.from(e.target.files ?? []);
+                          const tous = Array.from(e.target.files ?? []);
+                          const l = tous.filter((x) => x.size <= 10 * 1024 * 1024);
+                          setErreur(l.length < tous.length ? `Trop lourd (10 Mo au plus), non joint : ${tous.filter((x) => !l.includes(x)).map((x) => x.name).join(", ")}.` : null);
                           setPieces((p) => [...p, ...l.map((fichier) => ({ libelle: lib, fichier }))].slice(0, 12));
                           e.target.value = "";
                         }}

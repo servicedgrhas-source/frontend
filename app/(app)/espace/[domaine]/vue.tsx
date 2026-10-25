@@ -7,7 +7,7 @@ import { GuideEnrolement } from "@/components/enrolement/guide";
 import { useSession } from "@/components/session";
 import { Alerte, EnTete, Pastille } from "@/components/ui";
 import { useApi } from "@/lib/api";
-import { ESPACES, rubriquesVisibles, type Compteurs } from "@/lib/espaces";
+import { ESPACES, POLES, rubriquesVisibles, travailEspace, type Compteurs, type Pole } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 /** Page d'accueil d'un domaine : ses rubriques, dans l'ordre du travail, avec ce qui attend. */
@@ -15,8 +15,10 @@ export function VueEspace() {
   const { profil } = useSession();
   const { domaine } = useParams<{ domaine: string }>();
   const espace = ESPACES.find((e) => e.cle === domaine);
+  const pole = POLES.find((x) => x.cle === domaine);
   const { donnees: c } = useApi<Compteurs>("/menu/compteurs");
 
+  if (pole) return <VuePole pole={pole} c={c} />;
   if (!espace) return <Alerte>Cette page n’existe pas.</Alerte>;
   const rubriques = rubriquesVisibles(espace, profil);
   if (!rubriques.length) return <Alerte>Ce domaine n’est pas ouvert à votre rôle.</Alerte>;
@@ -88,6 +90,59 @@ export function VueEspace() {
       </div>
       </div>
       ))}
+    </div>
+  );
+}
+
+/** Domaines ouverts aux comptes des écoles, inspections… (comme dans le menu). */
+const ESPACES_STRUCTURE = ["personnel", "demandes", "structures"];
+
+/**
+ * Page d'une grande rubrique (« Personnel ») : une case par domaine, avec ce qu'on y fait et ce
+ * qui attend ; on entre dans le domaine pour voir ses rubriques.
+ */
+function VuePole({ pole, c }: { pole: Pole; c: Compteurs | null }) {
+  const { profil } = useSession();
+  const espaces = pole.espaces
+    .map((k) => ESPACES.find((e) => e.cle === k)!)
+    .filter((e) => (profil.role !== "STRUCTURE" || ESPACES_STRUCTURE.includes(e.cle)) && rubriquesVisibles(e, profil).length);
+  const Icone = pole.icone;
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start gap-4">
+        <Pastille taille="lg">
+          <Icone />
+        </Pastille>
+        <div className="min-w-0 flex-1">
+          <EnTete titre={pole.titre} sousTitre={pole.description} />
+        </div>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {espaces.map((e) => {
+          const travail = travailEspace(e, profil, c);
+          const rubriques = rubriquesVisibles(e, profil);
+          const E = e.icone;
+          return (
+            <Link key={e.cle} href={`/espace/${e.cle}`} className="group flex flex-col rounded-3xl bg-white p-6 shadow-doux transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
+              <div className="flex items-start gap-3">
+                <Pastille ton={travail ? "jaune" : "gris"}>
+                  <E />
+                </Pastille>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] text-zinc-400">{rubriques.length} rubrique(s)</div>
+                  <div className="text-[16px] font-semibold text-encre">{e.titre}</div>
+                </div>
+                {travail > 0 && <span className="rounded-full bg-or-400 px-2.5 py-0.5 text-[13px] font-bold text-zinc-900 tabular-nums">{travail}</span>}
+              </div>
+              <p className="mt-3 flex-1 text-[13px] leading-relaxed text-zinc-500">{e.description}</p>
+              <div className="mt-3 text-[12px] text-zinc-400">{rubriques.map((r) => r.libelle).join(" · ")}</div>
+              <div className="mt-4 inline-flex items-center gap-1 text-[13px] font-semibold text-marque-700">
+                Ouvrir <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-1" />
+              </div>
+            </Link>
+          );
+        })}
+      </div>
     </div>
   );
 }
