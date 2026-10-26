@@ -402,22 +402,6 @@ export const ESPACES: Espace[] = [
     circuit: "Structures → classes ouvertes → heures de cours → besoin en enseignants",
     rubriques: [
       {
-        groupe: "Besoins en personnel",
-        href: "/ecoles/besoins",
-        libelle: "Besoins en enseignants",
-        icone: Scale,
-        visible: (p) => peut.traiter(p.role) || p.role === "DDEPPSA",
-        explication: "Déficit ou pléthore d’enseignants par école, par cycle, par département et par matière : les heures des classes ouvertes divisées par les heures d’un enseignant.",
-      },
-      {
-        groupe: "Besoins en personnel",
-        href: "/enrolement/besoins",
-        libelle: "Besoins par établissement",
-        icone: School,
-        visible: (p) => peut.traiter(p.role) || p.role === "DDEPPSA",
-        explication: "Les besoins en volontaires exprimés par les DDEPPSA, comparés aux volontaires en poste.",
-      },
-      {
         groupe: "Les structures",
         href: "/structures",
         libelle: "Structures administratives",
@@ -432,6 +416,22 @@ export const ESPACES: Espace[] = [
         icone: School,
         visible: recenser,
         explication: "Pour chaque école : bâtiments, salles, classes ouvertes de l’année, agents rattachés, et le besoin en enseignants qui s’en déduit.",
+      },
+      {
+        groupe: "Besoins en personnel",
+        href: "/ecoles/besoins",
+        libelle: "Besoins en enseignants",
+        icone: Scale,
+        visible: (p) => peut.traiter(p.role) || p.role === "DDEPPSA",
+        explication: "Déficit ou pléthore d’enseignants par école, par cycle, par département et par matière : les heures des classes ouvertes divisées par les heures d’un enseignant.",
+      },
+      {
+        groupe: "Besoins en personnel",
+        href: "/enrolement/besoins",
+        libelle: "Besoins par établissement",
+        icone: School,
+        visible: (p) => peut.traiter(p.role) || p.role === "DDEPPSA",
+        explication: "Les besoins en volontaires exprimés par les DDEPPSA, comparés aux volontaires en poste.",
       },
     ],
   },
@@ -591,13 +591,14 @@ export const POLES: Pole[] = [
     titre: "Personnel",
     icone: Users,
     description:
-      "Tout ce qui touche aux agents du ministère : leur base et leur recensement, leur recrutement à la Fonction Publique, leurs affectations et mutations, les volontaires et communautaires, leurs demandes, et les structures où ils servent avec les besoins en personnel.",
-    espaces: ["personnel", "recrutement", "affectations", "mutations", "enrolement", "demandes", "structures"],
+      "Tout ce qui touche aux agents du ministère : leur base et leur recensement, leur recrutement à la Fonction Publique, leurs affectations et mutations, les volontaires et communautaires, et leurs demandes.",
+    espaces: ["personnel", "recrutement", "affectations", "mutations", "enrolement", "demandes"],
   },
 ];
 
 /** Ordre du menu, après le tableau de bord, les dossiers à traiter et les alertes. */
-export const MENU: { pole?: string; espace?: string }[] = [{ pole: "rh" }, { espace: "notes" }, { espace: "controle" }, { espace: "administration" }];
+// « Structures et besoins » : entrée à part, après Personnel (DG, 26/10/2026)
+export const MENU: { pole?: string; espace?: string }[] = [{ pole: "rh" }, { espace: "structures" }, { espace: "notes" }, { espace: "controle" }, { espace: "administration" }];
 
 export const poleDe = (cleEspace: string | null | undefined) => (cleEspace ? (POLES.find((p) => p.espaces.includes(cleEspace)) ?? null) : null);
 
@@ -684,11 +685,20 @@ export const MENU_ORIGINE = {
 };
 const RUBRIQUES_ORIGINE = new Map(ESPACES.map((e) => [e.cle, [...e.rubriques]]));
 
-/** Range une liste selon un ordre choisi ; ce qui n'y est pas garde sa place d'origine, à la fin. */
+/**
+ * Range une liste selon un ordre choisi. Ce qui n'y est pas (entrée ajoutée depuis) se place
+ * juste après l'entrée qui la précède dans la liste d'origine.
+ */
 function ranger<T>(liste: T[], cle: (x: T) => string, ordre?: string[]) {
   if (!ordre?.length) return liste;
   const rang = new Map(ordre.map((k, i) => [k, i]));
-  return [...liste].sort((a, b) => (rang.get(cle(a)) ?? 999) - (rang.get(cle(b)) ?? 999));
+  const rangees = liste.filter((x) => rang.has(cle(x))).sort((a, b) => rang.get(cle(a))! - rang.get(cle(b))!);
+  liste.forEach((x, i) => {
+    if (rang.has(cle(x))) return;
+    const avant = i > 0 ? rangees.indexOf(liste[i - 1]) : -1;
+    rangees.splice(avant + 1, 0, x);
+  });
+  return rangees;
 }
 
 /** Applique les noms et l'ordre choisis (en repartant toujours du menu d'origine). */

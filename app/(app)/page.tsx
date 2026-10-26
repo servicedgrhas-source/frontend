@@ -114,7 +114,20 @@ function TableauDeBordDgrhas() {
             valeur={nf.format(aff("A_TRAITER"))}
             detail={`${nf.format(aff("AFFECTE"))} affectés · ${nf.format(aff("EXCLU"))} exclus`}
           />
-          <Chiffre href="/enrolement" icone={<HandHeart />} ton="vert" libelle="Volontaires en poste" valeur={nf.format(t.registre.volontaires)} detail={`${nf.format(t.registre.communautaires)} communautaires · ${paiement}`} />
+          {/* Le registre (qui sert à payer la bourse) fait foi ; tant qu'il est vide, les volontaires et
+              communautaires de la base du personnel sont montrés, pour ne pas afficher 0 à tort */}
+          {t.registre.volontaires || t.registre.communautaires || !(t.personnel.parStatut.VOLONTAIRE || t.personnel.parStatut.COMMUNAUTAIRE) ? (
+            <Chiffre href="/enrolement/volontaires" icone={<HandHeart />} ton="vert" libelle="Volontaires en poste" valeur={nf.format(t.registre.volontaires)} detail={`${nf.format(t.registre.communautaires)} communautaires · ${paiement}`} />
+          ) : (
+            <Chiffre
+              href="/personnel/agents?statut=VOLONTAIRE"
+              icone={<HandHeart />}
+              ton="vert"
+              libelle="Volontaires dans la base du personnel"
+              valeur={nf.format(t.personnel.parStatut.VOLONTAIRE ?? 0)}
+              detail={`${nf.format(t.personnel.parStatut.COMMUNAUTAIRE ?? 0)} communautaires · registre de la bourse encore vide`}
+            />
+          )}
           <Chiffre
             href="/mutations"
             icone={<ArrowLeftRight />}
