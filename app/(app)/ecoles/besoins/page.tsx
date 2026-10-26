@@ -11,6 +11,7 @@ import { peut } from "@/lib/libelles";
 interface Consolidation {
   annee: string;
   heuresEnseignant: number;
+  heuresLycee?: number;
   ecoles: { id: number; nom: string; cycle: string | null; departement: string | null; classes: number; besoin: number; enPlace: number; ecart: number; etat: string; alertes: number }[];
   departements: { departement: string; ecoles: number; besoin: number; enPlace: number; deficit: number; plethore: number }[];
   /** Par cycle : préscolaire, primaire, collège, lycée… */
@@ -36,7 +37,7 @@ export default function BesoinsEnseignants() {
     <div className="space-y-5">
       <EnTete
         titre="Besoins en enseignants"
-        sousTitre={`Calculés à partir des classes ouvertes de chaque école : au collège et au lycée, les heures du programme divisées par ${d.donnees?.heuresEnseignant ?? 20} h par enseignant et par semaine ; au primaire et au préscolaire, un maître par classe. Seules les écoles dont les classes sont saisies sont comptées.`}
+        sousTitre={`Calculés à partir des classes ouvertes de chaque école : les heures du programme divisées par les heures de cours d’un enseignant par semaine, ${d.donnees?.heuresEnseignant ?? 20} h au collège et ${d.donnees?.heuresLycee ?? 15} h au lycée (réglables dans Administration › Paramètres) ; au primaire et au préscolaire, un maître par classe. Seules les écoles dont les classes sont saisies sont comptées.`}
       />
       <div className="flex flex-wrap gap-3">
         {profil.role !== "DDEPPSA" && (

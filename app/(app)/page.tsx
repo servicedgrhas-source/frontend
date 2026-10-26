@@ -25,6 +25,8 @@ interface TableauBord {
   /** Base du personnel : seules les fiches acceptées comptent (pas celles en contrôle ou rejetées). */
   personnel: { total: number; complets: number; incomplets: number; aControler: number; aDecider: number; sansStructure: number; doublons: number; parStatut: Record<string, number> };
   registre: { volontaires: number; communautaires: number; sansCategorie: number; sansDepartement: number };
+  /** Structures à compléter (organigramme). */
+  structures?: { sansCycle: number; ecolesSansInspection: number; sansSuperieure: number };
   paiementsDuMois: { population: string; statut: string; effectif: number; total: string }[];
   ecoles: { ecoles: number; classes: number };
 }
@@ -278,6 +280,9 @@ function Fiabiliser({ t }: { t: TableauBord }) {
     { n: t.registre.sansCategorie, texte: "volontaire(s) ou communautaire(s) en poste sans catégorie (pas de montant)", href: "/enrolement/volontaires", ton: "rouge" },
     { n: t.registre.sansDepartement, texte: "volontaire(s) ou communautaire(s) en poste sans département", href: "/enrolement/volontaires", ton: "rouge" },
     { n: t.personnel.aControler, texte: "agent(s) ajouté(s) au recensement à contrôler", href: "/recensement?onglet=controler", ton: "jaune" },
+    { n: t.structures?.sansCycle ?? 0, texte: "inspection(s) ou école(s) sans cycle (pas de préfixe, pas de besoin calculé)", href: "/administration/organigramme?completer=1", ton: "jaune" },
+    { n: t.structures?.ecolesSansInspection ?? 0, texte: "école(s) rattachée(s) à aucune inspection", href: "/administration/organigramme?completer=1", ton: "jaune" },
+    { n: t.structures?.sansSuperieure ?? 0, texte: "inspection(s), direction(s), service(s) ou bureau(x) sans structure supérieure (circuit bloqué)", href: "/administration/organigramme?completer=1", ton: "rouge" },
     { n: t.personnel.aDecider, texte: "agent(s) ajouté(s) au recensement à accepter ou rejeter (DG)", href: "/recensement?onglet=decider", ton: "jaune" },
     { n: t.personnel.incomplets, texte: "fiche(s) du personnel incomplète(s) (rubriques ou pièces)", href: "/personnel/agents?complet=non", ton: "jaune" },
     { n: t.personnel.sansStructure, texte: "agent(s) du personnel sans établissement de rattachement", href: "/personnel", ton: "jaune" },

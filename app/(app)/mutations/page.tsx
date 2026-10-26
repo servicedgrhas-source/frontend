@@ -13,7 +13,7 @@ import type { DemandeMutation } from "@/lib/types";
 export default function Mutations() {
   const { profil, refs } = useSession();
   const router = useRouter();
-  // « Demandes et prestations › Suivi des prestations » ouvre la liste filtrée (?motif=PRESTATION)
+  // « Demandes de prestations › Suivi des prestations » ouvre la liste filtrée (?motif=PRESTATION)
   const [motif, setMotif] = useState(() => (typeof window === "undefined" ? "" : (new URLSearchParams(window.location.search).get("motif") ?? "")));
   const [etat, setEtat] = useState("");
   const [groupe, setGroupe] = useState("");

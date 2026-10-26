@@ -50,6 +50,8 @@ export default function Referentiels() {
   const [cycle, setCycle] = useState("");
   const valeurs = useApi<Valeur[]>(`/referentiels/valeurs${qs({ type, q, parent: ["NIVEAU", "MATIERE", "PROGRAMME"].includes(type) ? cycle : "" })}`);
   const cycles = useApi<Valeur[]>("/referentiels/valeurs?type=CYCLE");
+  // Échelles : la suivante se choisit parmi les autres
+  const echelles = useApi<Valeur[]>("/referentiels/valeurs?type=ECHELLE");
   const [edition, setEdition] = useState<Partial<Valeur> | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -142,6 +144,7 @@ export default function Referentiels() {
         <Edition
           v={edition}
           cycles={cycles.donnees ?? []}
+          echelles={echelles.donnees ?? []}
           fermer={() => setEdition(null)}
           apres={() => {
             setEdition(null);
@@ -165,7 +168,7 @@ function detailDe(type: string, v: Valeur) {
     case "CATEGORIE_AGENT":
       return d.ageRetraite ? `retraite à ${d.ageRetraite} ans` : "";
     case "ECHELLE":
-      return [d.nombreEchelons && `${d.nombreEchelons} échelons`, d.dureeEchelonMois && `${d.dureeEchelonMois} mois par échelon`].filter(Boolean).join(" · ");
+      return [d.nombreEchelons && `${d.nombreEchelons} échelons`, d.dureeEchelonMois && `${d.dureeEchelonMois} mois par échelon`, d.echelleSuivante && `puis échelle ${d.echelleSuivante}`].filter(Boolean).join(" · ");
     case "CYCLE":
       return [d.description, d.quotaDefaut !== undefined && `quota par défaut ${d.quotaDefaut}`].filter(Boolean).join(" · ");
     case "NIVEAU":
@@ -271,7 +274,7 @@ function Programmes({ valeurs, modifier }: { valeurs: Valeur[]; modifier?: (v: V
   );
 }
 
-function Edition({ v, cycles, fermer, apres }: { v: Partial<Valeur>; cycles: Valeur[]; fermer: () => void; apres: () => void }) {
+function Edition({ v, cycles, echelles, fermer, apres }: { v: Partial<Valeur>; cycles: Valeur[]; echelles: Valeur[]; fermer: () => void; apres: () => void }) {
   const { refs } = useSession();
   const [f, setF] = useState({
     libelle: v.libelle ?? "",
@@ -358,8 +361,16 @@ function Edition({ v, cycles, fermer, apres }: { v: Partial<Valeur>; cycles: Val
             <Champ libelle="Nombre d’échelons">
               <Saisie inputMode="numeric" value={d("nombreEchelons")} onChange={(e) => setD("nombreEchelons", Number(e.target.value) || null)} />
             </Champ>
-            <Champ libelle="Durée d’un échelon (mois)">
+            <Champ libelle="Durée d’un échelon (mois)" aide="Vide : le délai général des promotions (configuration du personnel).">
               <Saisie inputMode="numeric" value={d("dureeEchelonMois")} onChange={(e) => setD("dureeEchelonMois", Number(e.target.value) || null)} />
+            </Champ>
+            <Champ libelle="Après le dernier échelon" aide="L’agent passe au 1er échelon de l’échelle choisie ; « aucune » : le dernier échelon est le dernier." className="sm:col-span-2">
+              <Liste
+                value={d("echelleSuivante")}
+                onChange={(e) => setD("echelleSuivante", e.target.value || null)}
+                vide="Aucune : pas de promotion d’échelon après le dernier"
+                options={echelles.filter((x) => x.code !== f.code).map((x) => ({ valeur: x.code, libelle: `Passage à : ${x.libelle}` }))}
+              />
             </Champ>
           </div>
         )}

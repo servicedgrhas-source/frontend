@@ -49,6 +49,9 @@ export function ImpressionCarriere() {
   );
 }
 
+/** 1 → « 1er », 3 → « 3e ». */
+const ordinal = (n: number) => (n === 1 ? "1er" : `${n}e`);
+
 function construire(d: DossierCarriere) {
   const v = d.situation.valeurs;
   const val = (k: string) => v[k]?.valeur ?? "—";
@@ -109,7 +112,7 @@ function construire(d: DossierCarriere) {
       cle: "entete",
       type: "libre",
       garderAvecSuivant: true,
-      contenu: <EnteteOfficielle titre="DOSSIER DE CARRIÈRE" sousTitre={`Situation au ${new Date().toLocaleDateString("fr-FR")}`} />,
+      contenu: <EnteteOfficielle titre="DOSSIER DE CARRIÈRE" sousTitre={`Situation au ${new Date().toLocaleDateString("fr-FR")}`} numero={d.agent.numeroFiche ? `N° de fiche ${d.agent.numeroFiche}` : null} />,
     },
     {
       cle: "identite",
@@ -135,10 +138,13 @@ function construire(d: DossierCarriere) {
           {ligne("Statut", d.agent.libelleStatut)}
           {ligne("Grade", val("GRADE"))}
           {ligne("Catégorie · échelle · échelon", [val("CATEGORIE"), val("ECHELLE"), val("ECHELON")].join(" · "))}
+          {av && ligne(av.libelle, av.origine === "DERNIER" ? dateFr(av.depuis) : "Aucune depuis l’entrée")}
+          {/* Chaque promotion (ou avancement) attendue depuis la dernière, avec l'échelon attendu */}
           {av &&
+            !!d.situation.attendues?.length &&
             ligne(
-              av.libelle,
-              `${av.origine === "DERNIER" ? dateFr(av.depuis) : "aucune depuis l’entrée"}${d.situation.prochainEchelon ? ` (${av.nature === "AVANCEMENT" ? "prochain avancement" : "prochaine promotion"} : ${dateFr(d.situation.prochainEchelon)})` : ""}`,
+              av.nature === "AVANCEMENT" ? "Avancements attendus" : "Promotions attendues",
+              d.situation.attendues.map((x) => `${dateFr(x.date)}${x.echelon ? ` (${x.echelle ? `${x.echelle}, ` : ""}${ordinal(x.echelon)} échelon)` : ""}`).join(" ; "),
             )}
           {ligne("Fonction", val("FONCTION"))}
           {ligne("Lieu de service", val("LIEU_SERVICE"))}

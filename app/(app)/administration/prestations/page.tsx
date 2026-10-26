@@ -27,7 +27,6 @@ const DECISION: Record<string, string> = {
   DGRHAS: "DGRHAS",
 };
 
-const mutation = (t: Type) => t.code.startsWith("MUTATION") || t.code === "PERMUTATION";
 
 /** Catalogue des prestations : pour chaque demande, les pièces exigées, le circuit et le décideur final. */
 export default function Prestations() {
@@ -42,7 +41,7 @@ export default function Prestations() {
     <div className="space-y-5">
       <EnTete
         titre="Catalogue des prestations"
-        sousTitre="Toutes les demandes que les agents peuvent faire (document « Circuits d’approbation des demandes de prestation »). Pour l’instant, seules les demandes de mutation sont ouvertes sur le portail."
+        sousTitre="Toutes les demandes que les agents peuvent faire (document « Circuits d’approbation des demandes de prestation »). Une prestation « ouverte » peut être demandée au bureau (Personnel › Demandes de prestations) comme sur le portail des agents : cliquez sur le crayon et cochez « Ouverte aux demandes »."
       />
       <Annonce ton={message?.ton} fermer={() => setMessage(null)}>
         {message?.texte}
@@ -143,8 +142,8 @@ function EditionType({ t, fermer, apres }: { t: Type; fermer: () => void; apres:
           DDEPPSA…)
         </label>
         <label className="flex items-center gap-2 text-[13px]">
-          <input type="checkbox" disabled={!mutation(t)} checked={f.actif} onChange={(e) => setF({ ...f, actif: e.target.checked })} /> Ouverte aux demandes
-          {!mutation(t) && <span className="text-zinc-400">(seules les mutations pour l’instant)</span>}
+          <input type="checkbox" checked={f.actif} onChange={(e) => setF({ ...f, actif: e.target.checked })} /> Ouverte aux demandes
+          <span className="text-zinc-400">(au bureau et sur le portail des agents)</span>
         </label>
       </div>
       <div className="mt-5 flex justify-end gap-2">

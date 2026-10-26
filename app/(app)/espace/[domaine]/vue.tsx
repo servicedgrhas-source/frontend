@@ -123,7 +123,7 @@ function VuePole({ pole, c }: { pole: Pole; c: Compteurs | null }) {
           const rubriques = rubriquesVisibles(e, profil);
           const E = e.icone;
           return (
-            <Link key={e.cle} href={`/espace/${e.cle}`} className="group flex flex-col rounded-3xl bg-white p-6 shadow-doux transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
+            <Link key={e.cle} href={e.accesDirect ?? `/espace/${e.cle}`} className="group flex flex-col rounded-3xl bg-white p-6 shadow-doux transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
               <div className="flex items-start gap-3">
                 <Pastille ton={travail ? "jaune" : "gris"}>
                   <E />

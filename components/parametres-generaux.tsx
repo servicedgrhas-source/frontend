@@ -32,6 +32,11 @@ const GROUPES: { titre: string; effet: string; cles: string[] }[] = [
     cles: ["CAMPAGNE_RECRUTEMENT", "SIGNATAIRE_LISTE_TITRE", "SIGNATAIRE_LISTE_NOM", "SOIT_TRANSMIS_DESTINATAIRE", "SOIT_TRANSMIS_REFERENCE", "SOIT_TRANSMIS_APPEL"],
   },
   {
+    titre: "Écoles : besoins en enseignants et emplois du temps",
+    effet: "Pris en compte au prochain calcul : besoins en enseignants (Structures et besoins) et emplois du temps générés ensuite. Les emplois du temps déjà générés ne changent pas tant qu’on ne les regénère pas.",
+    cles: ["HEURES_ENSEIGNANT", "HEURES_ENSEIGNANT_LYCEE", "EDT_JOURS", "EDT_CRENEAUX"],
+  },
+  {
     titre: "Fiche de demande de mutation",
     effet: "Imprimé sur la fiche de demande (bouton « Imprimer la fiche » d’une demande), à chaque impression.",
     cles: ["DG_TITRE", "DG_NOM"],

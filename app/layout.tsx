@@ -9,7 +9,7 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "DGRHAS – Affectations et mutations",
+  title: "DGRHAS – MEPPSA",
   description:
     "Gestion des affectations et des mutations du personnel du MEPPSA (DGRHAS)",
 };

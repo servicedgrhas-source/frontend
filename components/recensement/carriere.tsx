@@ -79,6 +79,8 @@ export interface DossierCarriere {
       nombreEchelons: number | null;
     } | null;
     prochainEchelon: string | null;
+    /** Promotions (ou avancements) attendues depuis la dernière, avec l'échelon attendu. */
+    attendues?: { date: string; echelon: number | null; echelle?: string | null }[];
     dernierEchelon: boolean;
   };
   elements: ElementCarriere[];

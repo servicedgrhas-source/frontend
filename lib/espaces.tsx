@@ -1,5 +1,6 @@
 import {
   ArrowLeftRight,
+  Award,
   Building2,
   Banknote,
   BarChart3,
@@ -73,6 +74,8 @@ export interface Espace {
   /** Rappel du circuit, en haut de la page d'accueil. */
   circuit?: string;
   rubriques: Rubrique[];
+  /** La case du domaine ouvre directement cette page (domaine d'une seule page). */
+  accesDirect?: string;
 }
 
 /** « 3 à contrôler · 1 en contentieux » : seulement les nombres non nuls. */
@@ -371,8 +374,26 @@ export const ESPACES: Espace[] = [
     ],
   },
   {
+    cle: "nominations",
+    titre: "Nominations",
+    icone: Award,
+    description:
+      "Les nominations aux postes de responsabilité : chef de bureau, chef de service, directeur, inspecteur, chef d’établissement… De la proposition à l’acte signé, et l’historique des responsables de chaque structure.",
+    circuit: "Poste vacant → proposition → avis → acte de nomination → prise de fonction",
+    accesDirect: "/nominations",
+    rubriques: [
+      {
+        href: "/nominations",
+        libelle: "Nominations",
+        icone: Award,
+        visible: traiter,
+        explication: "Les nominations aux postes de responsabilité, de la proposition à l’acte signé (module en cours de conception).",
+      },
+    ],
+  },
+  {
     cle: "demandes",
-    titre: "Demandes et prestations",
+    titre: "Demandes de prestations",
     icone: FilePlus2,
     description: "Les demandes des agents autres que les mutations : congés, autorisations d’absence, attestations, primes… de leur dépôt à l’acte signé.",
     circuit: "Dépôt par la structure ou sur le portail → avis → décision → acte",
@@ -592,7 +613,7 @@ export const POLES: Pole[] = [
     icone: Users,
     description:
       "Tout ce qui touche aux agents du ministère : leur base et leur recensement, leur recrutement à la Fonction Publique, leurs affectations et mutations, les volontaires et communautaires, et leurs demandes.",
-    espaces: ["personnel", "recrutement", "affectations", "mutations", "enrolement", "demandes"],
+    espaces: ["personnel", "recrutement", "affectations", "mutations", "nominations", "enrolement", "demandes"],
   },
 ];
 
@@ -633,6 +654,7 @@ const DETAILS: [RegExp, string][] = [
   [/^\/personnel\/agents\/nouveau$/, "Nouvelle fiche"],
   [/^\/personnel\/agents\/\d+$/, "Fiche de l’agent"],
   [/^\/ecoles\/\d+$/, "Fiche de l’école"],
+  [/^\/structures\/\d+$/, "Fiche de la structure"],
   [/^\/mutations\/nouvelle$/, "Nouvelle demande"],
   [/^\/mutation\//, "Demande"],
   [/^\/note\//, "Note de service"],

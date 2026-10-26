@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Eye, GitMerge, Paperclip, Trash2, Upload, UserCheck } from "lucide-react";
+import { ArrowLeft, Eye, GitMerge, Paperclip, Trash2, Upload, UserCheck, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useRef, useState } from "react";
@@ -152,12 +152,32 @@ function Formulaire({
   const [message, setMessage] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [horsBase, setHorsBase] = useState(ajout);
+  // Actes de naissance choisis avant l'enregistrement de la fiche (par n° de ligne d'enfant) : envoyés juste après
+  const [actesEnAttente, setActesEnAttente] = useState<Record<number, File>>({});
   const [confirmation, demander] = useConfirmation();
   const central = !["DDEPPSA", "STRUCTURE"].includes(profil.role);
   const modifie = !a || statut !== a.statut || structureId !== String(a.structureId ?? "") || JSON.stringify(d) !== JSON.stringify(a.donnees);
 
   const champs = c.champs.filter((x) => x.actif);
   const manquants = champs.filter((ch) => obligatoire(ch, statut, d) && estVide(nettoyer(ch, d[ch.code])));
+
+  /** Envoie les actes choisis avant l'enregistrement ; rend le nombre d'envois manqués. */
+  async function envoyerActes(id: number) {
+    let echecs = 0;
+    for (const [ligne, f] of Object.entries(actesEnAttente)) {
+      const fd = new FormData();
+      fd.append("type", "ACTE_NAISSANCE_ENFANT");
+      fd.append("ligne", ligne);
+      fd.append("fichier", f);
+      try {
+        await api.post(`/recensement/agents/${id}/pieces`, fd);
+      } catch {
+        echecs++;
+      }
+    }
+    setActesEnAttente({});
+    return echecs;
+  }
 
   async function enregistrer(suivant = false, forcer = false) {
     setErreur(null);
@@ -172,12 +192,16 @@ function Formulaire({
       const corps = { statut, structureId: structureId ? Number(structureId) : null, donnees, forcer, ...(a ? {} : { contentieux: horsBase }) };
       if (a) {
         await api.put(`/recensement/agents/${a.id}`, corps);
+        const echecs = await envoyerActes(a.id);
         setMessage("Fiche enregistrée.");
+        if (echecs) setErreur(`Fiche enregistrée, mais ${echecs} acte(s) de naissance n’ont pas pu être envoyés : déposez-les de nouveau sur la ligne de l’enfant.`);
         setDoublon(null);
         recharger();
       } else {
         const cree = await api.post<AgentRecense>("/recensement/agents", corps);
-        apresCreation(cree, suivant);
+        // Un acte non envoyé : on reste sur la fiche créée, où il apparaît à déposer
+        const echecs = await envoyerActes(cree.id);
+        apresCreation(cree, suivant && !echecs);
       }
     } catch (x) {
       const m = (x as Error).message;
@@ -317,13 +341,33 @@ function Formulaire({
                     key={ch.code}
                     ch={ch}
                     valeur={d[ch.code]}
-                    changer={(v) => setD((x) => ({ ...x, [ch.code]: v }))}
+                    changer={(v) => {
+                      // Une ligne d'enfant supprimée décale les suivantes : les actes choisis sont à rechoisir
+                      if (ch.code === "ENFANTS" && (Array.isArray(v) ? v.length : 0) < (Array.isArray(d.ENFANTS) ? d.ENFANTS.length : 0)) setActesEnAttente({});
+                      setD((x) => ({ ...x, [ch.code]: v }));
+                    }}
                     requis={requis}
                     manquant={verifier && requis && estVide(nettoyer(ch, d[ch.code]))}
                     departementId={refs.departements.find((x) => x.code === d.DEPARTEMENT)?.id ?? null}
                     extraLigne={
                       ch.code === "ENFANTS" && c.pieces.some((p) => p.code === "ACTE_NAISSANCE_ENFANT" && p.actif)
-                        ? (i) => <ActeEnfant fiche={fiche} ligne={i + 1} attente={!a ? "Enregistrez d’abord la fiche." : modifie ? "Enregistrez d’abord les modifications de la fiche." : null} recharger={recharger} />
+                        ? (i) => (
+                            <ActeEnfant
+                              fiche={fiche}
+                              ligne={i + 1}
+                              differe={!a || modifie}
+                              enAttente={actesEnAttente[i + 1] ?? null}
+                              choisir={(f) =>
+                                setActesEnAttente((x) => {
+                                  const y = { ...x };
+                                  if (f) y[i + 1] = f;
+                                  else delete y[i + 1];
+                                  return y;
+                                })
+                              }
+                              recharger={recharger}
+                            />
+                          )
                         : undefined
                     }
                   />
@@ -448,7 +492,25 @@ function nettoyer(ch: ChampFiche, v: unknown): unknown {
  * Acte de naissance d'un enfant, déposé sur sa ligne (DG, 24/10/2026) : il ne bloque pas la fiche,
  * il peut venir plus tard. Un nouveau scan remplace celui de cet enfant.
  */
-function ActeEnfant({ fiche, ligne, attente, recharger }: { fiche: Fiche | null; ligne: number; attente: string | null; recharger: () => void }) {
+/**
+ * Acte de naissance d'un enfant, sur sa ligne. Fiche pas encore enregistrée (ou modifiée) : le fichier
+ * est choisi tout de suite et envoyé à l'enregistrement de la fiche (`differe`).
+ */
+function ActeEnfant({
+  fiche,
+  ligne,
+  differe,
+  enAttente,
+  choisir,
+  recharger,
+}: {
+  fiche: Fiche | null;
+  ligne: number;
+  differe: boolean;
+  enAttente: File | null;
+  choisir: (f: File | null) => void;
+  recharger: () => void;
+}) {
   const fichier = useRef<HTMLInputElement>(null);
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -471,7 +533,7 @@ function ActeEnfant({ fiche, ligne, attente, recharger }: { fiche: Fiche | null;
     }
   }
   return (
-    <div className="flex items-center gap-1" title={erreur ?? attente ?? undefined}>
+    <div className="flex items-center gap-1" title={erreur ?? undefined}>
       <input
         ref={fichier}
         type="file"
@@ -480,10 +542,23 @@ function ActeEnfant({ fiche, ligne, attente, recharger }: { fiche: Fiche | null;
         onChange={(e) => {
           const f = e.target.files?.[0];
           e.target.value = "";
-          if (f) void deposer(f);
+          if (f && differe) choisir(f);
+          else if (f) void deposer(f);
         }}
       />
-      {piece ? (
+      {enAttente ? (
+        <>
+          <span
+            title={`${enAttente.name} : envoyé à l’enregistrement de la fiche`}
+            className="inline-flex max-w-36 items-center gap-1 rounded-lg bg-or-50 px-2 py-1.5 text-[11px] font-medium whitespace-nowrap text-or-700"
+          >
+            <Paperclip className="size-3 shrink-0" /> <span className="truncate">Acte prêt</span>
+          </span>
+          <button type="button" onClick={() => choisir(null)} title="Retirer ce fichier" aria-label="Retirer ce fichier" className="rounded-lg p-1.5 text-zinc-400 hover:bg-white hover:text-rouge-600">
+            <X className="size-3.5" />
+          </button>
+        </>
+      ) : piece ? (
         <>
           <button
             type="button"
@@ -495,9 +570,9 @@ function ActeEnfant({ fiche, ligne, attente, recharger }: { fiche: Fiche | null;
           </button>
           <button
             type="button"
-            disabled={!!attente || envoi}
+            disabled={envoi}
             onClick={() => fichier.current?.click()}
-            title="Remplacer l’acte par un autre scan"
+            title={differe ? "Remplacer l’acte par un autre scan (envoyé à l’enregistrement de la fiche)" : "Remplacer l’acte par un autre scan"}
             aria-label="Remplacer l’acte"
             className="rounded-lg p-1.5 text-zinc-400 hover:bg-white hover:text-marque-700 disabled:opacity-50"
           >
@@ -507,8 +582,9 @@ function ActeEnfant({ fiche, ligne, attente, recharger }: { fiche: Fiche | null;
       ) : (
         <button
           type="button"
-          disabled={!!attente || envoi}
+          disabled={envoi}
           onClick={() => fichier.current?.click()}
+          title={differe ? "Choisissez le scan : il sera envoyé à l’enregistrement de la fiche" : undefined}
           className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1.5 text-[11px] font-medium whitespace-nowrap text-zinc-600 ring-1 ring-zinc-200 hover:text-marque-700 disabled:opacity-50"
         >
           <Upload className="size-3" /> {envoi ? "Envoi…" : "Déposer l’acte"}
