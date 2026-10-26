@@ -58,6 +58,7 @@ const LIBELLES: Record<string, string> = {
   DIRECTION_CENTRALE: "Direction centrale",
   DIRECTION_GENERALE: "Direction générale",
   INSPECTION_GENERALE: "Inspection générale",
+  ORGANISME_TUTELLE: "Organisme sous tutelle",
   BUREAU_DGRHAS: "Bureau de la DGRHAS",
   SERVICE_DGRHAS: "Service de la DGRHAS",
   DIRECTION_DGRHAS: "Direction de la DGRHAS",
@@ -70,10 +71,11 @@ const PARENTS: Record<string, string[]> = {
   CABINET: ["MINISTERE"],
   DIRECTION_GENERALE: ["MINISTERE", "CABINET"],
   INSPECTION_GENERALE: ["MINISTERE"],
+  ORGANISME_TUTELLE: ["MINISTERE", "CABINET"],
   DGRHAS: ["MINISTERE"],
-  SERVICE: ["DIRECTION_CENTRALE", "DIRECTION_GENERALE", "INSPECTION_GENERALE", "CABINET"],
+  SERVICE: ["DIRECTION_CENTRALE", "DIRECTION_GENERALE", "INSPECTION_GENERALE", "ORGANISME_TUTELLE", "CABINET"],
   BUREAU: ["SERVICE"],
-  DIRECTION_CENTRALE: ["DIRECTION_GENERALE", "INSPECTION_GENERALE", "CABINET"],
+  DIRECTION_CENTRALE: ["DIRECTION_GENERALE", "INSPECTION_GENERALE", "ORGANISME_TUTELLE", "CABINET"],
   BUREAU_DGRHAS: ["SERVICE_DGRHAS"],
   SERVICE_DGRHAS: ["DIRECTION_DGRHAS", "DGRHAS"],
   DIRECTION_DGRHAS: ["DGRHAS"],
@@ -83,6 +85,7 @@ const ENFANTS: Record<string, string> = {
   MINISTERE: "DIRECTION_GENERALE",
   CABINET: "DIRECTION_CENTRALE",
   INSPECTION_GENERALE: "DIRECTION_CENTRALE",
+  ORGANISME_TUTELLE: "DIRECTION_CENTRALE",
   SERVICE: "BUREAU",
   DDEPPSA: "INSPECTION",
   INSPECTION: "ETABLISSEMENT",
@@ -149,11 +152,11 @@ export default function Organigramme() {
       ? liste.filter((s) => s.type === "DDEPPSA" && String(s.departementId) === departement)
       : vue === "centrale"
         ? // Du ministère jusqu'aux bureaux ; à défaut, les directions générales sans supérieure
-          liste.filter((s) => s.type === "MINISTERE" || (["DIRECTION_GENERALE", "INSPECTION_GENERALE", "CABINET"].includes(s.type) && !s.parentId))
+          liste.filter((s) => s.type === "MINISTERE" || (["DIRECTION_GENERALE", "INSPECTION_GENERALE", "ORGANISME_TUTELLE", "CABINET"].includes(s.type) && !s.parentId))
         : liste.filter((s) => s.type === "DGRHAS");
   // Structures de la voie hiérarchique sans aucun compte : leurs dossiers resteraient bloqués
   const sansCompte = comptes.donnees
-    ? liste.filter((s) => s.actif && ["ETABLISSEMENT", "INSPECTION", "SERVICE", "DIRECTION_CENTRALE", "DIRECTION_GENERALE", "BUREAU_DGRHAS", "SERVICE_DGRHAS", "DIRECTION_DGRHAS"].includes(s.type) && !nbComptes(s.id))
+    ? liste.filter((s) => s.actif && ["ETABLISSEMENT", "INSPECTION", "SERVICE", "DIRECTION_CENTRALE", "DIRECTION_GENERALE", "ORGANISME_TUTELLE", "BUREAU_DGRHAS", "SERVICE_DGRHAS", "DIRECTION_DGRHAS"].includes(s.type) && !nbComptes(s.id))
     : [];
   // Écoles et inspections rattachées directement au département (sans structure supérieure)
   const orphelines = vue === "departements" ? liste.filter((s) => ["INSPECTION", "ETABLISSEMENT"].includes(s.type) && !s.parentId && String(s.departementId) === departement) : [];

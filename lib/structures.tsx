@@ -20,6 +20,7 @@ export const TYPES_STRUCTURE: Record<string, TypeStructure> = {
   CABINET: T("Cabinet", 1, Briefcase, "bg-or-100 text-or-700", "bg-or-100 text-or-700"),
   INSPECTION_GENERALE: T("Inspection générale", 2, ShieldCheck, "bg-rouge-100 text-rouge-600", "bg-rouge-100 text-rouge-600"),
   DIRECTION_GENERALE: T("Direction générale", 3, Building2, "bg-marque-100 text-marque-700", "bg-marque-50 text-marque-700"),
+  ORGANISME_TUTELLE: T("Organisme sous tutelle", 3, Landmark, "bg-indigo-100 text-indigo-700", "bg-indigo-50 text-indigo-700"),
   DGRHAS: T("Direction générale", 3, Building2, "bg-marque-100 text-marque-700", "bg-marque-50 text-marque-700"),
   DIRECTION_CENTRALE: T("Direction centrale", 4, Building, "bg-sky-100 text-sky-700", "bg-sky-50 text-sky-700"),
   DIRECTION_DGRHAS: T("Direction", 4, Building, "bg-sky-100 text-sky-700", "bg-sky-50 text-sky-700"),
