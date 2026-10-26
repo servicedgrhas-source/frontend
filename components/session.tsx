@@ -6,7 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, CLE_JETON, fermerSession, lireSession, memoriserProfil, ouvrirSession, SESSION_ROUVERTE, surSessionExpiree, TRAVAIL_MODIFIE, type Profil } from "@/lib/api";
-import { appliquerMenu, cheminDe, ESPACES, espaceDe, MENU, MENU_MODIFIE, POLES, poleDe, rubriquesVisibles, travailEspace, type Compteurs, type ConfigMenu } from "@/lib/espaces";
+import { appliquerMenu, cheminDe, ESPACES, espaceDe, lienEspace, MENU, MENU_MODIFIE, POLES, poleDe, rubriquesVisibles, travailEspace, type Compteurs, type ConfigMenu } from "@/lib/espaces";
 import { ROLES } from "@/lib/libelles";
 import type { Referentiels } from "@/lib/types";
 import { Alerte, Bouton, Champ, Chargement, cx, Modale, Saisie } from "./ui";
@@ -220,10 +220,11 @@ export function Coquille({ children }: { children: ReactNode }) {
                 mènent aux volets ; le chemin en haut de la page dit où l'on est */}
             {MENU.map((m) => {
               if (m.pole) {
-                const pole = POLES.find((x) => x.cle === m.pole)!;
+                const pole = POLES.find((x) => x.cle === m.pole);
+                if (!pole) return null;
                 const espaces = pole.espaces
-                  .map((c) => ESPACES.find((e) => e.cle === c)!)
-                  .filter((e) => (p.role !== "STRUCTURE" || ESPACES_STRUCTURE.includes(e.cle)) && rubriquesVisibles(e, p).length);
+                  .map((c) => ESPACES.find((e) => e.cle === c))
+                  .filter((e): e is NonNullable<typeof e> => !!e && rubriquesVisibles(e, p).length > 0);
                 if (!espaces.length) return null;
                 const travail = espaces.reduce((n, e) => n + travailEspace(e, p, compteurs), 0);
                 return (
@@ -238,11 +239,10 @@ export function Coquille({ children }: { children: ReactNode }) {
                   />
                 );
               }
-              const e = ESPACES.find((x) => x.cle === m.espace)!;
-              // Comptes des écoles, inspections… : leurs dossiers et la base de leur personnel
-              if (p.role === "STRUCTURE" && !ESPACES_STRUCTURE.includes(e.cle)) return null;
-              if (!rubriquesVisibles(e, p).length) return null;
-              return <LienMenu key={e.cle} href={`/espace/${e.cle}`} libelle={e.titre} icone={e.icone} actif={espaceCourant?.cle === e.cle} principal nombre={travailEspace(e, p, compteurs)} />;
+              const e = ESPACES.find((x) => x.cle === m.espace);
+              // Comptes des écoles, inspections… : seulement les rubriques de leur personnel et de leurs demandes
+              if (!e || !rubriquesVisibles(e, p).length) return null;
+              return <LienMenu key={e.cle} href={lienEspace(e, p)} libelle={e.titre} icone={e.icone} actif={espaceCourant?.cle === e.cle} principal nombre={travailEspace(e, p, compteurs)} />;
             })}
           </nav>
 
@@ -310,8 +310,6 @@ export function Coquille({ children }: { children: ReactNode }) {
 }
 
 /** Une ligne du menu (rubrique, ou lien principal comme le tableau de bord). */
-/** Domaines ouverts aux comptes des écoles, inspections… : leur personnel, leurs demandes, leur école. */
-const ESPACES_STRUCTURE = ["personnel", "demandes", "structures"];
 
 function LienMenu({
   href,

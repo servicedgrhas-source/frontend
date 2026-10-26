@@ -7,7 +7,7 @@ import { GuideEnrolement } from "@/components/enrolement/guide";
 import { useSession } from "@/components/session";
 import { Alerte, EnTete, Pastille } from "@/components/ui";
 import { useApi } from "@/lib/api";
-import { ESPACES, POLES, rubriquesVisibles, travailEspace, type Compteurs, type Pole } from "@/lib/espaces";
+import { ESPACES, lienEspace, POLES, rubriquesVisibles, travailEspace, type Compteurs, type Pole } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 /** Page d'accueil d'un domaine : ses rubriques, dans l'ordre du travail, avec ce qui attend. */
@@ -94,18 +94,16 @@ export function VueEspace() {
   );
 }
 
-/** Domaines ouverts aux comptes des écoles, inspections… (comme dans le menu). */
-const ESPACES_STRUCTURE = ["personnel", "demandes", "structures"];
-
 /**
  * Page d'une grande rubrique (« Personnel ») : une case par domaine, avec ce qu'on y fait et ce
  * qui attend ; on entre dans le domaine pour voir ses rubriques.
  */
 function VuePole({ pole, c }: { pole: Pole; c: Compteurs | null }) {
   const { profil } = useSession();
+  // Les droits suivent chaque rubrique (comptes des écoles compris) : un domaine sans rubrique permise est caché
   const espaces = pole.espaces
-    .map((k) => ESPACES.find((e) => e.cle === k)!)
-    .filter((e) => (profil.role !== "STRUCTURE" || ESPACES_STRUCTURE.includes(e.cle)) && rubriquesVisibles(e, profil).length);
+    .map((k) => ESPACES.find((e) => e.cle === k))
+    .filter((e): e is NonNullable<typeof e> => !!e && rubriquesVisibles(e, profil).length > 0);
   const Icone = pole.icone;
   return (
     <div className="space-y-6">
@@ -123,7 +121,7 @@ function VuePole({ pole, c }: { pole: Pole; c: Compteurs | null }) {
           const rubriques = rubriquesVisibles(e, profil);
           const E = e.icone;
           return (
-            <Link key={e.cle} href={e.accesDirect ?? `/espace/${e.cle}`} className="group flex flex-col rounded-3xl bg-white p-6 shadow-doux transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
+            <Link key={e.cle} href={lienEspace(e, profil)} className="group flex flex-col rounded-3xl bg-white p-6 shadow-doux transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
               <div className="flex items-start gap-3">
                 <Pastille ton={travail ? "jaune" : "gris"}>
                   <E />

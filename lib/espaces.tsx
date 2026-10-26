@@ -1,6 +1,12 @@
 import {
   ArrowLeftRight,
   Award,
+  Briefcase,
+  BookOpen,
+  Folder,
+  Landmark,
+  Repeat,
+  Search,
   Building2,
   Banknote,
   BarChart3,
@@ -33,6 +39,7 @@ import {
 } from "lucide-react";
 import type { Profil } from "./api";
 import { peut } from "./libelles";
+import { type ConfigMenu, construireMenu, idRubrique, type OrigineMenu } from "./menu-config";
 
 /** Travail en attente, renvoyé par « /menu/compteurs ». */
 export interface Compteurs {
@@ -52,8 +59,10 @@ export interface Compteurs {
 }
 
 export interface Rubrique {
-  /** Sous-titre du menu (ex. « Chaque mois : payer ») : les rubriques qui le suivent en font partie. */
+  /** Sous-section du domaine (ex. « Chaque mois : payer ») : les rubriques qui la suivent en font partie. */
   groupe?: string;
+  /** Domaine d'origine (rempli au chargement) : les droits ne changent pas si la rubrique est déplacée. */
+  origine?: string;
   href: string;
   libelle: string;
   icone: LucideIcon;
@@ -74,8 +83,6 @@ export interface Espace {
   /** Rappel du circuit, en haut de la page d'accueil. */
   circuit?: string;
   rubriques: Rubrique[];
-  /** La case du domaine ouvre directement cette page (domaine d'une seule page). */
-  accesDirect?: string;
 }
 
 /** « 3 à contrôler · 1 en contentieux » : seulement les nombres non nuls. */
@@ -380,7 +387,6 @@ export const ESPACES: Espace[] = [
     description:
       "Les nominations aux postes de responsabilité : chef de bureau, chef de service, directeur, inspecteur, chef d’établissement… De la proposition à l’acte signé, et l’historique des responsables de chaque structure.",
     circuit: "Poste vacant → proposition → avis → acte de nomination → prise de fonction",
-    accesDirect: "/nominations",
     rubriques: [
       {
         href: "/nominations",
@@ -623,8 +629,24 @@ export const MENU: { pole?: string; espace?: string }[] = [{ pole: "rh" }, { esp
 
 export const poleDe = (cleEspace: string | null | undefined) => (cleEspace ? (POLES.find((p) => p.espaces.includes(cleEspace)) ?? null) : null);
 
-/** Rubriques d'un espace que ce profil peut voir. */
-export const rubriquesVisibles = (e: Espace, p: Profil) => e.rubriques.filter((r) => !r.visible || r.visible(p));
+/** Domaines ouverts aux comptes des écoles, inspections… : leur personnel, leurs demandes, leur école. */
+const ORIGINES_STRUCTURE = ["personnel", "demandes", "structures"];
+
+/**
+ * Rubriques d'un espace que ce profil peut voir. Les droits suivent la rubrique (et son domaine
+ * d'origine pour les comptes des écoles), pas l'endroit où le menu l'a rangée.
+ */
+export const rubriquesVisibles = (e: Espace, p: Profil) =>
+  e.rubriques.filter((r) => (!r.visible || r.visible(p)) && (p.role !== "STRUCTURE" || ORIGINES_STRUCTURE.includes(r.origine ?? e.cle)));
+
+/** Où mène la case ou l'entrée d'un domaine : sa seule page s'il n'en a qu'une, sinon sa page d'accueil. */
+export function lienEspace(e: Espace, p: Profil) {
+  const r = rubriquesVisibles(e, p);
+  return r.length === 1 ? r[0].href : `/espace/${e.cle}`;
+}
+
+/** Le domaine où se trouvent aujourd'hui les rubriques d'un domaine d'origine (pages de détail). */
+const espaceAvecOrigine = (origine: string) => ESPACES.find((e) => e.rubriques.some((r) => r.origine === origine)) ?? null;
 
 /** Espace auquel appartient une page (le plus long préfixe d'URL l'emporte). */
 export function espaceDe(chemin: string): Espace | null {
@@ -635,10 +657,10 @@ export function espaceDe(chemin: string): Espace | null {
       if ((chemin === r.href || chemin.startsWith(`${r.href}/`)) && (!meilleur || r.href.length > meilleur.long)) meilleur = { e, long: r.href.length };
   // Pages de détail rattachées à un domaine
   if (!meilleur) {
-    if (chemin === "/pilotage") return ESPACES.find((e) => e.cle === "recrutement")!;
-    if (chemin.startsWith("/structures")) return ESPACES.find((e) => e.cle === "structures")!;
-    if (chemin.startsWith("/note/")) return ESPACES.find((e) => e.cle === "notes")!;
-    if (chemin.startsWith("/mutation/")) return ESPACES.find((e) => e.cle === "mutations")!;
+    if (chemin === "/pilotage") return espaceAvecOrigine("recrutement");
+    if (chemin.startsWith("/structures")) return espaceAvecOrigine("structures");
+    if (chemin.startsWith("/note/")) return espaceAvecOrigine("notes");
+    if (chemin.startsWith("/mutation/")) return espaceAvecOrigine("mutations");
   }
   return meilleur?.e ?? null;
 }
@@ -690,55 +712,78 @@ export function cheminDe(chemin: string, p: Profil): { libelle: string; href?: s
 
 /* ------------------------------ Menu réglé par l'administrateur ou le DG ------------------------------ */
 
-/** Noms et ordre du menu choisis à l'écran (Administration › Menu) ; seuls les écarts sont gardés. */
-export interface ConfigMenu {
-  /** « pole:rh », « espace:recrutement », « rubrique:/pilotage » → nouveau nom. */
-  noms: Record<string, string>;
-  /** « menu » (ses entrées « pole:rh », « espace:notes »…), « pole:rh » (ses domaines), « espace:… » (ses rubriques, par adresse). */
-  ordres: Record<string, string[]>;
-}
+export type { ConfigMenu } from "./menu-config";
 export const MENU_MODIFIE = "dgrhas:menu-modifie";
 
-/** Le menu d'origine, gardé pour rétablir les noms et l'ordre. */
-export const MENU_ORIGINE = {
-  menu: MENU.map((m) => (m.pole ? `pole:${m.pole}` : `espace:${m.espace}`)),
-  poles: Object.fromEntries(POLES.map((p) => [p.cle, { titre: p.titre, espaces: [...p.espaces] }])),
-  espaces: Object.fromEntries(ESPACES.map((e) => [e.cle, { titre: e.titre, rubriques: e.rubriques.map((r) => ({ href: r.href, libelle: r.libelle })) }])),
+/** Icônes proposées pour les domaines et grandes rubriques créés dans Administration › Menu. */
+export const ICONES_MENU: Record<string, LucideIcon> = {
+  Folder,
+  Users,
+  Briefcase,
+  ClipboardList,
+  FileText,
+  BookOpen,
+  Building2,
+  School,
+  Landmark,
+  Repeat,
+  Search,
+  Settings,
 };
-const RUBRIQUES_ORIGINE = new Map(ESPACES.map((e) => [e.cle, [...e.rubriques]]));
+
+// Le menu d'origine (celui du programme), gardé tel quel : chaque réglage repart de lui
+for (const e of ESPACES) for (const r of e.rubriques) r.origine = e.cle;
+const ESPACES_ORIGINE = new Map(ESPACES.map((e) => [e.cle, { ...e, rubriques: [...e.rubriques] }]));
+const POLES_ORIGINE = new Map(POLES.map((x) => [x.cle, { ...x, espaces: [...x.espaces] }]));
+const RUBRIQUES_ORIGINE = new Map(ESPACES.flatMap((e) => e.rubriques.map((r) => [idRubrique(e.cle, r.href), { ...r }] as const)));
+const RUBRIQUES = new Map(ESPACES.flatMap((e) => e.rubriques.map((r) => [idRubrique(e.cle, r.href), r] as const)));
+
+/** Le menu d'origine, sous la forme que lit le réglage (noms, places, sous-sections). */
+export const ORIGINE_MENU: OrigineMenu = {
+  menu: MENU.map((m) => (m.pole ? `pole:${m.pole}` : `espace:${m.espace}`)),
+  poles: POLES.map((x) => ({ cle: x.cle, titre: x.titre, description: x.description, espaces: [...x.espaces] })),
+  espaces: ESPACES.map((e) => ({
+    cle: e.cle,
+    titre: e.titre,
+    description: e.description,
+    rubriques: e.rubriques.map((r) => ({ id: idRubrique(e.cle, r.href), href: r.href, libelle: r.libelle, ...(r.groupe ? { groupe: r.groupe } : {}) })),
+  })),
+};
+
+/** Icône d'origine de chaque domaine et grande rubrique (« espace:personnel », « pole:rh »). */
+export const ICONES_ORIGINE: Record<string, LucideIcon> = Object.fromEntries([
+  ...[...ESPACES_ORIGINE.values()].map((e) => [`espace:${e.cle}`, e.icone] as const),
+  ...[...POLES_ORIGINE.values()].map((x) => [`pole:${x.cle}`, x.icone] as const),
+]);
+
+/** La rubrique (page) d'un identifiant : son adresse, son icône, son explication. */
+export const rubriqueDe = (id: string) => RUBRIQUES_ORIGINE.get(id) ?? null;
 
 /**
- * Range une liste selon un ordre choisi. Ce qui n'y est pas (entrée ajoutée depuis) se place
- * juste après l'entrée qui la précède dans la liste d'origine.
+ * Applique le menu réglé (Administration › Menu), en repartant toujours du menu d'origine : noms,
+ * places des rubriques, sous-sections, domaines et grandes rubriques créés. Rien ne peut se perdre.
  */
-function ranger<T>(liste: T[], cle: (x: T) => string, ordre?: string[]) {
-  if (!ordre?.length) return liste;
-  const rang = new Map(ordre.map((k, i) => [k, i]));
-  const rangees = liste.filter((x) => rang.has(cle(x))).sort((a, b) => rang.get(cle(a))! - rang.get(cle(b))!);
-  liste.forEach((x, i) => {
-    if (rang.has(cle(x))) return;
-    const avant = i > 0 ? rangees.indexOf(liste[i - 1]) : -1;
-    rangees.splice(avant + 1, 0, x);
-  });
-  return rangees;
-}
-
-/** Applique les noms et l'ordre choisis (en repartant toujours du menu d'origine). */
 export function appliquerMenu(c: ConfigMenu | null | undefined) {
-  const noms = c?.noms ?? {};
-  const ordres = c?.ordres ?? {};
-  for (const p of POLES) {
-    const o = MENU_ORIGINE.poles[p.cle];
-    p.titre = noms[`pole:${p.cle}`] || o.titre;
-    p.espaces = ranger(o.espaces, (x) => x, ordres[`pole:${p.cle}`]);
-  }
-  for (const e of ESPACES) {
-    const o = MENU_ORIGINE.espaces[e.cle];
-    e.titre = noms[`espace:${e.cle}`] || o.titre;
-    const rubriques = RUBRIQUES_ORIGINE.get(e.cle)!;
-    for (const r of rubriques) r.libelle = noms[`rubrique:${r.href}`] || o.rubriques.find((x) => x.href === r.href)!.libelle;
-    e.rubriques = ranger(rubriques, (r) => r.href, ordres[`espace:${e.cle}`]);
-  }
-  const menu = ranger(MENU_ORIGINE.menu, (x) => x, ordres.menu).map((k) => (k.startsWith("pole:") ? { pole: k.slice(5) } : { espace: k.slice(7) }));
-  MENU.splice(0, MENU.length, ...menu);
+  const m = construireMenu(ORIGINE_MENU, c);
+  const espaces: Espace[] = m.espaces.map((x) => {
+    const o = ESPACES_ORIGINE.get(x.cle);
+    const rubriques = x.rubriques.map((y) => {
+      const r = RUBRIQUES.get(y.id)!;
+      r.libelle = y.libelle;
+      r.groupe = y.groupe;
+      return r;
+    });
+    return o
+      ? { ...o, titre: x.titre, description: x.description, rubriques }
+      : { cle: x.cle, titre: x.titre, description: x.description, icone: ICONES_MENU[x.icone ?? ""] ?? Folder, rubriques };
+  });
+  const poles: Pole[] = m.poles.map((x) => {
+    const o = POLES_ORIGINE.get(x.cle);
+    return o
+      ? { ...o, titre: x.titre, description: x.description, espaces: x.espaces }
+      : { cle: x.cle, titre: x.titre, description: x.description, icone: ICONES_MENU[x.icone ?? ""] ?? Folder, espaces: x.espaces };
+  });
+  ESPACES.splice(0, ESPACES.length, ...espaces);
+  POLES.splice(0, POLES.length, ...poles);
+  MENU.splice(0, MENU.length, ...m.menu.map((k) => (k.startsWith("pole:") ? { pole: k.slice(5) } : { espace: k.slice(7) })));
 }
