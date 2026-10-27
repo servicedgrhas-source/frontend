@@ -161,6 +161,8 @@ function construire(l: ListeLot, d: Listes) {
     {
       cle: "signature",
       type: "libre",
+      // Jamais seule en haut d'une page (DG, 26/10/2026)
+      garderAvecPrecedent: true,
       contenu: (
         <div className="flex justify-end pt-8 text-[11pt]">
           <div className="w-[46%]">

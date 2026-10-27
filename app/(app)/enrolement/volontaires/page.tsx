@@ -156,7 +156,7 @@ function Reprise({ apres, ouvertParDefaut, population }: { apres: () => void; ou
         )}
         .
       </Alerte>
-      {bloc("en double dans le fichier (même personne probable) : contrôle « Inscrit deux fois » à la bourse", r.doublonsDansFichier, "rouge")}
+      {bloc("en double dans le fichier (même personne probable) : les deux lignes sont enregistrées, et bloquées à la bourse (« Inscrit deux fois ») tant qu’on n’a pas tranché. Pour corriger : Paiement mensuel › contrôle « Inscrit deux fois » › cliquer sur le nom", r.doublonsDansFichier, "rouge")}
       {bloc("encore en poste dans le registre : la bourse les signalera (« Déjà recruté »)", r.enPosteRetrouves, "rouge")}
       {bloc("catégorie non reconnue (bourse à 0 tant que la fiche n’est pas corrigée)", r.sansCategorie)}
       {bloc("département non reconnu", r.sansDepartement)}
@@ -672,8 +672,9 @@ export default function RegistreVolontaires() {
               <button
                 key={String(x.vague)}
                 type="button"
-                onClick={() => filtre(() => setVague(vague === String(x.vague ?? "") ? "" : String(x.vague ?? "")))}
-                className={`rounded-xl px-3 py-1.5 text-[12px] ring-1 ${vague !== "" && vague === String(x.vague ?? "") ? "bg-marque-500 text-white ring-marque-500" : "bg-white ring-zinc-200 hover:bg-zinc-50"}`}
+                // « aucune » : la vague n'est pas reconnue (vide ou mal écrite)
+                onClick={() => filtre(() => setVague(vague === String(x.vague ?? "aucune") ? "" : String(x.vague ?? "aucune")))}
+                className={`rounded-xl px-3 py-1.5 text-[12px] ring-1 ${vague === String(x.vague ?? "aucune") ? "bg-marque-500 text-white ring-marque-500" : "bg-white ring-zinc-200 hover:bg-zinc-50"}`}
               >
                 {x.vague === null ? "Vague inconnue" : libelleVague(x.vague)} · <strong>{nf.format(x.enPoste)}</strong>
               </button>

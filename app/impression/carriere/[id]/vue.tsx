@@ -8,6 +8,9 @@ import { dateFr, type DossierCarriere, GENRES } from "@/components/recensement/c
 import { Alerte, Bouton, Chargement } from "@/components/ui";
 import { lireSession, useApi } from "@/lib/api";
 
+/** « 23/10/2026 à 21:17 » */
+const creeLe = (iso: string) => new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).replace(" ", " à ");
+
 /**
  * Dossier de carrière imprimé (A4), tel que le bureau du fichier le tient (DG, 24/10/2026) :
  * identification, situation professionnelle, situation matrimoniale (avec les enfants), puis les
@@ -112,7 +115,15 @@ function construire(d: DossierCarriere) {
       cle: "entete",
       type: "libre",
       garderAvecSuivant: true,
-      contenu: <EnteteOfficielle titre="DOSSIER DE CARRIÈRE" sousTitre={`Situation au ${new Date().toLocaleDateString("fr-FR")}`} numero={d.agent.numeroFiche ? `N° de fiche ${d.agent.numeroFiche}` : null} />,
+      contenu: (
+        <EnteteOfficielle
+          titre="DOSSIER DE CARRIÈRE"
+          sousTitre={`Situation au ${new Date().toLocaleDateString("fr-FR")}`}
+          numero={d.agent.numeroFiche ? `N° de fiche ${d.agent.numeroFiche}` : null}
+          // Sous le numéro : quand la fiche a été créée (DG, 26/10/2026), à ne pas confondre avec la date d'édition
+          sousNumero={d.agent.creeLe ? `Fiche créée le ${creeLe(d.agent.creeLe)}` : null}
+        />
+      ),
     },
     {
       cle: "identite",
@@ -126,11 +137,6 @@ function construire(d: DossierCarriere) {
           {d.agent.nationalite && ligne("Nationalité", d.agent.nationalite)}
           {ligne("Matricule solde", d.agent.matricule ?? "—")}
           {ligne("N° de fiche", d.agent.numeroFiche ?? "—")}
-          {d.agent.creeLe &&
-            ligne(
-              "Fiche créée le",
-              new Date(d.agent.creeLe).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).replace(" ", " à "),
-            )}
         </div>
       ),
     },
@@ -209,6 +215,8 @@ function construire(d: DossierCarriere) {
     {
       cle: "signature",
       type: "libre",
+      // Jamais seule en haut d'une page : elle emmène au moins le bloc qui la précède
+      garderAvecPrecedent: true,
       contenu: <SignatureOfficielle titre={d.signature.titre} nom={d.signature.nom} lieu={d.signature.lieu} />,
     },
   ];

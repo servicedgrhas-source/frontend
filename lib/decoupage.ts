@@ -20,7 +20,8 @@ export function decouperPages(blocs: BlocMesure[], hauteur: Map<string, number>,
   const parCle = new Map(blocs.map((x) => [x.cle, x]));
   /**
    * Ce qui part avec un bloc « garderAvecPrecedent » sur la page suivante : les blocs du même genre
-   * juste avant lui, une ligne de tableau, et les titres qui la précédaient. Rien si la page se viderait.
+   * juste avant lui, puis une ligne de tableau (ou, sans tableau, le bloc d'avant), et les titres qui
+   * la précédaient. Rien si la page se viderait.
    */
   const aEmmener = (page: string[]) => {
     let k = page.length;
@@ -29,7 +30,8 @@ export function decouperPages(blocs: BlocMesure[], hauteur: Map<string, number>,
       if (x.type === "libre" && x.garderAvecPrecedent) k--;
       else break;
     }
-    if (!k || parCle.get(page[k - 1])!.type !== "ligne") return [];
+    if (!k) return [];
+    // Une ligne de tableau (et les titres qui la précèdent), ou à défaut le bloc d'avant
     k--;
     while (k > 0) {
       const x = parCle.get(page[k - 1])!;

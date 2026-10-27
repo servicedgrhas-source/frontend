@@ -27,6 +27,8 @@ interface Rapport {
   colonnes: string[];
   sansMatricule: number;
   ignorees: string[];
+  /** PDF de la Solde : date d'édition imprimée en tête (AAAA-MM-JJ). */
+  editeLe?: string | null;
 }
 interface Resultat {
   volontaire: { id: string; nomComplet: string; dateNaissance: string | null; departement: string | null; etablissement: string | null; categorie: string | null; vague: string | null; population: string };
@@ -84,13 +86,13 @@ export default function PointageBottin() {
   if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
   const gerer = peutGerer(profil.role);
 
-  async function importer(f: File, essai: boolean) {
+  async function importer(f: File, essai: boolean, m = moisImport) {
     setErreur(null);
     setEnvoi(true);
     try {
       const fd = new FormData();
       fd.append("fichier", f);
-      const r = await api.post<Rapport>(`/enrolement/bottin/import?mois=${moisImport}&essai=${essai ? 1 : 0}`, fd);
+      const r = await api.post<Rapport>(`/enrolement/bottin/import?mois=${m}&essai=${essai ? 1 : 0}`, fd);
       setRapport(r);
       setFichier(essai ? f : null);
       if (!essai) {
@@ -131,7 +133,7 @@ export default function PointageBottin() {
           texte, indice et net à payer. Un fichier Excel convient aussi, avec au moins le nom (ou « Noms et prénoms ») et le matricule ou la date de naissance. Plusieurs fichiers peuvent compléter le même mois.
         </p>
         <div className="mb-4 max-w-xs">
-          <Champ libelle="Mois payé par ce bottin">
+          <Champ libelle="Mois du premier salaire (mois payé par ce bottin)" aide="La bourse s’arrête à la fin du mois précédent. Pour le PDF de la Solde, le système lit sa date d’édition et vous prévient si elle ne correspond pas.">
             <ChoixMois value={moisImport} onChange={setMoisImport} />
           </Champ>
         </div>
@@ -145,6 +147,31 @@ export default function PointageBottin() {
               {rapport.sansMatricule ? `, ${nf.format(rapport.sansMatricule)} sans matricule` : ""}.
             </div>
             <div className="text-[12px] text-zinc-600">Colonnes reconnues : {rapport.colonnes.map((c) => COLONNES[c] ?? c).join(", ")}.</div>
+            {rapport.editeLe && (
+              <div className="text-[12px] text-zinc-600">
+                Le PDF a été <strong>édité le {dateFr(rapport.editeLe)}</strong> par la Solde.
+              </div>
+            )}
+            {rapport.editeLe && rapport.editeLe.slice(0, 7) !== rapport.mois && (
+              <Alerte ton="jaune">
+                <div className="space-y-2">
+                  <p>
+                    Vous avez choisi <strong>{moisFr(rapport.mois)}</strong>, mais ce PDF a été édité en <strong>{moisFr(rapport.editeLe.slice(0, 7))}</strong>. Le mois choisi est celui du premier salaire : la bourse
+                    s’arrêtera à la fin du mois précédent. Vérifiez le bon mois avant d’enregistrer.
+                  </p>
+                  <Bouton
+                    disabled={!fichier || envoi}
+                    onClick={() => {
+                      const m = rapport.editeLe!.slice(0, 7);
+                      setMoisImport(m);
+                      if (fichier) void importer(fichier, true, m);
+                    }}
+                  >
+                    Prendre {moisFr(rapport.editeLe.slice(0, 7))}
+                  </Bouton>
+                </div>
+              </Alerte>
+            )}
             {!!rapport.ignorees.length && <div className="text-[12px] text-zinc-500">Lignes ignorées (titres, totaux) : {rapport.ignorees.join(" · ")}</div>}
             <Bouton variante="principal" disabled={!fichier || envoi} onClick={() => fichier && importer(fichier, false)}>
               <Download /> Enregistrer ce bottin

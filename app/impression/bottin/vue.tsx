@@ -108,6 +108,8 @@ export function ImpressionBottin() {
       {
         cle: "signature",
         type: "libre",
+        // Jamais seule en haut d'une page (DG, 26/10/2026)
+        garderAvecPrecedent: true,
         contenu: (
           <>
             <div className="mt-3 text-[9pt]">
