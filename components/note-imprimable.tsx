@@ -200,6 +200,7 @@ function construire(note: NoteDetail) {
     {
       cle: "mentions",
       type: "libre",
+      garderAvecPrecedent: true,
       contenu: (
         <div className="space-y-1 pt-4">
           {c.mentions.map((m) => (
@@ -213,6 +214,7 @@ function construire(note: NoteDetail) {
     {
       cle: "signature",
       type: "libre",
+      garderAvecPrecedent: true,
       contenu: (
         // « Fait à », le titre et le nom alignés sur la même verticale ;
         // « Ampliations : » sur la même ligne que le nom du signataire

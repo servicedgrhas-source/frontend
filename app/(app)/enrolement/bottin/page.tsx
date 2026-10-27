@@ -7,6 +7,7 @@ import { fcfa, moisFr, nf, peutGerer } from "@/components/enrolement/volontaires
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, Chiffre, ChoixMois, EnTete, Modale, Segments, Tableau, Vide, Zone, ZoneFichier, useConfirmation } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 interface MoisBottin {
@@ -34,6 +35,8 @@ interface Resultat {
   memeDepartement: boolean;
   memeNaissance: boolean;
   autres: number;
+  /** Statut proposé au premier salaire (âges limites des Paramètres). */
+  proposition: { statut: "FONCTIONNAIRE" | "CONTRACTUEL"; categorie: string | null; age: number | null; dateAge: string; ageLimite: number; explication: string };
 }
 
 const COLONNES: Record<string, string> = {
@@ -69,12 +72,16 @@ export default function PointageBottin() {
   const [envoi, setEnvoi] = useState(false);
   const [filtre, setFiltre] = useState<"PROBABLE" | "POSSIBLE" | "TOUS">("PROBABLE");
   const [coches, setCoches] = useState<Set<string>>(new Set());
+  // Statut choisi pour chaque volontaire coché (sinon : la proposition du système)
+  const [statuts, setStatuts] = useState<Record<string, "FONCTIONNAIRE" | "CONTRACTUEL">>({});
   const [ecart, setEcart] = useState<Resultat | null>(null);
+  // « Retirer ce bottin » : fenêtre qui dit ce qui est effacé et ce qui ne l'est pas
+  const [retrait, setRetrait] = useState<MoisBottin | null>(null);
   const [note, setNote] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [confirmation, demander] = useConfirmation();
-  if (!peut.traiter(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
   const gerer = peutGerer(profil.role);
 
   async function importer(f: File, essai: boolean) {
@@ -120,15 +127,15 @@ export default function PointageBottin() {
 
       <Carte titre="1. Importer le bottin du mois">
         <p className="-mt-2 mb-4 text-[12px] text-zinc-500">
-          Un fichier Excel avec au moins le nom (ou « Noms et prénoms ») et le matricule ou la date de naissance. Les colonnes département, indice, salaire brut et banque sont reprises si elles existent. Un bottin
-          en PDF doit d’abord être converti en Excel. Plusieurs fichiers peuvent compléter le même mois (un par département).
+          Le PDF de la Solde <strong>« Liste des agents pris en charge »</strong> (les agents payés pour la première fois) se dépose tel quel : le système lit nom, prénom, matricule, date de naissance,
+          texte, indice et net à payer. Un fichier Excel convient aussi, avec au moins le nom (ou « Noms et prénoms ») et le matricule ou la date de naissance. Plusieurs fichiers peuvent compléter le même mois.
         </p>
         <div className="mb-4 max-w-xs">
           <Champ libelle="Mois payé par ce bottin">
             <ChoixMois value={moisImport} onChange={setMoisImport} />
           </Champ>
         </div>
-        <ZoneFichier accept=".xlsx" envoi={envoi} envoyer={(f) => importer(f, true)} libelleBouton="Vérifier le fichier" />
+        <ZoneFichier accept=".pdf,.xlsx" envoi={envoi} envoyer={(f) => importer(f, true)} libelleBouton="Vérifier le fichier" aide="PDF « Liste des agents pris en charge » de la Solde, ou fichier Excel (.xlsx)" />
         {rapport && (
           <div className="mt-4 space-y-3 rounded-2xl bg-zinc-50 p-4 text-[13px]">
             <div>
@@ -154,16 +161,8 @@ export default function PointageBottin() {
                   <span className="text-zinc-600">{nf.format(m.n)} personne(s)</span>
                   <span className="min-w-0 flex-1 truncate text-[11px] text-zinc-400">{m.sources.join(", ")}</span>
                   {gerer && (
-                    <Bouton
-                      variante="discret"
-                      onClick={async () => {
-                        if (!(await demander(`Retirer le bottin de ${moisFr(m.mois)} (${nf.format(m.n)} personnes) ? Les sorties déjà faites restent.`, "Retirer"))) return;
-                        await api.delete(`/enrolement/bottin/${m.mois}`);
-                        mois.recharger();
-                        pointage.recharger();
-                      }}
-                    >
-                      <Trash2 /> Retirer
+                    <Bouton variante="discret" onClick={() => setRetrait(m)} title="Efface ce fichier importé (pour le remplacer par un fichier corrigé)">
+                      <Trash2 /> Retirer ce bottin
                     </Bouton>
                   )}
                 </li>
@@ -192,7 +191,7 @@ export default function PointageBottin() {
       >
         <p className="-mt-2 mb-4 text-[12px] text-zinc-500">
           « Probable » : même nom, et même date de naissance ou même département. « À regarder » : nom proche seulement (homonyme possible). Le mois indiqué est le premier où la personne apparaît dans un bottin : c’est son
-          premier salaire, sa bourse s’arrête au mois précédent. Cochez puis « Sortir du registre » : motif « Recruté à la Fonction Publique », et sa fiche du personnel passe fonctionnaire avec son matricule.
+          premier salaire, sa bourse s’arrête au mois précédent. Cochez puis « Sortir du registre » : motif « Recruté à la Fonction Publique », et sa fiche du personnel reçoit son matricule et devient fonctionnaire ou contractuel, comme choisi dans la colonne « Devient » (proposé d’après l’âge et les limites des Paramètres).
         </p>
         {pointage.chargement && !pointage.donnees ? (
           <Chargement />
@@ -214,6 +213,7 @@ export default function PointageBottin() {
                   <th>Volontaire (registre)</th>
                   <th>Dans le bottin</th>
                   <th>Premier salaire</th>
+                  <th>Devient</th>
                   <th />
                 </tr>
               </thead>
@@ -259,6 +259,21 @@ export default function PointageBottin() {
                       </div>
                     </td>
                     <td className="whitespace-nowrap">{moisFr(r.ligne.mois)}</td>
+                    <td className="min-w-48">
+                      <select
+                        aria-label="Statut dans la base du personnel"
+                        className="w-full rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-[12px] font-medium"
+                        value={statuts[r.volontaire.id] ?? r.proposition.statut}
+                        onChange={(e) => setStatuts({ ...statuts, [r.volontaire.id]: e.target.value as "FONCTIONNAIRE" | "CONTRACTUEL" })}
+                      >
+                        <option value="FONCTIONNAIRE">Fonctionnaire</option>
+                        <option value="CONTRACTUEL">Contractuel</option>
+                      </select>
+                      <div className="mt-1 text-[11px] leading-snug text-zinc-500">
+                        {statuts[r.volontaire.id] && statuts[r.volontaire.id] !== r.proposition.statut ? "Changé à la main. " : "Proposé : "}
+                        {r.proposition.explication}
+                      </div>
+                    </td>
                     <td>
                       <Bouton variante="discret" onClick={() => setEcart(r)}>
                         Pas la même personne
@@ -274,8 +289,17 @@ export default function PointageBottin() {
                   variante="principal"
                   disabled={!coches.size}
                   onClick={async () => {
-                    const choix = visibles.filter((r) => coches.has(r.volontaire.id)).map((r) => ({ volontaireId: r.volontaire.id, ligneId: r.ligne.id }));
-                    if (!(await demander(`Sortir ${choix.length} volontaire(s) du registre (recrutés à la Fonction Publique, à la date de leur premier salaire) ?`, "Sortir du registre"))) return;
+                    const choix = visibles
+                      .filter((r) => coches.has(r.volontaire.id))
+                      .map((r) => ({ volontaireId: r.volontaire.id, ligneId: r.ligne.id, statut: statuts[r.volontaire.id] ?? r.proposition.statut }));
+                    const contractuels = choix.filter((c) => c.statut === "CONTRACTUEL").length;
+                    if (
+                      !(await demander(
+                        `Sortir ${choix.length} volontaire(s) du registre, à la date de leur premier salaire ? Leur bourse s’arrête là. Dans la base du personnel, ${choix.length - contractuels} deviendront fonctionnaires et ${contractuels} contractuels.`,
+                        "Sortir du registre",
+                      ))
+                    )
+                      return;
                     setErreur(null);
                     try {
                       const res = await api.post<{ sortis: number; erreurs: string[] }>("/enrolement/bottin/sortie", { choix });
@@ -304,6 +328,47 @@ export default function PointageBottin() {
         )}
       </Carte>
 
+      <Modale titre={retrait ? `Retirer le bottin de ${moisFr(retrait.mois)} ?` : ""} ouverte={!!retrait} fermer={() => setRetrait(null)}>
+        {retrait && (
+          <div className="space-y-3 text-[13px] leading-relaxed text-zinc-600">
+            <p>
+              <strong>À quoi ça sert :</strong> effacer un fichier importé par erreur (mauvais mois, mauvais fichier, fichier incomplet), pour importer ensuite le bon.
+            </p>
+            <p>Ce qui est effacé :</p>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>
+                les <strong>{nf.format(retrait.n)} personne(s)</strong> lues dans le bottin de {moisFr(retrait.mois)} ({retrait.sources.join(", ")}) ;
+              </li>
+              <li>elles ne seront plus proposées dans « Volontaires encore payés retrouvés dans le bottin ».</li>
+            </ul>
+            <p>Ce qui ne change pas :</p>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>les volontaires et communautaires déjà <strong>sortis du registre</strong> restent sortis, et leur fiche du personnel garde son statut et son matricule ;</li>
+              <li>le registre, les bourses déjà préparées ou payées et les autres mois du bottin.</li>
+            </ul>
+          </div>
+        )}
+        <div className="mt-6 flex justify-end gap-2">
+          <Bouton onClick={() => setRetrait(null)}>Garder ce bottin</Bouton>
+          <Bouton
+            variante="danger"
+            onClick={async () => {
+              if (!retrait) return;
+              try {
+                await api.delete(`/enrolement/bottin/${retrait.mois}`);
+                setMessage(`Bottin de ${moisFr(retrait.mois)} retiré.`);
+              } catch (e) {
+                setErreur((e as Error).message);
+              }
+              setRetrait(null);
+              mois.recharger();
+              pointage.recharger();
+            }}
+          >
+            <Trash2 /> Retirer ce bottin
+          </Bouton>
+        </div>
+      </Modale>
       <Modale titre="Pas la même personne" ouverte={!!ecart} fermer={() => setEcart(null)}>
         <p className="mb-3 text-[13px] text-zinc-600">
           {ecart?.volontaire.nomComplet} ne sera plus proposé, sauf s’il est retrouvé dans un bottin importé plus tard. Dites ce que vous avez vérifié.

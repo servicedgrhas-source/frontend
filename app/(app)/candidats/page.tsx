@@ -11,6 +11,7 @@ import { QuotaBeneficiaire } from "@/components/quota-beneficiaire";
 import { useSession } from "@/components/session";
 import { Aide, Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Jauge, Liste, Modale, Pastille, Saisie, Segments, Tableau, Vide, Zone, ZoneFichier } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { dateCourte, libelleLot, peut } from "@/lib/libelles";
 import type { Agent } from "@/lib/types";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
@@ -162,7 +163,7 @@ export default function SaisieCandidats() {
   const controleur = peut.controler(profil.role);
   const dg = peut.valider(profil.role);
 
-  if (!peut.traiter(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
 
   const recharger = () => {
     liste.recharger();

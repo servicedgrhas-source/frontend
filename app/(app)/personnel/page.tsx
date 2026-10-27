@@ -6,6 +6,7 @@ import { libelleStatut, peutRecenser, useConfigRecensement } from "@/components/
 import { useSession } from "@/components/session";
 import { Alerte, Carte, Chargement, Chiffre, EnTete, Vide } from "@/components/ui";
 import { useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 
 interface Tableau {
   total: number;
@@ -38,7 +39,7 @@ export default function TableauRecensement() {
   const { profil, refs } = useSession();
   const config = useConfigRecensement();
   const { donnees: t, erreur } = useApi<Tableau>("/recensement/tableau");
-  if (!peutRecenser(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS, aux DDEPPSA et aux chefs d’établissement.</Alerte>;
+  if (!peutRecenser(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS, aux DDEPPSA et aux chefs d’établissement.</Alerte>;
   if (erreur) return <Alerte>{erreur}</Alerte>;
   if (!t) return <Chargement />;
   const c = config.donnees?.configuration;

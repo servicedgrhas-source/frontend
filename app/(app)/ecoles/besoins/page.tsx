@@ -6,6 +6,7 @@ import { useSession } from "@/components/session";
 import { Alerte, Badge, Carte, Chargement, Chiffre, EnTete, Liste, Segments, Tableau, Vide } from "@/components/ui";
 import { useApi } from "@/lib/api";
 import { CYCLES, decimal, ecartTexte, ETATS_BESOIN } from "@/lib/ecoles";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 interface Consolidation {
@@ -30,7 +31,7 @@ export default function BesoinsEnseignants() {
   const [cycle, setCycle] = useState("");
   const [vue, setVue] = useState<"ecoles" | "cycles" | "departements" | "matieres">("ecoles");
   const d = useApi<Consolidation>(`/etablissements/besoins?departement=${departement}&cycle=${cycle}`);
-  if (!peut.traiter(profil.role) && profil.role !== "DDEPPSA") return <Alerte>Accès réservé à la DGRHAS et aux DDEPPSA.</Alerte>;
+  if (!peut.traiter(profil.role) && profil.role !== "DDEPPSA" && !accesDonne(profil)) return <Alerte>Accès réservé à la DGRHAS et aux DDEPPSA.</Alerte>;
   const deficit = arrondi((d.donnees?.ecoles ?? []).reduce((t, e) => t + (e.ecart < 0 ? -e.ecart : 0), 0));
   const plethore = arrondi((d.donnees?.ecoles ?? []).reduce((t, e) => t + (e.ecart > 0 ? e.ecart : 0), 0));
   return (

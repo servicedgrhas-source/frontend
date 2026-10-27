@@ -36,6 +36,8 @@ export interface ReponseEdt {
   parMatiere: boolean;
   reglages: { jours: number[]; creneaux: Creneau[]; heuresEnseignant: number };
   emploi: EmploiDuTemps | null;
+  /** Ce qui a changé depuis la génération (classes, enseignants, matières, quotas) : à regénérer. */
+  aRegenerer?: string[];
 }
 
 export const NOMS_JOURS = ["", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
@@ -109,6 +111,9 @@ export function CarteEmploiDuTemps({ ecole, annee, peutGenerer }: { ecole: numbe
   const enseignants = useMemo(() => (e?.charges ?? []).filter((c) => c.heures > 0), [e]);
   const courant = vue === "classe" ? (choix || String(classes[0]?.[0] ?? "")) : choix || String(enseignants[0]?.agentId ?? "");
   const seances = (e?.seances ?? []).filter((s) => (vue === "classe" ? String(s.classeId) === courant : String(s.agentId) === courant));
+  // Les heures placées sans enseignant ne comptent pas comme assurées
+  const avecEnseignant = (e?.seances ?? []).filter((s) => s.agentId).length;
+  const sansEnseignant = (e?.seances.length ?? 0) - avecEnseignant;
 
   async function generer() {
     if (e && !(await demander("Regénérer l’emploi du temps ? Il est recalculé à partir des classes, des quotas horaires et des enseignants d’aujourd’hui.", "Regénérer"))) return;
@@ -156,13 +161,22 @@ export function CarteEmploiDuTemps({ ecole, annee, peutGenerer }: { ecole: numbe
             <Alerte>{erreur}</Alerte>
           </div>
         )}
+        {e && !!d.donnees.aRegenerer?.length && (
+          <div className="mb-3">
+            <Alerte ton="jaune">
+              <strong>Cet emploi du temps n’est plus à jour</strong> : {d.donnees.aRegenerer.join(" ; ")}.{peutGenerer ? " Cliquez sur « Regénérer »." : ""}
+            </Alerte>
+          </div>
+        )}
         {!e ? (
           <Vide>Pas encore d’emploi du temps pour {annee}. Ouvrez les classes, vérifiez la spécialité des enseignants, puis générez-le.</Vide>
         ) : (
           <div className="flex flex-wrap items-center gap-2 text-[13px]">
-            <Badge ton={e.heuresPlacees === e.heuresTotal ? "vert" : "jaune"}>
-              {e.heuresPlacees} h placées sur {e.heuresTotal} h
+            <Badge ton={avecEnseignant === e.heuresTotal ? "vert" : "jaune"}>
+              {avecEnseignant} h sur {e.heuresTotal} h avec un enseignant
             </Badge>
+            {sansEnseignant > 0 && <Badge ton="rouge">{sansEnseignant} h placées sans enseignant (à pourvoir)</Badge>}
+            {e.heuresTotal - e.heuresPlacees > 0 && <Badge ton="rouge">{e.heuresTotal - e.heuresPlacees} h sans créneau</Badge>}
             <Badge ton="gris">{enseignants.length} enseignant(s)</Badge>
             <Badge ton="gris">{classes.length} classe(s)</Badge>
             <span className="text-[12px] text-zinc-400">
@@ -190,7 +204,8 @@ export function CarteEmploiDuTemps({ ecole, annee, peutGenerer }: { ecole: numbe
                 <span>
                   <strong>{x.matiereLibelle}</strong>
                   {x.classe !== "—" && ` en ${x.classe}`}
-                  {x.heures > 0 && ` (${x.heures} h)`} : {x.raison}.
+                  {x.heures > 0 && ` (${x.heures} h)`} : {x.raison}
+                  {x.classe === "—" ? " (choisissez sa matière dans l’onglet « Personnel » de l’école)" : ""}.
                 </span>
               </li>
             ))}

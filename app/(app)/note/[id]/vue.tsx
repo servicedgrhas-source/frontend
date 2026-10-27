@@ -8,14 +8,14 @@ import { useSession } from "@/components/session";
 import { Aide, Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, Modale, Saisie, Zone } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { dateCourte, peut, STATUT_NOTE } from "@/lib/libelles";
-import type { NoteDetail } from "@/lib/types";
+import type { NoteDetail, NoteResume } from "@/lib/types";
 
 export function VueNote() {
   const { id } = useParams<{ id: string }>();
   const { profil } = useSession();
   const { donnees: note, erreur, recharger } = useApi<NoteDetail>(`/notes/${id}`);
   const [message, setMessage] = useState<{ ton: "vert" | "rouge"; texte: string } | null>(null);
-  const [dialogue, setDialogue] = useState<"renvoyer" | "signer" | "intro" | "rouvrir" | "supprimer" | null>(null);
+  const [dialogue, setDialogue] = useState<"renvoyer" | "signer" | "intro" | "rouvrir" | "supprimer" | "reunir" | "separer" | null>(null);
 
   if (erreur) return <Alerte>{erreur}</Alerte>;
   if (!note) return <Chargement />;
@@ -72,6 +72,14 @@ export function VueNote() {
             Excel
             <Aide>Télécharge le contenu de la note dans un fichier Excel (une ligne par agent), pour la vérifier ou la retravailler.</Aide>
           </Bouton>
+          <Bouton
+            onClick={() =>
+              api.telecharger(`/notes/${id}/word`, `${note.libelle}.docx`).catch((e: Error) => setMessage({ ton: "rouge", texte: e.message }))
+            }
+          >
+            Word
+            <Aide>Télécharge la note dans Word, avec la même mise en page que la version imprimée, pour retoucher la présentation (espacer, faire descendre un tableau). La signature reste toujours avec la dernière ligne du tableau.</Aide>
+          </Bouton>
           {s === "BROUILLON" && peut.decider(profil.role) && (
             <Bouton onClick={() => setDialogue("intro")}>
               Modifier l’introduction
@@ -82,6 +90,21 @@ export function VueNote() {
           )}
           {s === "BROUILLON" && peut.traiter(profil.role) && (
             <>
+              {note.module === "AFFECTATION" && (
+                <Bouton onClick={() => setDialogue("reunir")}>
+                  Réunir avec une autre note
+                  <Aide>
+                    Une seule note au lieu de plusieurs : les personnes d’une autre note du même type (un autre lot, par exemple le lot 8 avec le lot 7) passent dans
+                    celle-ci. Possible tant que les notes sont « à soumettre au DG ».
+                  </Aide>
+                </Bouton>
+              )}
+              {!!note.lotsReunis?.length && (
+                <Bouton onClick={() => setDialogue("separer")}>
+                  Séparer les lots
+                  <Aide>Défait la réunion : cette note garde son premier lot ; chaque autre lot retrouvera sa note en la préparant.</Aide>
+                </Bouton>
+              )}
               <Bouton variante="danger" onClick={() => setDialogue("supprimer")}>
                 Supprimer
                 <Aide>
@@ -188,6 +211,22 @@ export function VueNote() {
           <Bouton onClick={() => setDialogue(null)}>Garder la note</Bouton>
           <Bouton variante="danger" onClick={supprimer}>
             Supprimer la note
+          </Bouton>
+        </div>
+      </Modale>
+      {dialogue === "reunir" && (
+        <Reunir note={note} fermer={() => setDialogue(null)} ok={(avec) => action("fusionner", { avec }, "Notes réunies : une seule note pour ces lots.")} />
+      )}
+      <Modale titre="Séparer les lots ?" ouverte={dialogue === "separer"} fermer={() => setDialogue(null)}>
+        <p className="text-[13px] leading-relaxed text-zinc-600">
+          Cette note ne gardera que son premier lot. Les personnes des lots{" "}
+          <strong>{(note.lotsReunis ?? []).map((l) => l.libelle).join(", ")}</strong> en sortent : pour elles, cliquez de nouveau sur « Préparer les notes de ce lot »
+          dans « Traitement des affectations ».
+        </p>
+        <div className="mt-6 flex justify-end gap-2">
+          <Bouton onClick={() => setDialogue(null)}>Annuler</Bouton>
+          <Bouton variante="principal" onClick={() => action("separer", undefined, "Lots séparés.")}>
+            Séparer les lots
           </Bouton>
         </div>
       </Modale>
@@ -455,6 +494,45 @@ function Introduction({ note, fermer, ok }: { note: NoteDetail; fermer: () => vo
       <div className="mt-3 flex justify-end gap-2">
         <Bouton onClick={fermer}>Annuler</Bouton>
         <Bouton variante="principal" onClick={() => ok(t)}>Enregistrer</Bouton>
+      </div>
+    </Modale>
+  );
+}
+
+/** Choisir les notes du même type (autres lots) à réunir dans celle-ci. */
+function Reunir({ note, fermer, ok }: { note: NoteDetail; fermer: () => void; ok: (avec: string[]) => void }) {
+  const notes = useApi<NoteResume[]>("/notes?module=AFFECTATION");
+  const [choix, setChoix] = useState<string[]>([]);
+  const candidates = (notes.donnees ?? []).filter((n) => n.id !== note.id && n.statut === "BROUILLON" && n.typeNote === note.typeNote);
+  return (
+    <Modale titre="Réunir avec une autre note" ouverte fermer={fermer}>
+      <p className="text-[13px] leading-relaxed text-zinc-600">
+        Les personnes des notes cochées passent dans <strong>« {note.libelle} »</strong>, et ces notes sont retirées. Seules les notes du même type, encore « à
+        soumettre au DG », sont proposées.
+      </p>
+      <div className="mt-4 max-h-72 space-y-1.5 overflow-y-auto">
+        {notes.chargement && <Chargement />}
+        {!notes.chargement && !candidates.length && <Alerte ton="jaune">Aucune autre note de ce type n’est à soumettre au DG.</Alerte>}
+        {candidates.map((n) => (
+          <label key={n.id} className="flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-200 px-3 py-2.5 text-[13px] hover:border-marque-300">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4 accent-marque-600"
+              checked={choix.includes(n.id)}
+              onChange={(e) => setChoix((c) => (e.target.checked ? [...c, n.id] : c.filter((x) => x !== n.id)))}
+            />
+            <span>
+              <span className="font-medium text-encre">{n.libelle}</span>
+              <span className="block text-[12px] text-zinc-500">{n.total} personne(s)</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      <div className="mt-6 flex justify-end gap-2">
+        <Bouton onClick={fermer}>Annuler</Bouton>
+        <Bouton variante="principal" disabled={!choix.length} onClick={() => ok(choix)}>
+          Réunir {choix.length ? `(${choix.length + 1} notes en une)` : ""}
+        </Bouton>
       </div>
     </Modale>
   );

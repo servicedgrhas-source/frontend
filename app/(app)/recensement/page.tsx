@@ -9,6 +9,7 @@ import { ImportFichier } from "@/components/recensement/import-fichier";
 import { useSession } from "@/components/session";
 import { Alerte, Badge, Bouton, Carte, Chargement, EnTete, Saisie, Segments, Tableau, Vide } from "@/components/ui";
 import { qs, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 
 interface Ligne {
   id: number;
@@ -79,7 +80,7 @@ function Recensement() {
   const courante = listes[onglet];
   const toutRecharger = () => Object.values(listes).forEach((l) => l.recharger());
 
-  if (!peutRecenser(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS, aux DDEPPSA et aux chefs d’établissement.</Alerte>;
+  if (!peutRecenser(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS, aux DDEPPSA et aux chefs d’établissement.</Alerte>;
 
   const ceQuiManque = (l: Ligne) =>
     [

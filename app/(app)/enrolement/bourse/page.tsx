@@ -7,6 +7,7 @@ import { categoriesDe, FicheVolontaire, deMois, fcfa, LISTES, moisFr, nf, peutGe
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, Chiffre, ChoixMois, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, Zone, useConfirmation } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 interface Anomalie {
@@ -65,7 +66,7 @@ export default function BourseMensuelle() {
   const [confirmation, demander] = useConfirmation();
   const id = choisi ?? etats.donnees?.[0]?.id ?? null;
   const detail = useApi<Detail>(id ? `/enrolement/bourse/${id}${qs({ recherche, departement, page, taille: 50 })}` : null);
-  if (!peut.traiter(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
 
   const c = config.donnees?.configuration;
   const nomCat = (k: string | null) => categoriesDe(c, population).find((x) => x.code === k)?.libelle ?? k ?? "Sans catégorie";

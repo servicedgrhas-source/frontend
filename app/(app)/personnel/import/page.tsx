@@ -7,6 +7,7 @@ import { ImportFichier } from "@/components/recensement/import-fichier";
 import { useSession } from "@/components/session";
 import { Alerte, Badge, Bouton, Carte, Champ, EnTete, Liste, Tableau } from "@/components/ui";
 import { api, qs } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 
 interface ResultatPieces {
   resultats: { fichier: string; ok: boolean; message: string }[];
@@ -32,7 +33,7 @@ export default function ImportRecensement() {
   const scans = useRef<HTMLInputElement>(null);
   const [pieces, setPieces] = useState<ResultatPieces | null>(null);
   const [envoiPieces, setEnvoiPieces] = useState<string | null>(null);
-  if (!peutRecenser(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS, aux DDEPPSA et aux chefs d’établissement.</Alerte>;
+  if (!peutRecenser(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS, aux DDEPPSA et aux chefs d’établissement.</Alerte>;
 
 
   async function deposerPieces(liste: File[]) {

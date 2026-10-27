@@ -6,6 +6,7 @@ import { FicheVolontaire, STATUT_REGULARISATION, fcfa, nf, peutGerer } from "@/c
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, Chiffre, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, Zone } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 interface TropPercu {
@@ -53,7 +54,7 @@ export default function Regularisations() {
   const [motif, setMotif] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
-  if (!peut.traiter(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
   const gerer = peutGerer(profil.role);
   const somme = (type: string, st: string) => (liste.donnees?.resume ?? []).filter((r) => r.type === type && r.statut === st).reduce((t, r) => t + Number(r.reste), 0);
   const aTraiter = (detectes.donnees ?? []).filter((t) => t.aTraiter > 0);

@@ -6,6 +6,7 @@ import { nf, useConfigEnrolement } from "@/components/enrolement/volontaires";
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, Chiffre, EnTete, Liste, Modale, Saisie, Tableau, Vide, useConfirmation } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
 
@@ -36,7 +37,7 @@ export default function Besoins() {
   const [message, setMessage] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [confirmation, demander] = useConfirmation();
-  if (!peut.traiter(profil.role) && !ddeppsa) return <Alerte>Accès réservé aux agents de la DGRHAS et aux DDEPPSA.</Alerte>;
+  if (!peut.traiter(profil.role) && !ddeppsa && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS et aux DDEPPSA.</Alerte>;
   const gerer = ddeppsa || ["ADMIN", "CHEF_SERVICE", "DIRECTEUR", "DG"].includes(profil.role);
   const cats = config.donnees?.configuration.categories ?? [];
   const nomCat = (k: string) => cats.find((x) => x.code === k)?.libelle ?? k;

@@ -4,6 +4,7 @@ import { Printer } from "lucide-react";
 import { useSession } from "@/components/session";
 import { Aide, Alerte, Bouton, Carte, Chargement, EnTete, Tableau } from "@/components/ui";
 import { useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 interface Quota {
@@ -37,7 +38,7 @@ const n = (v: number | null | undefined) => (v === null || v === undefined ? "�
 export default function StatistiquesSuivi() {
   const { profil } = useSession();
   const s = useApi<Statistiques>(peut.traiter(profil.role) ? "/statistiques/recrutement" : null);
-  if (!peut.traiter(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
   if (s.erreur) return <Alerte>{s.erreur}</Alerte>;
   if (!s.donnees) return <Chargement />;
   const d = s.donnees;

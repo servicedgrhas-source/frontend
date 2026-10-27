@@ -5,12 +5,13 @@ import Link from "next/link";
 import { ParametresGeneraux } from "@/components/parametres-generaux";
 import { useSession } from "@/components/session";
 import { Alerte, EnTete, Pastille } from "@/components/ui";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 /** Administration › Paramètres : les réglages des notes, des calculs, de l'envoi à la FP et de la fiche de mutation. */
 export default function Parametres() {
   const { profil } = useSession();
-  if (!peut.parametrer(profil.role)) return <Alerte>Accès réservé au DG et à l’administrateur.</Alerte>;
+  if (!peut.parametrer(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé au DG et à l’administrateur.</Alerte>;
 
   const lien = (href: string, icone: React.ReactNode, titre: string, texte: string) => (
     <Link href={href} className="group flex items-center gap-4 rounded-3xl bg-white p-5 shadow-doux transition-all hover:-translate-y-0.5 hover:shadow-lg">

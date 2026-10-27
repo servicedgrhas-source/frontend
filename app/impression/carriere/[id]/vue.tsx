@@ -126,6 +126,11 @@ function construire(d: DossierCarriere) {
           {d.agent.nationalite && ligne("Nationalité", d.agent.nationalite)}
           {ligne("Matricule solde", d.agent.matricule ?? "—")}
           {ligne("N° de fiche", d.agent.numeroFiche ?? "—")}
+          {d.agent.creeLe &&
+            ligne(
+              "Fiche créée le",
+              new Date(d.agent.creeLe).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).replace(" ", " à "),
+            )}
         </div>
       ),
     },

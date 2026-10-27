@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Bouton, BoutonIcone, Carte, Chargement, EnTete, Liste, Saisie, Zone, cx, useConfirmation } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
-import { appliquerMenu, ICONES_MENU, ICONES_ORIGINE, MENU_MODIFIE, ORIGINE_MENU, rubriqueDe, type ConfigMenu } from "@/lib/espaces";
+import { accesDonne, appliquerMenu, type ConfigMenu, ICONES_MENU, ICONES_ORIGINE, MENU_MODIFIE, ORIGINE_MENU, rubriqueDe } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 import { CLE_PERSO, construireMenu } from "@/lib/menu-config";
 
@@ -109,7 +109,7 @@ const nouvelleCle = () => `perso-${Date.now().toString(36)}${Math.random().toStr
 export default function MenuReglage() {
   const { profil } = useSession();
   const conf = useApi<ConfigMenu>("/menu/configuration");
-  if (!peut.parametrer(profil.role)) return <Alerte>Réservé à l’administrateur et au DG.</Alerte>;
+  if (!peut.parametrer(profil.role) && !accesDonne(profil)) return <Alerte>Réservé à l’administrateur et au DG.</Alerte>;
   if (conf.erreur) return <Alerte>{conf.erreur}</Alerte>;
   if (!conf.donnees) return <Chargement />;
   return <Edition key={JSON.stringify(conf.donnees)} depart={conf.donnees} recharger={conf.recharger} />;

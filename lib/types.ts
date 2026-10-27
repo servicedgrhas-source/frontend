@@ -264,6 +264,8 @@ export interface AvisConformite {
 
 export interface NoteDetail extends NoteResume {
   introduction: string;
+  /** Notes d'affectation : autres lots réunis dans cette note. */
+  lotsReunis?: { id: number; numero: number; libelle: string }[];
   contenu: ContenuNote;
   entete: {
     reference: string;

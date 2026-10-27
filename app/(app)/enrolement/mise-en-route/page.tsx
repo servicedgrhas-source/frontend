@@ -6,6 +6,7 @@ import { FicheVolontaire, dateFr, fcfa, nf, peutGerer, useConfigEnrolement } fro
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, Chiffre, EnTete, Liste, Modale, Saisie, Tableau, Vide, Zone, ZoneFichier, useConfirmation } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 interface Mer {
@@ -177,7 +178,7 @@ export default function MiseEnRoutePage() {
   const [confirmation, demander] = useConfirmation();
   const id = choisi ?? mers.donnees?.[0]?.id ?? null;
   const detail = useApi<{ mer: Mer; lignes: LigneMer[]; controles: Record<string, { libelle: string }> }>(id ? `/enrolement/mises-en-route/${id}` : null);
-  if (!peut.traiter(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
   const gerer = peutGerer(profil.role);
   const dg = peut.valider(profil.role);
   const m = detail.donnees?.mer;

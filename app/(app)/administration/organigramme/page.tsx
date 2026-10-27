@@ -7,6 +7,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "@/components/session";
 import { Aide, Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Modale, Saisie, Segments, ZoneFichier, cx, useConfirmation } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 import { typeStructure } from "@/lib/structures";
 
@@ -143,7 +144,7 @@ export default function Organigramme() {
     return { parParent, parId: new Map(liste.map((s) => [s.id, s])) };
   }, [liste]);
 
-  if (!peut.traiter(profil.role)) return <Alerte>Accès réservé à la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé à la DGRHAS.</Alerte>;
 
   const enfants = (id: number) => parParent.get(id) ?? [];
   const nbComptes = (id: number) => (comptes.donnees ?? []).filter((c) => c.structureId === id && c.actif).length;

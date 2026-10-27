@@ -226,7 +226,7 @@ function Formulaire({
         titre={a ? a.nomComplet : "Nouvelle fiche de renseignements"}
         sousTitre={
           a
-            ? `Fiche ${a.numeroFiche} · ${libelleStatut(c, a.statut)} · saisie par ${a.creePar ?? "—"}${a.source === "IMPORT" ? " (import Excel)" : ""}, modifiée par ${a.modifiePar ?? "—"}`
+            ? `Fiche ${a.numeroFiche}, créée le ${new Date(a.creeLe).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).replace(" ", " à ")} · ${libelleStatut(c, a.statut)} · saisie par ${a.creePar ?? "—"}${a.source === "IMPORT" ? " (import Excel)" : ""}, modifiée par ${a.modifiePar ?? "—"}`
             : "Les rubriques marquées * sont obligatoires pour ce type d’agent. Vous pouvez enregistrer une fiche incomplète : ce qui manque reste signalé jusqu’à ce qu’il soit fourni."
         }
         actions={

@@ -5,8 +5,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { api, CLE_JETON, fermerSession, lireSession, memoriserProfil, ouvrirSession, SESSION_ROUVERTE, surSessionExpiree, TRAVAIL_MODIFIE, type Profil } from "@/lib/api";
-import { appliquerMenu, cheminDe, ESPACES, espaceDe, lienEspace, MENU, MENU_MODIFIE, POLES, poleDe, rubriquesVisibles, travailEspace, type Compteurs, type ConfigMenu } from "@/lib/espaces";
+import { api, CLE_JETON, fermerSession, lireSession, memoriserProfil, ouvrirSession, qs, SESSION_ROUVERTE, surSessionExpiree, TRAVAIL_MODIFIE, type Profil } from "@/lib/api";
+import { appliquerMenu, cheminDe, ESPACES, espaceDe, lienEspace, MENU, MENU_MODIFIE, niveauPage, POLES, poleDe, rubriquesVisibles, travailEspace, type Compteurs, type ConfigMenu } from "@/lib/espaces";
 import { ROLES } from "@/lib/libelles";
 import type { Referentiels } from "@/lib/types";
 import { Alerte, Bouton, Champ, Chargement, cx, Modale, Saisie } from "./ui";
@@ -275,7 +275,18 @@ export function Coquille({ children }: { children: ReactNode }) {
                 </Alerte>
               </div>
             )}
-            {children}
+            {niveauPage(chemin, p) === "LECTURE" && (
+              <div className="no-print mb-5">
+                <Alerte ton="bleu">
+                  Cette rubrique vous est ouverte en <strong>lecture seule</strong> : vous pouvez la consulter, pas la modifier.
+                </Alerte>
+              </div>
+            )}
+            {niveauPage(chemin, p) === "MASQUE" ? (
+              <Alerte ton="jaune">Cette rubrique ne vous est pas ouverte. Demandez au DG ou à l’administrateur si vous en avez besoin.</Alerte>
+            ) : (
+              children
+            )}
           </div>
         </main>
       </div>
@@ -374,9 +385,56 @@ const TYPE_ALERTE: Record<AlerteCircuit["type"], string> = {
   DECISION: "Décision",
 };
 
-/** Les alertes du circuit : nouvelle demande, dossier arrivé chez soi, instruction, décision. */
+/** Alerte de présence (fin de semaine) : absent, peu d'heures, deux semaines d'affilée sans travailler. */
+interface AlertePresence {
+  agentId: number;
+  nomComplet: string;
+  structureId: number;
+  structure: string;
+  lundi: string;
+  alertes: { code: "JOURS" | "HEURES" | "DEUX_SEMAINES"; texte: string }[];
+}
+const deuxSemaines = (a: AlertePresence) => a.alertes.some((x) => x.code === "DEUX_SEMAINES");
+
+/** Fenêtre de temps des alertes (DG, 27/10/2026). « tout » : toutes les demandes, 4 semaines de présence. */
+type ChoixPeriode = "semaine" | "deuxSemaines" | "mois" | "tout" | "dates";
+const PERIODES: { k: ChoixPeriode; libelle: string }[] = [
+  { k: "semaine", libelle: "Cette semaine" },
+  { k: "deuxSemaines", libelle: "2 dernières semaines" },
+  { k: "mois", libelle: "Ce mois" },
+  { k: "tout", libelle: "Tout" },
+  { k: "dates", libelle: "Choisir les dates" },
+];
+const isoLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+/** Du lundi de cette semaine (ou d'il y a une semaine, ou du 1er du mois) à aujourd'hui. */
+function bornes(choix: ChoixPeriode, dates: { du: string; au: string }): { du?: string; au?: string } {
+  const auj = new Date();
+  const lundi = new Date(auj);
+  lundi.setDate(auj.getDate() - ((auj.getDay() + 6) % 7));
+  if (choix === "semaine") return { du: isoLocal(lundi), au: isoLocal(auj) };
+  if (choix === "deuxSemaines") {
+    lundi.setDate(lundi.getDate() - 7);
+    return { du: isoLocal(lundi), au: isoLocal(auj) };
+  }
+  if (choix === "mois") return { du: isoLocal(new Date(auj.getFullYear(), auj.getMonth(), 1)), au: isoLocal(auj) };
+  if (choix === "dates") return { du: dates.du || undefined, au: dates.au || undefined };
+  return {};
+}
+
+/**
+ * Les alertes, par onglets (DG, 26/10/2026) : tout, les demandes (nouvelle demande, dossier arrivé
+ * chez soi, instruction, décision) et la présence (deux semaines sans venir en tête).
+ */
 function PanneauAlertes({ fermer, aller }: { fermer: () => void; aller: (href: string) => void }) {
   const [liste, setListe] = useState<AlerteCircuit[] | null>(null);
+  const [presence, setPresence] = useState<AlertePresence[] | null>(null);
+  const [onglet, setOnglet] = useState<"tout" | "demandes" | "presence">("tout");
+  const [choix, setChoix] = useState<ChoixPeriode>("tout");
+  const [dates, setDates] = useState({ du: "", au: isoLocal(new Date()) });
+  const periode = bornes(choix, dates);
+  const filtre = qs(periode);
+  // Période dont les résultats sont affichés : tant qu'elle diffère, on montre le chargement
+  const [chargeePour, setChargeePour] = useState<string | null>(null);
   const [nonLues, setNonLues] = useState(0);
   const [suite, setSuite] = useState(false);
   const [chargement, setChargement] = useState(false);
@@ -392,22 +450,27 @@ function PanneauAlertes({ fermer, aller }: { fermer: () => void; aller: (href: s
   }, []);
   useEffect(() => {
     let actif = true;
-    api
-      .get<PageAlertes>("/circuit/alertes")
-      .then((r) => actif && recevoir(r, false))
-      .catch((e: Error) => {
-        if (!actif) return;
-        setErreur(e.message);
-        setListe([]);
-      });
+    void Promise.all([
+      api.get<PageAlertes>(`/circuit/alertes${filtre}`).catch((e: Error) => {
+        if (actif) setErreur(e.message);
+        return { alertes: [], nonLues: 0, suite: false } as PageAlertes;
+      }),
+      // Présence : seulement les comptes qui suivent la présence (sinon, aucune)
+      api.get<AlertePresence[]>(`/presence/alertes${filtre}`).catch(() => [] as AlertePresence[]),
+    ]).then(([r, p]) => {
+      if (!actif) return;
+      recevoir(r, false);
+      setPresence(p);
+      setChargeePour(filtre);
+    });
     return () => {
       actif = false;
     };
-  }, [recevoir]);
+  }, [recevoir, filtre]);
   const plusAnciennes = async (avant: number) => {
     setChargement(true);
     try {
-      recevoir(await api.get<PageAlertes>(`/circuit/alertes?avant=${avant}`), true);
+      recevoir(await api.get<PageAlertes>(`/circuit/alertes${qs({ ...periode, avant })}`), true);
     } catch (e) {
       setErreur((e as Error).message);
     } finally {
@@ -427,66 +490,157 @@ function PanneauAlertes({ fermer, aller }: { fermer: () => void; aller: (href: s
     setListe((l) => l?.map((a) => ({ ...a, lue: true })) ?? null);
     setNonLues(0);
   };
+  const urgentes = (presence ?? []).filter(deuxSemaines);
+  const autresPresence = (presence ?? []).filter((a) => !deuxSemaines(a));
+  const ligneDemande = (a: AlerteCircuit) => {
+    // Demande supprimée depuis : l'alerte reste lisible, mais ne mène plus nulle part
+    const introuvable = a.aujourdhui === "Demande supprimée";
+    const contenu = (
+      <>
+        <span className="flex items-center gap-2 text-[11px] text-zinc-500">
+          {!a.lue && <span className="size-2 rounded-full bg-or-400" />}
+          <strong className="text-zinc-700">{TYPE_ALERTE[a.type] ?? a.type}</strong> ·{" "}
+          {new Date(a.creeLe).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}
+        </span>
+        <span className="block text-zinc-800">{a.texte}</span>
+        {a.aujourdhui && <span className={cx("mt-0.5 block text-[12px] font-medium", introuvable ? "text-zinc-400" : "text-marque-700")}>Aujourd’hui : {a.aujourdhui}</span>}
+      </>
+    );
+    return (
+      <li key={`d${a.id}`}>
+        {introuvable ? (
+          <button
+            type="button"
+            onClick={() => lire([a.id])}
+            title="Cette demande n’existe plus"
+            className={cx("w-full cursor-default rounded-2xl px-3 py-2 text-left text-[13px] opacity-70", !a.lue && "bg-or-100/50")}
+          >
+            {contenu}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={async () => {
+              await lire([a.id]);
+              fermer();
+              aller(`/mutation/${a.demandeId}`);
+            }}
+            className={cx("w-full rounded-2xl px-3 py-2 text-left text-[13px] transition hover:bg-zinc-50", !a.lue && "bg-or-100/50")}
+          >
+            {contenu}
+          </button>
+        )}
+      </li>
+    );
+  };
+  const lignePresence = (a: AlertePresence) => (
+    <li key={`p${a.agentId}-${a.lundi}`}>
+      <button
+        type="button"
+        onClick={() => {
+          fermer();
+          aller(`/personnel/presence?structure=${a.structureId}&date=${a.lundi}`);
+        }}
+        className={cx("w-full rounded-2xl px-3 py-2 text-left text-[13px] transition hover:bg-zinc-50", deuxSemaines(a) ? "bg-rouge-100/60" : "bg-or-100/40")}
+      >
+        <span className="flex items-center gap-2 text-[11px] text-zinc-500">
+          <strong className={deuxSemaines(a) ? "text-rouge-600" : "text-zinc-700"}>{deuxSemaines(a) ? "Deux semaines sans venir" : "Présence"}</strong> · semaine du{" "}
+          {a.lundi.split("-").reverse().join("/")}
+        </span>
+        <span className="block font-medium text-zinc-800">
+          {a.nomComplet} <span className="font-normal text-zinc-500">· {a.structure}</span>
+        </span>
+        {a.alertes.map((x) => (
+          <span key={x.code} className="block text-[12px] text-zinc-600">
+            {x.texte}
+          </span>
+        ))}
+        <span className="mt-0.5 block text-[12px] font-medium text-marque-700">Ouvrir le pointage de cette semaine →</span>
+      </button>
+    </li>
+  );
+  const nbDemandes = liste?.length ?? 0;
+  const nbPresence = presence?.length ?? 0;
+  const vide = (t: string) => <p className="py-2 text-[13px] text-zinc-500">{t}</p>;
   return (
     <Modale titre="Alertes" ouverte fermer={fermer}>
       {erreur && <Alerte>{erreur}</Alerte>}
-      {!liste ? (
+      <div className="mb-3 space-y-2">
+        <div className="flex flex-wrap gap-1.5">
+          {PERIODES.map((x) => (
+            <button
+              key={x.k}
+              type="button"
+              onClick={() => setChoix(x.k)}
+              className={cx(
+                "cursor-pointer rounded-lg border px-2.5 py-1 text-[12px]",
+                choix === x.k ? "border-marque-600 bg-marque-50 font-semibold text-marque-700" : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400",
+              )}
+            >
+              {x.libelle}
+            </button>
+          ))}
+        </div>
+        {choix === "dates" && (
+          <div className="flex flex-wrap items-center gap-2 text-[12px] text-zinc-600">
+            Du
+            <input type="date" aria-label="Du" value={dates.du} max={dates.au || undefined} onChange={(e) => setDates({ ...dates, du: e.target.value })} className="rounded-lg border border-zinc-200 px-2 py-1" />
+            au
+            <input type="date" aria-label="Au" value={dates.au} min={dates.du || undefined} onChange={(e) => setDates({ ...dates, au: e.target.value })} className="rounded-lg border border-zinc-200 px-2 py-1" />
+          </div>
+        )}
+        <p className="text-[11px] text-zinc-500">
+          {periode.du || periode.au
+            ? `Du ${periode.du ? periode.du.split("-").reverse().join("/") : "début"} au ${periode.au ? periode.au.split("-").reverse().join("/") : "aujourd’hui"}.`
+            : "Toutes les alertes de demandes ; présence : les 4 dernières semaines."}
+          {" "}La présence compte les semaines validées par les chefs.
+        </p>
+      </div>
+      {!liste || !presence || chargeePour !== filtre ? (
         <Chargement />
-      ) : !liste.length ? (
-        <p className="text-[13px] text-zinc-500">Aucune alerte pour l’instant.</p>
       ) : (
         <div className="space-y-3">
-          {nonLues > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {(
+              [
+                ["tout", `Tout (${nbDemandes + nbPresence})`],
+                ["demandes", `Demandes (${nbDemandes})`],
+                ["presence", `Présence (${nbPresence})`],
+              ] as const
+            ).map(([k, t]) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setOnglet(k)}
+                className={cx(
+                  "cursor-pointer rounded-full border px-3.5 py-1.5 text-[12px] font-medium",
+                  onglet === k ? "border-encre bg-encre text-white" : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400",
+                )}
+              >
+                {t}
+                {k === "presence" && urgentes.length > 0 && <span className="ml-1.5 rounded-full bg-rouge-600 px-1.5 text-[10px] text-white">{urgentes.length}</span>}
+              </button>
+            ))}
+          </div>
+          {onglet !== "presence" && nonLues > 0 && (
             <button type="button" className="text-[12px] font-medium text-marque-700 hover:underline" onClick={toutLire}>
               Tout marquer comme lu ({nonLues})
             </button>
           )}
           <ul className="max-h-[60vh] space-y-1.5 overflow-y-auto">
-            {liste.map((a) => {
-              // Demande supprimée depuis : l'alerte reste lisible, mais ne mène plus nulle part
-              const introuvable = a.aujourdhui === "Demande supprimée";
-              const contenu = (
-                <>
-                  <span className="flex items-center gap-2 text-[11px] text-zinc-500">
-                    {!a.lue && <span className="size-2 rounded-full bg-or-400" />}
-                    <strong className="text-zinc-700">{TYPE_ALERTE[a.type] ?? a.type}</strong> ·{" "}
-                    {new Date(a.creeLe).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}
-                  </span>
-                  <span className="block text-zinc-800">{a.texte}</span>
-                  {a.aujourdhui && (
-                    <span className={cx("mt-0.5 block text-[12px] font-medium", introuvable ? "text-zinc-400" : "text-marque-700")}>Aujourd’hui : {a.aujourdhui}</span>
-                  )}
-                </>
-              );
-              return (
-                <li key={a.id}>
-                  {introuvable ? (
-                    <button
-                      type="button"
-                      onClick={() => lire([a.id])}
-                      title="Cette demande n’existe plus"
-                      className={cx("w-full cursor-default rounded-2xl px-3 py-2 text-left text-[13px] opacity-70", !a.lue && "bg-or-100/50")}
-                    >
-                      {contenu}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        await lire([a.id]);
-                        fermer();
-                        aller(`/mutation/${a.demandeId}`);
-                      }}
-                      className={cx("w-full rounded-2xl px-3 py-2 text-left text-[13px] transition hover:bg-zinc-50", !a.lue && "bg-or-100/50")}
-                    >
-                      {contenu}
-                    </button>
-                  )}
-                </li>
-              );
-            })}
+            {onglet === "tout" && (
+              <>
+                {urgentes.map(lignePresence)}
+                {liste.map(ligneDemande)}
+                {autresPresence.map(lignePresence)}
+                {!nbDemandes && !nbPresence && vide("Aucune alerte sur cette période.")}
+              </>
+            )}
+            {onglet === "demandes" && (nbDemandes ? liste.map(ligneDemande) : vide("Aucune alerte sur les demandes pour cette période."))}
+            {onglet === "presence" &&
+              (nbPresence ? [...urgentes, ...autresPresence].map(lignePresence) : vide("Aucune alerte de présence sur cette période (semaines validées par les chefs)."))}
           </ul>
-          {suite && (
+          {onglet !== "presence" && suite && (
             <div className="text-center">
               <Bouton chargement={chargement} disabled={chargement} onClick={() => plusAnciennes(liste[liste.length - 1].id)}>
                 Alertes plus anciennes

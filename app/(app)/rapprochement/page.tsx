@@ -6,6 +6,7 @@ import { ListesAnneesPassees } from "@/components/rapprochement/listes-annees-pa
 import { NotesSignees } from "@/components/rapprochement/notes-signees";
 import { useSession } from "@/components/session";
 import { Alerte, EnTete } from "@/components/ui";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 import { useParametreUrl } from "@/lib/url";
 
@@ -22,7 +23,7 @@ export default function Rapprochement() {
   const depuisUrl = useParametreUrl("onglet") as Onglet | null | undefined;
   const [choisi, setChoisi] = useState<Onglet | null>(null);
   const onglet: Onglet = choisi ?? (depuisUrl === "annees" || depuisUrl === "notes" ? depuisUrl : "comparer");
-  if (!peut.traiter(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
 
   return (
     <div className="space-y-6">

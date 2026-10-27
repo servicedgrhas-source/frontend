@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSession } from "@/components/session";
 import { Alerte, Bouton, Carte, Chargement, EnTete, Saisie, Vide, cx } from "@/components/ui";
 import { useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 import { typeStructure } from "@/lib/structures";
 
@@ -110,7 +111,7 @@ export default function Structures() {
     return { visibles: v, trouvees: t };
   }, [q, arbre.donnees, parId]);
 
-  if (!peut.traiter(profil.role) && profil.role !== "DDEPPSA") return <Alerte>Accès réservé à la DGRHAS et aux DDEPPSA.</Alerte>;
+  if (!peut.traiter(profil.role) && profil.role !== "DDEPPSA" && !accesDonne(profil)) return <Alerte>Accès réservé à la DGRHAS et aux DDEPPSA.</Alerte>;
 
   const basculer = (id: number) =>
     setOuverts(() => {

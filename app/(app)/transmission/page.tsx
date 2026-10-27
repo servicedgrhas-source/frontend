@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { BaseEnvoyes } from "@/components/base-envoyes";
 import { useSession } from "@/components/session";
+import { accesDonne } from "@/lib/espaces";
 import { useParametreUrl } from "@/lib/url";
 import { Aide, Alerte, Annonce, Badge, Bouton, Carte, Chargement, EnTete, Modale, Pastille, Segments, Tableau, Vide } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
@@ -88,7 +89,7 @@ function Transmissions() {
   // Chef de service, DRSC, bureau d'études : fichiers sans incidence financière ni bloc DGRHAS
   const budget = peut.voirBudget(profil.role);
 
-  if (!peut.traiter(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
 
   async function telecharger(chemin: string, nom: string) {
     try {

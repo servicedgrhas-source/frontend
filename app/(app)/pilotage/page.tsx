@@ -7,6 +7,7 @@ import { PlanificationQuota } from "@/components/planification-quota";
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, EnTete, Liste, Modale, Pastille, Progression, Saisie, Segments, Tableau, Vide } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 const nf = new Intl.NumberFormat("fr-FR");
@@ -39,7 +40,7 @@ interface Tableau {
 export default function Pilotage() {
   const { profil } = useSession();
   const [onglet, setOnglet] = useState<"incidences" | "beneficiaires" | "repartition">("incidences");
-  if (!peut.parametrer(profil.role)) return <Alerte>Module réservé au DGRHAS.</Alerte>;
+  if (!peut.parametrer(profil.role) && !accesDonne(profil)) return <Alerte>Module réservé au DGRHAS.</Alerte>;
   return (
     <div className="space-y-6">
       <EnTete

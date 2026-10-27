@@ -6,6 +6,7 @@ import { type Campagne, SelecteurCampagne, useCampagne } from "@/components/enro
 import { useSession } from "@/components/session";
 import { Aide, Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Jauge, Modale, Saisie, Tableau, Vide } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 interface Membre {
@@ -66,7 +67,7 @@ export default function CampagneEnrolement() {
   const [membre, setMembre] = useState<{ id: string | null; nom: string; fonction: string; places: string } | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ton: "vert" | "rouge"; texte: string } | null>(null);
-  if (!peut.traiter(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
 
   const placesDonnees = (membres.donnees ?? []).reduce((t, m) => t + m.places, 0);
 

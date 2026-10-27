@@ -8,6 +8,7 @@ import { useSession } from "@/components/session";
 import { ProposerRecommandation } from "@/components/recommandation";
 import { Alerte, Annonce, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Modale, Saisie, Tableau, Vide } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 /** Placer un volontaire : département retenu et établissement. */
@@ -67,7 +68,7 @@ export default function BaseEnroles() {
   const [placer, setPlacer] = useState<Enrole | null>(null);
   const [recommander, setRecommander] = useState<Enrole | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  if (!peut.traiter(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
 
   const lignes = dossiers.donnees ?? [];
   const sansDepartement = lignes.filter((e) => !e.departementRetenuId).length;

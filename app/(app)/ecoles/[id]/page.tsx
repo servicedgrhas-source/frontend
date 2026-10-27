@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { useState, Suspense } from "react";
 import { CarteEmploiDuTemps } from "@/components/ecoles/emploi-du-temps";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
-import { Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, Chiffre, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, useConfirmation } from "@/components/ui";
+import { Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, Chiffre, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, cx, useConfirmation } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { type Besoins, CYCLES, decimal, ecartTexte, ETATS_BESOIN, ETATS_LOCAL, nomCourtNiveau } from "@/lib/ecoles";
 
@@ -50,7 +50,21 @@ interface Fiche {
   batiments: Batiment[];
   salles: Salle[];
   classes: Classe[];
-  agents: { id: number; nomComplet: string; statut: string; fonction: string | null; specialite: string | null; enseignant: boolean; enPoste: boolean }[];
+  /** `fonction` : la qualification (« Fonction / profession ») ; `fonctionStructure` : ce qu'il fait dans l'école. */
+  agents: {
+    id: number;
+    nomComplet: string;
+    statut: string;
+    fonction: string | null;
+    fonctionStructure: string | null;
+    specialite: string | null;
+    /** Matière reconnue (collège, lycée) : celle qui compte pour les besoins et l'emploi du temps. */
+    matiere: string | null;
+    enseignant: boolean;
+    enPoste: boolean;
+  }[];
+  /** Matières du cycle (collège, lycée), pour choisir celle d'un enseignant. */
+  matieres: { code: string; libelle: string }[];
   niveaux: { code: string; libelle: string }[];
   besoins: Besoins;
 }
@@ -80,6 +94,16 @@ function FicheEcole() {
   const s = d.structure;
   const niveau = (code: string) => d.niveaux.find((n) => n.code === code)?.libelle ?? code;
   const salle = (sid: number | null) => d.salles.find((x) => x.id === sid)?.nom ?? null;
+  // La matière d'un enseignant se choisit ici : elle va dans la rubrique « Spécialité » de sa fiche
+  const choisirMatiere = async (agent: number, matiere: string) => {
+    setErreur(null);
+    try {
+      await api.put(`/etablissements/${s.id}/enseignants/${agent}/matiere`, { matiere: matiere || null });
+      f.recharger();
+    } catch (e) {
+      setErreur((e as Error).message);
+    }
+  };
   const supprimer = async (quoi: string, x: number, libelle: string) => {
     if (!(await demander(`Supprimer « ${libelle} » ?`, "Supprimer"))) return;
     setErreur(null);
@@ -313,7 +337,8 @@ function FicheEcole() {
               <thead>
                 <tr>
                   <th>Agent</th>
-                  <th>Fonction</th>
+                  <th>Qualification</th>
+                  <th>Fonction dans l’école</th>
                   <th>Spécialité</th>
                   <th />
                 </tr>
@@ -327,7 +352,37 @@ function FicheEcole() {
                       </Link>
                     </td>
                     <td className="text-[12px]">{a.fonction ?? "—"}</td>
-                    <td className="text-[12px]">{a.specialite ?? (a.enseignant && ["COLLEGE", "LYCEE"].includes(s.cycle ?? "") ? <span className="text-or-700">à renseigner</span> : "—")}</td>
+                    <td className="text-[12px]">
+                      {a.fonctionStructure ? (
+                        <strong className="font-semibold text-encre">{a.fonctionStructure}</strong>
+                      ) : a.enseignant ? (
+                        "Enseignant"
+                      ) : (
+                        <span className="text-zinc-400">à renseigner dans sa fiche</span>
+                      )}
+                    </td>
+                    <td className="text-[12px]">
+                      {a.enseignant && d.matieres.length ? (
+                        <>
+                          <select
+                            aria-label={`Matière enseignée par ${a.nomComplet}`}
+                            value={a.matiere ?? ""}
+                            onChange={(e) => void choisirMatiere(a.id, e.target.value)}
+                            className={cx("w-44 rounded-lg border px-2 py-1 text-[12px]", a.matiere ? "border-zinc-200 bg-white" : "border-or-400 bg-or-100/50 text-or-700")}
+                          >
+                            <option value="">— Matière à choisir —</option>
+                            {d.matieres.map((m) => (
+                              <option key={m.code} value={m.code}>
+                                {m.libelle}
+                              </option>
+                            ))}
+                          </select>
+                          {a.specialite && !a.matiere && <div className="mt-0.5 text-[11px] text-zinc-400">Écrit dans la fiche : « {a.specialite} »</div>}
+                        </>
+                      ) : (
+                        (a.specialite ?? "—")
+                      )}
+                    </td>
                     <td className="space-x-1 text-right">
                       {a.enseignant && <Badge ton="vert">enseignant</Badge>}
                       {!a.enPoste && <Badge ton="gris">pas en poste</Badge>}

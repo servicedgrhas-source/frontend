@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { decouperPages } from "@/lib/decoupage";
 
 /**
  * Découpage en pages A4 fait par le système (et non par le navigateur) :
@@ -10,7 +11,20 @@ import { Fragment, useLayoutEffect, useRef, useState, type ReactNode } from "rea
  */
 export type Bloc =
   /** Bloc insécable (en-tête, paragraphe, signature…). */
-  | { cle: string; type: "libre"; contenu: ReactNode; garderAvecSuivant?: boolean; /** Commence une nouvelle page (l'emploi du temps de chaque enseignant). */ nouvellePage?: boolean }
+  | {
+      cle: string;
+      type: "libre";
+      contenu: ReactNode;
+      garderAvecSuivant?: boolean;
+      /**
+       * Ne reste jamais seul en haut d'une page : s'il ne tient plus, il emmène avec lui la dernière
+       * ligne du tableau (et son titre si c'était la seule). La signature d'une note n'est ainsi
+       * jamais seule sur sa page (DG, 26/10/2026 : sinon on pourrait la recoller sous un autre texte).
+       */
+      garderAvecPrecedent?: boolean;
+      /** Commence une nouvelle page (l'emploi du temps de chaque enseignant). */
+      nouvellePage?: boolean;
+    }
   /** Ligne d'un tableau : le tableau continue sur la page suivante, avec son en-tête. */
   | { cle: string; type: "ligne"; tableau: string; contenu: ReactNode };
 
@@ -82,34 +96,7 @@ export function PagesA4({ blocs, tableaux, pied, classeFeuille, margeHaut = 12, 
       const entete = new Map<string, number>();
       zone.querySelectorAll<HTMLElement>("thead[data-entete]").forEach((el) => entete.set(el.dataset.entete!, el.offsetHeight));
 
-      const resultat: string[][] = [[]];
-      let h = 0;
-      let tableauOuvert: string | null = null;
-      const nouvellePage = () => {
-        resultat.push([]);
-        h = 0;
-        tableauOuvert = null;
-      };
-      const coutLigne = (b: Extract<Bloc, { type: "ligne" }>) => (hauteur.get(b.cle) ?? 0) + (tableauOuvert === b.tableau ? 0 : (entete.get(b.tableau) ?? 0));
-      blocs.forEach((b, i) => {
-        const page = resultat[resultat.length - 1];
-        if (b.type === "libre") {
-          let besoin = hauteur.get(b.cle) ?? 0;
-          const suivant = blocs[i + 1];
-          if (b.garderAvecSuivant && suivant)
-            besoin += suivant.type === "ligne" ? (hauteur.get(suivant.cle) ?? 0) + (entete.get(suivant.tableau) ?? 0) : (hauteur.get(suivant.cle) ?? 0);
-          if ((b.nouvellePage || h + besoin > dispo) && page.length) nouvellePage();
-          resultat[resultat.length - 1].push(b.cle);
-          h += hauteur.get(b.cle) ?? 0;
-          tableauOuvert = null;
-        } else {
-          if (h + coutLigne(b) > dispo && page.length) nouvellePage();
-          h += coutLigne(b);
-          resultat[resultat.length - 1].push(b.cle);
-          tableauOuvert = b.tableau;
-        }
-      });
-      setPages(resultat);
+      setPages(decouperPages(blocs, hauteur, entete, dispo));
     };
     // On attend les polices : leur taille change la hauteur des lignes
     void document.fonts.ready.then(decouper);

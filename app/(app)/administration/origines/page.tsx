@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Bouton, BoutonIcone, Carte, Chargement, EnTete, Saisie, Tableau } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 interface Origine {
@@ -24,7 +25,7 @@ export default function Origines() {
   const [nouvelle, setNouvelle] = useState("");
   const [message, setMessage] = useState<{ ton: "vert" | "rouge"; texte: string } | null>(null);
   const dg = peut.valider(profil.role);
-  if (!peut.parametrer(profil.role)) return <Alerte>Page réservée au DG.</Alerte>;
+  if (!peut.parametrer(profil.role) && !accesDonne(profil)) return <Alerte>Page réservée au DG.</Alerte>;
 
   const agir = async (fn: () => Promise<unknown>, texte: string) => {
     try {

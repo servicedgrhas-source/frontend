@@ -1,6 +1,7 @@
 "use client";
 
-import { KeyRound } from "lucide-react";
+import { KeyRound, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { useCodesPersonnels } from "@/components/codes-personnels";
 import { useSession } from "@/components/session";
@@ -38,7 +39,10 @@ export default function Utilisateurs() {
   const { profil, refs } = useSession();
   const users = useApi<Utilisateur[]>(peut.administrer(profil.role) ? "/utilisateurs" : null);
   const structures = useApi<StructureCourte[]>(peut.administrer(profil.role) ? "/structures" : null);
-  const [edition, setEdition] = useState<Utilisateur | "nouveau" | null>(null);
+  // « ?nouveau=1 » (raccourci de la page des droits) : la fiche de création s’ouvre tout de suite
+  const [edition, setEdition] = useState<Utilisateur | "nouveau" | null>(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("nouveau") ? "nouveau" : null,
+  );
   const [message, setMessage] = useState<{ ton: "vert" | "rouge"; texte: string } | null>(null);
   const [codeNouveau, setCodeNouveau] = useState<{ nom: string; code: string } | null>(null);
   const [aDeconnecter, setADeconnecter] = useState<Utilisateur | null>(null);
@@ -85,6 +89,12 @@ export default function Utilisateurs() {
               <KeyRound /> Régénérer les codes de tous les comptes
             </Bouton>
             <Bouton onClick={() => codes.demander({ action: "voir", libelle: "Les codes de tous les comptes (sauf le vôtre) vont s’afficher." })}>Voir tous les codes</Bouton>
+            <Link
+              href="/administration/droits"
+              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-4 py-2 text-[13px] font-medium text-encre hover:border-marque-300 [&>svg]:size-4"
+            >
+              <ShieldCheck /> Droits par rubrique
+            </Link>
             <Bouton variante="principal" onClick={() => setEdition("nouveau")}>Ajouter un utilisateur</Bouton>
           </div>
         }
@@ -170,6 +180,15 @@ export default function Utilisateurs() {
                         <Bouton variante="discret" onClick={() => setADeconnecter(u)} title="Ferme toutes ses sessions ouvertes (poste perdu, départ…)">
                           Déconnecter
                         </Bouton>
+                      )}
+                      {!["ADMIN", "DG"].includes(u.role) && (
+                        <Link
+                          href={`/administration/droits?personne=${u.id}`}
+                          title="Ce que cette personne voit et peut faire, rubrique par rubrique"
+                          className="inline-flex items-center rounded-full px-3 py-1.5 text-[13px] font-medium text-marque-700 hover:bg-marque-50"
+                        >
+                          Droits
+                        </Link>
                       )}
                       <Bouton variante="discret" onClick={() => setEdition(u)}>Modifier</Bouton>
                     </div>

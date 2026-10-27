@@ -107,7 +107,7 @@ function TableauDeBordDgrhas() {
                 .join(" · ") || "Aucun agent pour l’instant"
             }
           />
-          <Chiffre href="/recrutement" icone={<Users />} libelle="Recrutés dans la base" valeur={nf.format(t.agents.total)} detail={`${nf.format(t.agents.textesRecus)} textes reçus de la FP`} />
+          <Chiffre href="/recrutement" icone={<Users />} libelle="Recrutés en cours (base des recrutés)" valeur={nf.format(t.agents.total)} detail={`Candidats suivis jusqu’à leur affectation · ${nf.format(t.agents.textesRecus)} textes reçus de la FP`} />
           <Chiffre
             href="/affectations"
             icone={<ClipboardCheck />}

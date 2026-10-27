@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useSession } from "@/components/session";
 import { Aide, Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Modale, Saisie, Tableau, Zone } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 interface Type {
@@ -34,7 +35,7 @@ export default function Prestations() {
   const types = useApi<Type[]>("/prestations");
   const [edition, setEdition] = useState<Type | null>(null);
   const [message, setMessage] = useState<{ ton: "vert" | "rouge"; texte: string } | null>(null);
-  if (!peut.traiter(profil.role)) return <Alerte>Accès réservé à la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé à la DGRHAS.</Alerte>;
   const dg = peut.parametrer(profil.role);
 
   return (

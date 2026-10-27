@@ -6,6 +6,7 @@ import { fcfa, moisFr, nf } from "@/components/enrolement/volontaires";
 import { useSession } from "@/components/session";
 import { Alerte, Badge, Carte, Chargement, Chiffre, EnTete, Tableau, Vide } from "@/components/ui";
 import { useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 interface TableauEnrolement {
@@ -26,7 +27,7 @@ interface TableauEnrolement {
 export default function TableauEnrolement() {
   const { profil, refs } = useSession();
   const { donnees: t, erreur } = useApi<TableauEnrolement>("/enrolement/tableau");
-  if (!peut.traiter(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
   if (erreur) return <Alerte>{erreur}</Alerte>;
   if (!t) return <Chargement />;
 

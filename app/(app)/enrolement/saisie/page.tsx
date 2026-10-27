@@ -7,6 +7,7 @@ import { type Enrole, FicheEnrole, SelecteurCampagne, useCampagne } from "@/comp
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, Zone, ZoneFichier } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 type Etat = Enrole["etat"];
@@ -281,7 +282,7 @@ export default function SaisieEnrolement() {
   const [texte, setTexte] = useState("");
   const [envoiImport, setEnvoiImport] = useState(false);
   const [apercu, setApercu] = useState<{ fichier: File; rapport: { feuilles: string[]; lues: number; ajoutes: number; dejaLa: number; sansDiplome: number } } | null>(null);
-  if (!peut.traiter(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
 
   const recharger = () => {
     dossiers.recharger();

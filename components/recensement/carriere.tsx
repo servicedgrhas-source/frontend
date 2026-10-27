@@ -46,6 +46,8 @@ export interface DossierCarriere {
   agent: {
     id: number;
     numeroFiche: string | null;
+    /** Date et heure de création de la fiche. */
+    creeLe?: string | null;
     nomComplet: string;
     dateNaissance: string | null;
     lieuNaissance: string | null;

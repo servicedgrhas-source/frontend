@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useSession } from "@/components/session";
 import { Alerte, Badge, Bouton, Carte, Chargement, EnTete, Tableau, Vide, cx } from "@/components/ui";
 import { useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 import { typeStructure } from "@/lib/structures";
 
@@ -34,7 +35,7 @@ export default function FicheStructure() {
   const { id } = useParams<{ id: string }>();
   const detail = useApi<Detail>(`/structures/${id}/personnel`);
 
-  if (!peut.traiter(profil.role) && profil.role !== "DDEPPSA") return <Alerte>Accès réservé à la DGRHAS et aux DDEPPSA.</Alerte>;
+  if (!peut.traiter(profil.role) && profil.role !== "DDEPPSA" && !accesDonne(profil)) return <Alerte>Accès réservé à la DGRHAS et aux DDEPPSA.</Alerte>;
   if (detail.erreur) return <Alerte>{detail.erreur}</Alerte>;
   const d = detail.donnees;
   if (!d) return <Chargement />;

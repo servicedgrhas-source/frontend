@@ -23,6 +23,7 @@ import { useState, type ReactNode } from "react";
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, cx, EnTete, Liste, Modale, Pastille, Saisie } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { CYCLES, peut } from "@/lib/libelles";
 
 interface Grade {
@@ -92,7 +93,7 @@ export default function ReglesEtGrades() {
   const [rattacher, setRattacher] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<{ titre: string; texte: ReactNode; action: () => Promise<void>; libelle: string } | null>(null);
 
-  if (!peut.parametrer(profil.role)) return <Alerte>Accès réservé au DG et à l’administrateur.</Alerte>;
+  if (!peut.parametrer(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé au DG et à l’administrateur.</Alerte>;
   if (erreur) return <Alerte>{erreur}</Alerte>;
   if (!e) return <Chargement />;
 

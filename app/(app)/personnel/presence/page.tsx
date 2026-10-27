@@ -110,12 +110,15 @@ export default function Presence() {
   );
 }
 
+const parametre = (k: string) => (typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get(k));
+
 function Pointage() {
   const { profil } = useSession();
   const chef = profil.role === "STRUCTURE";
   const structures = useApi<StructureCourte[]>(chef ? null : "/recensement/structures");
-  const [structure, setStructure] = useState(chef ? String(profil.structureId ?? "") : "");
-  const [date, setDate] = useState("");
+  // « ?structure=…&date=… » : ouverte depuis une alerte de présence, sur la semaine de l'agent
+  const [structure, setStructure] = useState(() => (chef ? String(profil.structureId ?? "") : (parametre("structure") ?? "")));
+  const [date, setDate] = useState(() => parametre("date") ?? "");
   const s = useApi<Semaine>(structure ? `/presence/semaine?structure=${structure}${date ? `&date=${date}` : ""}` : null);
   const [changes, setChanges] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);

@@ -6,6 +6,7 @@ import { type ConfigEnrolement, fcfa, useConfigEnrolement } from "@/components/e
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Saisie, Tableau, useConfirmation } from "@/components/ui";
 import { api } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 const nombre = (s: string) => (s.trim() === "" ? null : Number(s.replace(/[\s.]/g, "")));
@@ -22,7 +23,7 @@ export default function ConfigurationEnrolement() {
 
   // La copie de travail part de la configuration en vigueur (puis on la modifie librement)
   if (rep.donnees && !c) setC(structuredClone(rep.donnees.configuration));
-  if (!peut.traiter(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
   if (rep.erreur) return <Alerte>{rep.erreur}</Alerte>;
   if (!rep.donnees || !c) return <Chargement />;
   const r = rep.donnees;

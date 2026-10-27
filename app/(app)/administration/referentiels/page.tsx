@@ -7,6 +7,7 @@ import { SaisieReferentiel } from "@/components/saisie-referentiel";
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, Chiffre, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, useConfirmation } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 interface TypeRef {
@@ -56,7 +57,7 @@ export default function Referentiels() {
   const [message, setMessage] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [confirmation, demander] = useConfirmation();
-  if (!peut.traiter(profil.role) && profil.role !== "DDEPPSA") return <Alerte>Accès réservé à la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && profil.role !== "DDEPPSA" && !accesDonne(profil)) return <Alerte>Accès réservé à la DGRHAS.</Alerte>;
   const dg = profil.role === "DG" || profil.role === "ADMIN";
   const t = resume.donnees?.types.find((x) => x.code === type);
   const parCycle = ["NIVEAU", "MATIERE", "PROGRAMME"].includes(type);

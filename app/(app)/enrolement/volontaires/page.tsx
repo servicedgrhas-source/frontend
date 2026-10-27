@@ -5,6 +5,7 @@ import { categoriesDe, FicheVolontaire, fcfa, libelleVague, LISTES, moisFr, nf, 
 import { useSession } from "@/components/session";
 import { Aide, Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, ChoixMois, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, ZoneFichier } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
 
@@ -65,6 +66,10 @@ function Reprise({ apres, ouvertParDefaut, population }: { apres: () => void; ou
   const [premierMois, setPremierMois] = useState("");
   const [motif, setMotif] = useState("");
   const [rapport, setRapport] = useState<Rapport | null>(null);
+  const dernier = useApi<{ date: string; par: string | null; fichier: string; feuille: string; type: string; rapport: Rapport } | null>(
+    `/enrolement/volontaires/dernier-import${qs({ population })}`,
+  );
+  const [voirDernier, setVoirDernier] = useState(false);
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   // Après un clic sur « Faire un essai » incomplet : les champs vides passent en rouge.
@@ -128,11 +133,41 @@ function Reprise({ apres, ouvertParDefaut, population }: { apres: () => void; ou
           essai: essai ? 1 : 0,
         })}`, fd);
       setRapport(r);
-      if (!essai) apres();
+      if (!essai) {
+        apres();
+        dernier.recharger();
+      }
     } catch (x) {
       setErreur((x as Error).message);
     }
   }
+
+  /** Le rapport d'un essai ou d'un import : les mêmes messages avant et après (DG, 26/10/2026). */
+  const vueRapport = (r: Rapport) => (
+    <div className="space-y-2">
+      <Alerte ton={r.essai ? "bleu" : "vert"}>
+        {r.essai ? "Essai : rien n’est enregistré. " : "Import terminé. "}
+        <strong>{nf.format(r.lues)}</strong> personnes lues, <strong>{nf.format(r.ajoutes)}</strong> {r.essai ? "seraient ajoutées" : "ajoutées"} au registre
+        {r.type === "EN_POSTE" && (
+          <>
+            {" "}
+            · montant du fichier {fcfa(r.montantFichier)}, selon le barème {fcfa(r.montantBareme)}
+          </>
+        )}
+        .
+      </Alerte>
+      {bloc("en double dans le fichier (même personne probable) : contrôle « Inscrit deux fois » à la bourse", r.doublonsDansFichier, "rouge")}
+      {bloc("encore en poste dans le registre : la bourse les signalera (« Déjà recruté »)", r.enPosteRetrouves, "rouge")}
+      {bloc("catégorie non reconnue (bourse à 0 tant que la fiche n’est pas corrigée)", r.sansCategorie)}
+      {bloc("département non reconnu", r.sansDepartement)}
+      {bloc("montant du fichier différent du barème", r.montantsDifferents)}
+      {bloc("affecté(e)s aussi par une autre note (double affectation : choisir la bonne, et vérifier la mise en route)", r.autreNote, "rouge")}
+      {bloc("âge hors des limites de la configuration", r.agesHorsLimites)}
+      {bloc("téléphone partagé avec d’autres volontaires", r.telephonesPartages)}
+      {bloc("déjà dans le registre sans note : reliés à cette note", r.relies, "bleu")}
+      {bloc("déjà dans le registre (non recréés)", r.dejaDansRegistre, "gris")}
+    </div>
+  );
 
   const bloc = (titre: string, l: Liste30, ton: "jaune" | "rouge" | "bleu" | "gris" = "jaune") =>
     l.n > 0 && (
@@ -163,6 +198,21 @@ function Reprise({ apres, ouvertParDefaut, population }: { apres: () => void; ou
         </Bouton>
       }
     >
+      {dernier.donnees && (
+        <div className="-mt-2 mb-4 rounded-2xl bg-zinc-50 px-4 py-3 text-[12px] text-zinc-600">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>
+              <strong className="text-encre">Dernier import</strong> le {new Date(dernier.donnees.date).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+              {dernier.donnees.par ? ` par ${dernier.donnees.par}` : ""} : « {dernier.donnees.fichier} », feuille « {dernier.donnees.feuille} » ·{" "}
+              {nf.format(dernier.donnees.rapport.ajoutes)} ajoutée(s)
+            </span>
+            <Bouton variante="discret" onClick={() => setVoirDernier(!voirDernier)}>
+              {voirDernier ? "Masquer le rapport" : "Revoir le rapport"}
+            </Bouton>
+          </div>
+          {voirDernier && <div className="mt-3">{vueRapport(dernier.donnees.rapport)}</div>}
+        </div>
+      )}
       {ouvert && (
         <>
       <p className="-mt-2 mb-4 text-[12px] leading-relaxed text-zinc-500">
@@ -253,31 +303,7 @@ function Reprise({ apres, ouvertParDefaut, population }: { apres: () => void; ou
               Importer pour de bon
             </Bouton>
           </div>
-          {rapport && (
-            <div className="space-y-2">
-              <Alerte ton={rapport.essai ? "bleu" : "vert"}>
-                {rapport.essai ? "Essai : rien n’est enregistré. " : "Import terminé. "}
-                <strong>{nf.format(rapport.lues)}</strong> personnes lues, <strong>{nf.format(rapport.ajoutes)}</strong> {rapport.essai ? "seraient ajoutées" : "ajoutées"} au registre
-                {rapport.type === "EN_POSTE" && (
-                  <>
-                    {" "}
-                    · montant du fichier {fcfa(rapport.montantFichier)}, selon le barème {fcfa(rapport.montantBareme)}
-                  </>
-                )}
-                .
-              </Alerte>
-              {bloc("en double dans le fichier (même personne probable) : contrôle « Inscrit deux fois » à la bourse", rapport.doublonsDansFichier, "rouge")}
-              {bloc("encore en poste dans le registre : la bourse les signalera (« Déjà recruté »)", rapport.enPosteRetrouves, "rouge")}
-              {bloc("catégorie non reconnue (bourse à 0 tant que la fiche n’est pas corrigée)", rapport.sansCategorie)}
-              {bloc("département non reconnu", rapport.sansDepartement)}
-              {bloc("montant du fichier différent du barème", rapport.montantsDifferents)}
-              {bloc("affecté(e)s aussi par une autre note (double affectation : choisir la bonne, et vérifier la mise en route)", rapport.autreNote, "rouge")}
-              {bloc("âge hors des limites de la configuration", rapport.agesHorsLimites)}
-              {bloc("téléphone partagé avec d’autres volontaires", rapport.telephonesPartages)}
-              {bloc("déjà dans le registre sans note : reliés à cette note", rapport.relies, "bleu")}
-              {bloc("déjà dans le registre (non recréés)", rapport.dejaDansRegistre, "gris")}
-            </div>
-          )}
+          {rapport && vueRapport(rapport)}
         </div>
       )}
         </>
@@ -537,7 +563,7 @@ export default function RegistreVolontaires() {
   const [serie, setSerie] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const liste = useApi<Page>(`/enrolement/volontaires${qs({ population, vague: population === "VOLONTAIRE" ? vague : "", recherche, statut, departement, categorie, motif: statut === "SORTI" ? motif : "", page })}`);
-  if (!peut.traiter(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
   const c = config.donnees?.configuration;
   const cats = categoriesDe(c, population);
   const nomCat = (code: string | null) => cats.find((x) => x.code === code)?.libelle ?? code;

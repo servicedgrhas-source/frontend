@@ -7,6 +7,7 @@ import { ImportRetourFP } from "@/components/import-retour-fp";
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Modale, Pastille, Saisie, Segments, Tableau, Vide } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { dateCourte, dateLongue, peut } from "@/lib/libelles";
 import { libelleLot } from "@/lib/libelles";
 import type { Agent } from "@/lib/types";
@@ -89,7 +90,7 @@ export default function Reception() {
     return () => clearTimeout(t);
   }, [numero, type]);
 
-  if (!peut.traiter(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
 
   const liste = recherche.trim().length >= 3 ? resultats : null;
   const disponible = (a: Agent) => !a.lotPublication && !(a.origineFiche === "SAISIE" && a.feuille === "MEPPSA" && !a.transmissionNumero);

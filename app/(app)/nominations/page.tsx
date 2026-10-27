@@ -4,6 +4,7 @@ import { ArrowRight, Award, ClipboardCheck, FileSignature, History, Network, Sea
 import Link from "next/link";
 import { useSession } from "@/components/session";
 import { Alerte, Carte, EnTete } from "@/components/ui";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 /** Ce que fera le module, dans l'ordre du circuit. */
@@ -22,7 +23,7 @@ const ETAPES = [
  */
 export default function Nominations() {
   const { profil } = useSession();
-  if (!peut.traiter(profil.role)) return <Alerte>Accès réservé à la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé à la DGRHAS.</Alerte>;
   return (
     <div className="space-y-6">
       <EnTete

@@ -33,7 +33,12 @@ export interface Profil {
   structureId?: number | null;
   /** A un code personnel de connexion. */
   aCode?: boolean;
+  /** Rubriques réglées par le DG pour ce compte (Administration › Droits par rubrique). */
+  droits?: Record<string, NiveauDroit>;
 }
+
+/** Masquée, lecture seule, ou ouverte (même au-delà du rôle). */
+export type NiveauDroit = "MASQUE" | "LECTURE" | "MODIFICATION";
 
 export function lireSession(): { jeton: string | null; profil: Profil | null } {
   if (typeof window === "undefined") return { jeton: null, profil: null };

@@ -583,6 +583,13 @@ export const ESPACES: Espace[] = [
         explication: "La liste des origines proposées à la saisie d’un candidat (Cabinet du Ministre, Primature, DDEPPSA…).",
       },
       {
+        href: "/administration/droits",
+        libelle: "Droits par rubrique",
+        icone: ShieldCheck,
+        visible: parametrer,
+        explication: "Qui voit quoi, qui fait quoi : pour chaque rôle, ou pour une personne, choisir les rubriques masquées, en lecture seule ou ouvertes.",
+      },
+      {
         href: "/administration/menu",
         libelle: "Menu",
         icone: ListChecks,
@@ -636,8 +643,52 @@ const ORIGINES_STRUCTURE = ["personnel", "demandes", "structures"];
  * Rubriques d'un espace que ce profil peut voir. Les droits suivent la rubrique (et son domaine
  * d'origine pour les comptes des écoles), pas l'endroit où le menu l'a rangée.
  */
+/** Rubriques que l'on peut fermer, jamais ouvrir au-delà du rôle (comme sur le serveur). */
+const NON_OUVRABLES = ["/administration"];
+
+/** Réglage du DG pour cette rubrique (son adresse sans « ?… »), s'il y en a un. */
+export const niveauRubrique = (href: string, p: Profil) => p.droits?.[href.split("?")[0]];
+
+/**
+ * Rubriques visibles : les droits d'origine du rôle, puis les réglages du DG (Administration ›
+ * Droits par rubrique) : masquée, ou ouverte en lecture ou en modification même hors du rôle.
+ * Les comptes des écoles et inspections ne voient jamais que leur personnel et leurs demandes.
+ */
 export const rubriquesVisibles = (e: Espace, p: Profil) =>
-  e.rubriques.filter((r) => (!r.visible || r.visible(p)) && (p.role !== "STRUCTURE" || ORIGINES_STRUCTURE.includes(r.origine ?? e.cle)));
+  e.rubriques.filter((r) => {
+    if (p.role === "STRUCTURE" && !ORIGINES_STRUCTURE.includes(r.origine ?? e.cle)) return false;
+    const n = niveauRubrique(r.href, p);
+    if (n === "MASQUE") return false;
+    if (n && p.role !== "STRUCTURE" && !NON_OUVRABLES.includes(r.href)) return true;
+    return !r.visible || r.visible(p);
+  });
+
+/** Rubrique d'une page : celle dont l'adresse est la plus précise. */
+function rubriquePage(chemin: string) {
+  let meilleur: string | null = null;
+  for (const e of ESPACES)
+    for (const r of e.rubriques) {
+      const h = r.href.split("?")[0];
+      if ((chemin === h || chemin.startsWith(`${h}/`)) && (!meilleur || h.length > meilleur.length)) meilleur = h;
+    }
+  return meilleur;
+}
+
+/** Réglage du DG qui vaut pour une page. */
+export function niveauPage(chemin: string, p: Profil) {
+  const h = p.droits ? rubriquePage(chemin) : null;
+  return h ? p.droits?.[h] : undefined;
+}
+
+/**
+ * La page est ouverte à ce compte par le DG (lecture ou modification), même si son rôle ne l'a pas
+ * d'origine : les pages en tiennent compte en plus de leur contrôle de rôle.
+ */
+export function accesDonne(p: Profil) {
+  if (typeof window === "undefined" || !p.droits || p.role === "STRUCTURE") return false;
+  const h = rubriquePage(window.location.pathname);
+  return !!h && !NON_OUVRABLES.includes(h) && (p.droits[h] === "LECTURE" || p.droits[h] === "MODIFICATION");
+}
 
 /** Où mène la case ou l'entrée d'un domaine : sa seule page s'il n'en a qu'une, sinon sa page d'accueil. */
 export function lienEspace(e: Espace, p: Profil) {
