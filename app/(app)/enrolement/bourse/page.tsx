@@ -3,7 +3,7 @@
 import { CheckCircle2, Download, FileText, LogOut, Printer, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import { categoriesDe, FicheVolontaire, deMois, fcfa, LISTES, moisFr, nf, peutGerer, type Population, useConfigEnrolement } from "@/components/enrolement/volontaires";
+import { categoriesDe, FicheVolontaire, type ProblemeBourse, deMois, fcfa, LISTES, moisFr, nf, peutGerer, type Population, useConfigEnrolement } from "@/components/enrolement/volontaires";
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, Chiffre, ChoixMois, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, Zone, useConfirmation } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
@@ -16,6 +16,7 @@ interface Anomalie {
   volontaireId: string;
   nomComplet: string;
   message: string;
+  autreId?: string;
 }
 
 interface Etat {
@@ -58,7 +59,7 @@ export default function BourseMensuelle() {
   const [recherche, setRecherche] = useState("");
   const [departement, setDepartement] = useState("");
   const [page, setPage] = useState(1);
-  const [fiche, setFiche] = useState<{ id: string; controle?: string; modifiee?: boolean } | null>(null);
+  const [fiche, setFiche] = useState<{ id: string; probleme?: ProblemeBourse; modifiee?: boolean } | null>(null);
   const [rouvrir, setRouvrir] = useState(false);
   const [motif, setMotif] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -295,6 +296,7 @@ export default function BourseMensuelle() {
                         <th>Volontaire</th>
                         <th>Contrôle</th>
                         <th>Détail</th>
+                        <th />
                       </tr>
                     </thead>
                     <tbody>
@@ -317,7 +319,7 @@ export default function BourseMensuelle() {
                             </td>
                           )}
                           <td>
-                            <button type="button" className="text-left font-medium underline decoration-zinc-300 decoration-dotted underline-offset-2 hover:text-marque-700" onClick={() => setFiche({ id: a.volontaireId, controle: a.gravite === "BLOQUANT" && ["DOUBLON", "RECRUTE_FP"].includes(a.code) ? a.code : undefined })}>
+                            <button type="button" className="text-left font-medium underline decoration-zinc-300 decoration-dotted underline-offset-2 hover:text-marque-700" onClick={() => setFiche({ id: a.volontaireId, probleme: { ...a, mois: e?.mois } })}>
                               {a.nomComplet}
                             </button>
                           </td>
@@ -325,6 +327,13 @@ export default function BourseMensuelle() {
                             <Badge ton={a.gravite === "BLOQUANT" ? "rouge" : "jaune"}>{detail.donnees?.controles[a.code]?.libelle ?? a.code}</Badge>
                           </td>
                           <td className="text-[12px] text-zinc-600">{a.message}</td>
+                          <td className="text-right">
+                            {gerer && e?.statut === "BROUILLON" && (
+                              <Bouton variante="discret" onClick={() => setFiche({ id: a.volontaireId, probleme: { ...a, mois: e.mois } })} title="Ouvre la fiche sur ce problème, avec ce qui le règle">
+                                Régler
+                              </Bouton>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -445,7 +454,13 @@ export default function BourseMensuelle() {
       {fiche && (
         <FicheVolontaire
           id={fiche.id}
-          controle={fiche.controle}
+          probleme={e?.statut === "BROUILLON" ? fiche.probleme : undefined}
+          regle={(texte) => {
+            // Réglé : la bourse est recalculée, le contrôle disparaît de la liste
+            setFiche(null);
+            setMessage(`${texte} La bourse est recalculée.`);
+            if (e?.statut === "BROUILLON" && gerer) void preparer(e.mois, true);
+          }}
           fermer={() => {
             // Une fiche corrigée : l'état en projet est recalculé à la fermeture
             if (fiche.modifiee && e?.statut === "BROUILLON" && gerer) void preparer(e.mois, true);

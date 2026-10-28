@@ -156,8 +156,36 @@ export const STATUT_REGULARISATION: Record<string, { libelle: string; ton: "jaun
   A_RECOUVRER: { libelle: "À recouvrer", ton: "rouge" },
 };
 
-/** Fiche complète d'un volontaire, son historique et les actions possibles. */
-export function FicheVolontaire({ id, fermer, apres, controle }: { id: string; fermer: () => void; apres?: () => void; controle?: string }) {
+/** Un contrôle de la bourse à régler pour ce volontaire (ouvert depuis Paiement mensuel › Contrôles). */
+export interface ProblemeBourse {
+  code: string;
+  message: string;
+  gravite: "BLOQUANT" | "SIGNALE";
+  /** Doublon, payé sur l'autre liste : l'autre fiche. */
+  autreId?: string;
+  /** Mois de l'état de bourse (« 2026-10 ») : date de sortie proposée au 1er du mois. */
+  mois?: string;
+}
+
+/**
+ * Fiche complète d'un volontaire, son historique et les actions possibles. Ouverte depuis un
+ * contrôle de la bourse (`probleme`), elle montre d'abord le problème et ce qui le règle, sur place
+ * (DG, 28/10/2026 : « la modale correspondante pour régler le problème de la personne »).
+ */
+export function FicheVolontaire({
+  id,
+  fermer,
+  apres,
+  probleme,
+  regle,
+}: {
+  id: string;
+  fermer: () => void;
+  apres?: () => void;
+  probleme?: ProblemeBourse;
+  /** Le problème est réglé : la page recalcule et ferme la fiche. */
+  regle?: (texte: string) => void;
+}) {
   const { profil, refs } = useSession();
   const fiche = useApi<{
     volontaire: Volontaire;
@@ -167,7 +195,7 @@ export function FicheVolontaire({ id, fermer, apres, controle }: { id: string; f
     personnel: { id: number; numeroFiche: string; taux: number; complet: boolean } | null;
   }>(`/enrolement/volontaires/${id}`);
   const config = useConfigEnrolement();
-  const [action, setAction] = useState<Action>(controle ? "verifier" : null);
+  const [action, setAction] = useState<Action>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [form, setForm] = useState<Record<string, string>>({});
   const c = config.donnees?.configuration;
@@ -196,7 +224,7 @@ export function FicheVolontaire({ id, fermer, apres, controle }: { id: string; f
         premierMois: v.premierMois ?? "",
         observation: v.observation ?? "",
       });
-    else if (a === "verifier") setForm({ controle: controle ?? "", note: "" });
+    else if (a === "verifier") setForm({ controle: probleme?.code ?? "", note: "" });
     else if (a === "regulariser") setForm({ type: "COMPLEMENT", montant: "", motif: "" });
     else setForm({ date: new Date().toISOString().slice(0, 10) });
     setAction(a);
@@ -251,6 +279,19 @@ export function FicheVolontaire({ id, fermer, apres, controle }: { id: string; f
         <Chargement />
       ) : action === null ? (
         <div className="space-y-5">
+          {probleme && gerer && v && (
+            <PanneauProbleme
+              v={v}
+              probleme={probleme}
+              libelle={config.donnees?.controles[probleme.code]?.libelle ?? probleme.code}
+              categories={categoriesDe(c, v.population).filter((x) => x.actif)}
+              fini={(texte) => {
+                fiche.recharger();
+                apres?.();
+                regle?.(texte);
+              }}
+            />
+          )}
           <div className="flex flex-wrap items-center gap-2">
             {v.statut === "EN_POSTE" ? <Badge ton="vert">En poste</Badge> : <Badge ton="rouge">Sorti : {nomMotif(v.motifSortie)}</Badge>}
             {v.dateSortie && <span className="text-[12px] text-zinc-500">le {dateFr(v.dateSortie)}</span>}
@@ -468,3 +509,237 @@ export const categoriesDe = (c: ConfigEnrolement | undefined, p: string) => (p =
 /** « 8e vague », « 1re vague », « avant la 1re vague ». */
 export const libelleVague = (n: number | null | undefined, brut?: string | null) =>
   n === null || n === undefined ? (brut ?? "—") : n === 0 ? "Avant la 1re vague" : `${n}${n === 1 ? "re" : "e"} vague`;
+
+/** Ce qui règle chaque contrôle, sur place, sans chercher le bon bouton (DG, 28/10/2026). */
+function PanneauProbleme({
+  v,
+  probleme,
+  libelle,
+  categories,
+  fini,
+}: {
+  v: Volontaire;
+  probleme: ProblemeBourse;
+  libelle: string;
+  categories: { code: string; libelle: string; bourse: number }[];
+  fini: (texte: string) => void;
+}) {
+  const { refs, profil } = useSession();
+  const autre = useApi<{ volontaire: Volontaire }>(probleme.autreId ? `/enrolement/volontaires/${probleme.autreId}` : null);
+  const [f, setF] = useState<Record<string, string>>({
+    categorie: v.categorie ?? "",
+    departementId: v.departementId ? String(v.departementId) : "",
+    etablissement: v.etablissement ?? "",
+    premierMois: v.premierMois ?? "",
+    dateNote: v.dateNote ?? "",
+    datePriseService: v.datePriseService ?? "",
+    note: "",
+  });
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [envoi, setEnvoi] = useState(false);
+  const [pasLaMeme, setPasLaMeme] = useState(false);
+  const dateSortie = probleme.mois ? `${probleme.mois}-01` : new Date().toISOString().slice(0, 10);
+  const a = autre.donnees?.volontaire;
+
+  async function faire(action: () => Promise<unknown>, texte: string) {
+    setErreur(null);
+    setEnvoi(true);
+    try {
+      await action();
+      fini(texte);
+    } catch (x) {
+      setErreur((x as Error).message);
+    } finally {
+      setEnvoi(false);
+    }
+  }
+  const corriger = (champs: Record<string, unknown>, texte: string) => faire(() => api.put(`/enrolement/volontaires/${v.id}`, champs), texte);
+  const sortir = (qui: string, motif: string, observation: string, texte: string) => faire(() => api.post(`/enrolement/volontaires/${qui}/sortie`, { motif, date: dateSortie, observation }), texte);
+  const verifier = (ids: string[], texte: string) =>
+    faire(async () => {
+      for (const x of ids) await api.post(`/enrolement/volontaires/${x}/verification`, { controle: probleme.code, note: f.note });
+    }, texte);
+
+  const champNote = (
+    <Champ libelle="Ce que vous avez constaté *" aide="Gardé dans l’historique : par exemple « pas la même date de naissance, pièces vues à la DDEPPSA ».">
+      <Zone value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} />
+    </Champ>
+  );
+  const comparer = (lib: string, x: (w: Volontaire) => React.ReactNode) => (
+    <tr>
+      <td className="pr-3 text-zinc-500">{lib}</td>
+      <td className="pr-3">{x(v) || "—"}</td>
+      <td>{a ? x(a) || "—" : "…"}</td>
+    </tr>
+  );
+
+  return (
+    <div className="space-y-3 rounded-2xl bg-or-100/60 p-4 ring-1 ring-or-300">
+      <div>
+        <div className="text-[12px] font-semibold tracking-wide text-or-800 uppercase">À régler {probleme.gravite === "BLOQUANT" ? "(bloque la bourse)" : "(signalé)"}</div>
+        <div className="text-[15px] font-semibold">{libelle}</div>
+        <p className="text-[13px] text-zinc-700">{probleme.message}</p>
+      </div>
+
+      {probleme.code === "CATEGORIE" && (
+        <div className="flex flex-wrap items-end gap-2">
+          <Champ libelle="Catégorie de bourse" className="min-w-64 flex-1">
+            <Liste value={f.categorie} onChange={(e) => setF({ ...f, categorie: e.target.value })} vide="— Choisir —" options={categories.map((x) => ({ valeur: x.code, libelle: `${x.libelle} (${fcfa(x.bourse)})` }))} />
+          </Champ>
+          <Bouton variante="principal" disabled={!f.categorie || envoi} onClick={() => corriger({ categorie: f.categorie }, "Catégorie enregistrée.")}>
+            Enregistrer
+          </Bouton>
+        </div>
+      )}
+
+      {probleme.code === "MONTANT" && (
+        <p className="text-[13px] text-zinc-700">
+          Ce n’est pas la fiche qui est en cause : le <strong>montant de cette catégorie</strong> n’est pas encore fixé. Fixez-le une fois dans{" "}
+          <Link href="/enrolement/configuration" className="font-medium text-marque-700 underline">
+            Enrôlement › Configuration
+          </Link>{" "}
+          : tous les {v.population === "COMMUNAUTAIRE" ? "communautaires" : "volontaires"} de la catégorie sont réglés d’un coup. Si la catégorie est fausse, changez-la avec « Corriger la fiche ».
+        </p>
+      )}
+
+      {probleme.code === "DEPARTEMENT" && (
+        <div className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_auto]">
+          <Champ libelle="Département">
+            <Liste value={f.departementId} onChange={(e) => setF({ ...f, departementId: e.target.value })} vide="— Choisir —" options={refs.departements.map((d) => ({ valeur: d.id, libelle: d.nom }))} />
+          </Champ>
+          <Champ libelle="Établissement">
+            <SaisieReferentiel liste="ETABLISSEMENT" valeur={f.etablissement} changer={(x) => setF({ ...f, etablissement: x })} departementId={f.departementId} />
+          </Champ>
+          <Bouton variante="principal" disabled={!f.departementId || envoi} onClick={() => corriger({ departementId: Number(f.departementId), etablissement: f.etablissement || null }, "Département enregistré.")}>
+            Enregistrer
+          </Bouton>
+        </div>
+      )}
+
+      {probleme.code === "DEBUT" && (
+        <>
+          <p className="text-[13px] text-zinc-700">Remplissez au moins l’un des trois : le premier mois payé, ou la date de la note de service, ou la date de prise de service (la règle de la configuration en déduit le premier mois).</p>
+          <div className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
+            <Champ libelle="Premier mois payé">
+              <Saisie type="month" value={f.premierMois} onChange={(e) => setF({ ...f, premierMois: e.target.value })} />
+            </Champ>
+            <Champ libelle="Date de la note">
+              <Saisie type="date" value={f.dateNote} onChange={(e) => setF({ ...f, dateNote: e.target.value })} />
+            </Champ>
+            <Champ libelle="Prise de service">
+              <Saisie type="date" value={f.datePriseService} onChange={(e) => setF({ ...f, datePriseService: e.target.value })} />
+            </Champ>
+            <Bouton
+              variante="principal"
+              disabled={!(f.premierMois || f.dateNote || f.datePriseService) || envoi}
+              onClick={() => corriger({ premierMois: f.premierMois || null, dateNote: f.dateNote || null, datePriseService: f.datePriseService || null }, "Début de la bourse enregistré.")}
+            >
+              Enregistrer
+            </Bouton>
+          </div>
+        </>
+      )}
+
+      {(probleme.code === "DOUBLON" || probleme.code === "AUTRE_LISTE") && (
+        <>
+          {probleme.autreId ? (
+            <div className="overflow-x-auto rounded-xl bg-white p-3 text-[12px] ring-1 ring-zinc-200">
+              <table>
+                <thead>
+                  <tr className="text-left">
+                    <th />
+                    <th className="pr-3">Cette fiche</th>
+                    <th>L’autre fiche</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {comparer("Nom", (w) => w.nomComplet)}
+                  {comparer("Liste", (w) => (w.population === "COMMUNAUTAIRE" ? "Communautaires" : "Volontaires"))}
+                  {comparer("Naissance", (w) => [dateFr(w.dateNaissance) !== "—" && dateFr(w.dateNaissance), w.lieuNaissance].filter(Boolean).join(" à "))}
+                  {comparer("Téléphone", (w) => w.telephone)}
+                  {comparer("Département", (w) => refs.departements.find((d) => d.id === w.departementId)?.nom)}
+                  {comparer("Établissement", (w) => w.etablissement)}
+                  {comparer("Vague", (w) => libelleVague(w.vagueNumero, w.vague))}
+                  {comparer("Note de service", (w) => [w.noteReference, w.dateNote && `du ${dateFr(w.dateNote)}`].filter(Boolean).join(" "))}
+                  {comparer("Prise de service", (w) => dateFr(w.datePriseService))}
+                  {comparer("Origine", (w) => <span className="text-zinc-500">{w.source}</span>)}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-[12px] text-zinc-500">Recalculez la bourse pour voir l’autre fiche côte à côte.</p>
+          )}
+          {!pasLaMeme ? (
+            <div className="flex flex-wrap gap-2">
+              {probleme.autreId && (
+                <>
+                  <Bouton variante="principal" disabled={envoi} onClick={() => sortir(probleme.autreId!, "DOUBLON", `Doublon de la fiche gardée (${v.nomComplet}, ${v.etablissement ?? "établissement inconnu"})`, "L’autre fiche est sortie du registre (doublon).")}>
+                    Garder cette fiche, sortir l’autre
+                  </Bouton>
+                  <Bouton disabled={envoi} onClick={() => sortir(v.id, "DOUBLON", `Doublon de la fiche gardée (${a?.nomComplet ?? ""}, ${a?.etablissement ?? "établissement inconnu"})`, "Cette fiche est sortie du registre (doublon).")}>
+                    Garder l’autre, sortir celle-ci
+                  </Bouton>
+                </>
+              )}
+              <Bouton disabled={envoi} onClick={() => setPasLaMeme(true)}>
+                Ce ne sont pas les mêmes personnes
+              </Bouton>
+            </div>
+          ) : (
+            <>
+              {champNote}
+              <div className="flex gap-2">
+                <Bouton onClick={() => setPasLaMeme(false)}>Retour</Bouton>
+                <Bouton variante="principal" disabled={f.note.trim().length < 5 || envoi} onClick={() => verifier([v.id, ...(probleme.autreId ? [probleme.autreId] : [])], "Vérifié : ce ne sont pas les mêmes personnes (les deux fiches).")}>
+                  Enregistrer : deux personnes différentes
+                </Bouton>
+              </div>
+            </>
+          )}
+          <p className="text-[11px] text-zinc-500">La fiche sortie l’est au 1er du mois de la bourse, avec le motif « Doublon (inscrit deux fois) » : elle n’est plus payée. Elle reste dans l’historique.</p>
+        </>
+      )}
+
+      {probleme.code === "RECRUTE_FP" && (
+        <>
+          {!pasLaMeme ? (
+            <div className="flex flex-wrap gap-2">
+              <Bouton variante="principal" disabled={envoi} onClick={() => sortir(v.id, "RECRUTE_FP", probleme.message.replace(/ S’il est recruté.*$/, ""), "Sorti du registre : recruté à la Fonction Publique.")}>
+                C’est bien lui : sortir du registre (recruté)
+              </Bouton>
+              <Bouton disabled={envoi} onClick={() => setPasLaMeme(true)}>
+                Ce n’est pas la même personne
+              </Bouton>
+            </div>
+          ) : (
+            <>
+              {champNote}
+              <div className="flex gap-2">
+                <Bouton onClick={() => setPasLaMeme(false)}>Retour</Bouton>
+                <Bouton variante="principal" disabled={f.note.trim().length < 5 || envoi} onClick={() => verifier([v.id], "Vérifié : ce n’est pas la même personne.")}>
+                  Enregistrer
+                </Bouton>
+              </div>
+            </>
+          )}
+          <p className="text-[11px] text-zinc-500">
+            Sorti au 1er du mois de la bourse ({moisFr(probleme.mois ?? "")}) : il n’est pas payé ce mois-là. Plusieurs à la fois : cochez-les dans la liste des contrôles.
+          </p>
+        </>
+      )}
+
+      {probleme.gravite === "SIGNALE" && (
+        <>
+          <p className="text-[13px] text-zinc-700">Ce contrôle ne bloque pas la bourse. Si tout est en ordre, marquez-le comme vérifié : il ne sera plus signalé pour ce {v.population === "COMMUNAUTAIRE" ? "communautaire" : "volontaire"}.</p>
+          {champNote}
+          <Bouton variante="principal" disabled={f.note.trim().length < 5 || envoi} onClick={() => verifier([v.id], "Contrôle marqué comme vérifié.")}>
+            Marquer comme vérifié
+          </Bouton>
+        </>
+      )}
+
+      {erreur && <Alerte>{erreur}</Alerte>}
+      {!peutGerer(profil.role) && <p className="text-[12px] text-zinc-500">Seuls le chef de service, le directeur et le DG règlent les contrôles.</p>}
+    </div>
+  );
+}
