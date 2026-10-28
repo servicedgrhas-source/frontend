@@ -48,12 +48,12 @@ export default function Connexion() {
                 <div className="absolute inset-[-20%] rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.5)_0%,rgba(251,222,74,0.15)_50%,transparent_72%)]" aria-hidden />
                 <Image src="/armoiries-transparent.png" alt="Armoiries de la République du Congo" width={474} height={464} priority className="relative h-full w-full object-contain" />
               </div>
-              <div className="shrink-0 leading-tight">
+              <div className="shrink-0 text-center leading-tight">
                 <div className="text-[13px] font-semibold uppercase tracking-wide">République du Congo</div>
                 <div className="mt-0.5 text-[11px] text-white/50">Unité · Travail · Progrès</div>
               </div>
               <div className="h-11 w-0.5 shrink-0 rounded-full bg-white/70" aria-hidden />
-              <div className="text-[10px] leading-snug font-medium uppercase text-white/70">
+              <div className="text-center text-[10px] leading-snug font-medium uppercase text-white/70">
                 Ministère de l’Enseignement Préscolaire, Primaire, Secondaire et de l’Alphabétisation
               </div>
             </div>
