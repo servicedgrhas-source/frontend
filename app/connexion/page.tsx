@@ -62,7 +62,7 @@ export default function Connexion() {
             <h1 className="text-[26px] leading-tight font-semibold">
               Système d’Information de Gestion des Ressources Humaines et de l’Administration Scolaire du MEPPSA (SIGRHAS-MEPPSA)
             </h1>
-            <p className="mx-auto mt-6 max-w-72 text-sm leading-relaxed text-white/55">
+            <p className="mx-auto mt-12 max-w-72 text-sm leading-relaxed text-white/55">
               Direction générale des ressources humaines et de l’administration scolaire — MEPPSA —
             </p>
           </div>
