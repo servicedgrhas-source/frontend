@@ -38,7 +38,7 @@ export default function Connexion() {
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className="grid w-full max-w-5xl overflow-hidden rounded-[32px] bg-white shadow-doux md:grid-cols-[1.25fr_1fr]">
-        <div className="relative hidden flex-col justify-center gap-20 overflow-hidden bg-nuit p-10 text-white md:flex">
+        <div className="relative hidden flex-col justify-start gap-12 overflow-hidden bg-nuit p-10 pt-12 text-white md:flex">
           <div>
             <div className="bandeau-national h-1.5 w-20 rounded-full" aria-hidden />
             {/* En-tête officiel : armoiries | République du Congo | ministère */}
@@ -62,8 +62,8 @@ export default function Connexion() {
             <h1 className="text-[26px] leading-tight font-semibold">
               Système d’Information de Gestion des Ressources Humaines et de l’Administration Scolaire du MEPPSA (SIGRHAS-MEPPSA)
             </h1>
-            <p className="mx-auto mt-3 max-w-72 text-sm leading-relaxed text-white/55">
-              Direction générale des ressources humaines et de l’administration scolaire — MEPPSA.
+            <p className="mx-auto mt-6 max-w-72 text-sm leading-relaxed text-white/55">
+              Direction générale des ressources humaines et de l’administration scolaire — MEPPSA —
             </p>
           </div>
           <div className="pointer-events-none absolute -right-16 -bottom-16 size-64 rounded-full bg-marque-500/20 blur-2xl" aria-hidden />
