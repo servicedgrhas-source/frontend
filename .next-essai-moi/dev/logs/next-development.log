@@ -1,0 +1,13 @@
+{"timestamp":"00:00:05.512","source":"Server","level":"LOG","message":"- Cache Components enabled"}
+{"timestamp":"00:00:05.513","source":"Server","level":"LOG","message":"- Partial Prefetching enabled"}
+{"timestamp":"00:00:05.513","source":"Server","level":"LOG","message":"- Experiments (use with caution):"}
+{"timestamp":"00:00:05.514","source":"Server","level":"LOG","message":"  ✓ agentFeedback"}
+{"timestamp":"00:00:05.514","source":"Server","level":"LOG","message":"  · instantInsights"}
+{"timestamp":"00:00:05.515","source":"Server","level":"LOG","message":"  · proxyClientMaxBodySize: \"80mb\""}
+{"timestamp":"00:00:05.519","source":"Server","level":"LOG","message":"  · proxyTimeout: 300000"}
+{"timestamp":"00:00:05.520","source":"Server","level":"LOG","message":""}
+{"timestamp":"00:00:08.596","source":"Server","level":"LOG","message":"○ Compiling / ..."}
+{"timestamp":"00:00:21.591","source":"Server","level":"LOG","message":"○ Compiling /connexion ..."}
+{"timestamp":"00:00:24.590","source":"Browser","level":"INFO","message":"Download the React DevTools for a better development experience: https://react.dev/link/react-devtools"}
+{"timestamp":"00:00:25.160","source":"Browser","level":"INFO","message":"Download the React DevTools for a better development experience: https://react.dev/link/react-devtools"}
+{"timestamp":"00:04:50.176","source":"Server","level":"LOG","message":"✓ Compiled in 3.5s"}

@@ -50,12 +50,35 @@ export default function Connexion() {
               </div>
               <div className="shrink-0 text-center leading-tight">
                 <div className="text-[13px] font-semibold uppercase tracking-wide">République du Congo</div>
-                <div className="mt-0.5 text-[11px] text-white/50">Unité · Travail · Progrès</div>
+                {/* Tirets sous la devise : de la fin de « Unité » au début de « Progrès » */}
+                <div className="mt-0.5 text-[11px] text-white/50">
+                  Unité
+                  <span className="relative">
+                    {" · Travail · "}
+                    <span
+  className="absolute inset-x-0 -bottom-1 h-px opacity-50"
+  style={{
+    backgroundImage:
+      "repeating-linear-gradient(to right, white 0, white 12px, transparent 12px, transparent 18px)",
+  }}
+  aria-hidden
+/>
+                  </span>
+                  Progrès
+                </div>
               </div>
               <div className="h-11 w-0.5 shrink-0 rounded-full bg-white/70" aria-hidden />
-              <div className="text-center text-[10px] leading-snug font-medium uppercase text-white/70">
-                Ministère de l’Enseignement Préscolaire, Primaire, Secondaire et de l’Alphabétisation
-              </div>
+             <div className="text-center text-[10px] leading-snug font-medium uppercase text-white/70">
+  Ministère de l’Enseignement Préscolaire, Primaire, Secondaire et de l’Alphabétisation
+  <div
+    className="mx-auto mt-1.5 h-px w-24 opacity-50"
+    style={{
+      backgroundImage:
+        "repeating-linear-gradient(to right, white 0, white 12px, transparent 12px, transparent 18px)",
+    }}
+    aria-hidden
+  />
+</div>
             </div>
           </div>
           <div className="text-center">
