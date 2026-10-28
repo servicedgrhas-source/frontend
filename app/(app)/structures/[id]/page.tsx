@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronRight, Plus, School, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useSession } from "@/components/session";
+import { SituationBesoins } from "@/components/structures/besoins-administratifs";
 import { Alerte, Badge, Bouton, Carte, Chargement, EnTete, Tableau, Vide, cx } from "@/components/ui";
 import { useApi } from "@/lib/api";
 import { accesDonne } from "@/lib/espaces";
@@ -24,7 +25,7 @@ interface Detail {
   chemin: { id: number; nom: string; sigle: string }[];
   dessous: { id: number; nom: string; sigle: string; type: string }[];
   /** `fonction` : la qualification (« Fonction / profession ») ; `fonctionStructure` : ce qu'il fait ici. */
-  agents: { id: number; nomComplet: string; statut: string; fonction: string | null; fonctionStructure: string | null; enPoste: boolean; enseignant: boolean }[];
+  agents: { id: number; nomComplet: string; statut: string; fonction: string | null; fonctionStructure: string | null; specialite: string | null; enPoste: boolean; enseignant: boolean }[];
 }
 
 const STATUTS: Record<string, string> = { FONCTIONNAIRE: "Fonctionnaire", CONTRACTUEL: "Contractuel", VOLONTAIRE: "Volontaire", COMMUNAUTAIRE: "Communautaire" };
@@ -147,6 +148,8 @@ export default function FicheStructure() {
         </Carte>
       )}
 
+      <SituationBesoins structureId={d.structure.id} />
+
       <Carte titre={`Personnel de la structure (${d.agents.length})`}>
         {!d.agents.length ? (
           <Vide>Aucun agent rattaché à cette structure. Rattachez-les dans leur fiche (« Établissement ou structure de rattachement »), ou enregistrez-en un ici.</Vide>
@@ -157,6 +160,7 @@ export default function FicheStructure() {
                 <th>Agent</th>
                 <th>Type</th>
                 <th>Qualification</th>
+                <th>Spécialité</th>
                 <th>Fonction dans la structure</th>
                 <th />
               </tr>
@@ -172,6 +176,7 @@ export default function FicheStructure() {
                   </td>
                   <td className="text-[12px]">{STATUTS[a.statut] ?? a.statut}</td>
                   <td className="text-[12px]">{a.fonction ?? "—"}</td>
+                  <td className="text-[12px]">{a.specialite ?? "—"}</td>
                   <td className="text-[12px]">{a.fonctionStructure ? <strong className="font-semibold text-encre">{a.fonctionStructure}</strong> : <span className="text-zinc-400">à renseigner dans sa fiche</span>}</td>
                   <td className="text-right">{!a.enPoste && <Badge ton="gris">pas à son poste</Badge>}</td>
                 </tr>

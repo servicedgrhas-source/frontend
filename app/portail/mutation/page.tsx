@@ -60,6 +60,30 @@ const VIDE: Formulaire = {
 
 const ETAPES = ["Demande", "Vous", "Votre poste", "Pièces", "Envoi"];
 
+/** Message de ce qui manque → étape et champ du formulaire où on le remplit. */
+const CHAMPS: [RegExp, number, string][] = [
+  [/votre demande\./i, 0, "type"],
+  [/nom et vos prénoms/i, 1, "nom"],
+  [/téléphone/i, 1, "telephone"],
+  [/département actuel|département d’origine|département d'origine/i, 2, "departementOrigine"],
+  [/votre service/i, 2, "service"],
+  [/établissement/i, 2, "etablissement"],
+  [/département demandé/i, 2, "departementSollicite"],
+  [/motif/i, 2, "motif"],
+  [/cycle/i, 2, "cycle"],
+  [/joignez|pièce/i, 3, "pieces"],
+];
+const champDe = (message: string) => CHAMPS.find(([re]) => re.test(message)) ?? null;
+/** Fait défiler jusqu'au champ, l'entoure un instant et y place le curseur. */
+function allerAuChamp(id: string) {
+  const el = document.getElementById(`champ-${id}`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.classList.add("ring-2", "ring-rouge-500", "rounded-2xl");
+  setTimeout(() => el.classList.remove("ring-2", "ring-rouge-500", "rounded-2xl"), 2500);
+  el.querySelector<HTMLElement>("select, input, textarea, button")?.focus({ preventScroll: true });
+}
+
 /** Demande de mutation faite par l'agent lui-même, depuis son téléphone. */
 export default function DemandeMutationPortail() {
   const [refs, setRefs] = useState<ReferencesPortail | null>(null);
@@ -108,6 +132,14 @@ export default function DemandeMutationPortail() {
     return null;
   })();
 
+  /** Va à l'étape et au champ dont parle le message. */
+  function corriger(message: string) {
+    const c = champDe(message);
+    if (!c) return;
+    setEtape(c[1]);
+    setTimeout(() => allerAuChamp(c[2]), 80);
+  }
+
   async function envoyer() {
     setEnvoi(true);
     setErreur(null);
@@ -118,7 +150,7 @@ export default function DemandeMutationPortail() {
     const donnees = {
       ...f,
       echelon: n(f.echelon),
-      departementOrigineId: n(f.departementOrigineId) ?? struct?.departementId ?? null,
+      departementOrigineId: n(f.departementOrigineId) ?? struct?.departementId ?? refs?.departements.find((d) => /brazzaville/i.test(d.nom))?.id ?? null,
       departementSolliciteId: n(f.departementSolliciteId),
       structureOrigineId: n(f.structureOrigineId),
       objet: `Mutation à ${dep ?? ""}${f.lieuSollicite ? ` (${f.lieuSollicite})` : ""}`,
@@ -196,7 +228,7 @@ export default function DemandeMutationPortail() {
         {etape === 0 && (
           <>
             <h2 className="text-[16px] font-semibold">Quelle est votre demande ?</h2>
-            <div className="space-y-2">
+            <div className="space-y-2" id="champ-type">
               {refs.types.filter((t) => t.mutation).map((t) => (
                 <button
                   key={t.code}
@@ -225,7 +257,7 @@ export default function DemandeMutationPortail() {
         {etape === 1 && (
           <>
             <h2 className="text-[16px] font-semibold">Vous</h2>
-            <Bloc libelle="Nom et prénoms *">
+            <Bloc champ="nom" libelle="Nom et prénoms *">
               <input className={GRANDS} value={f.nomComplet} onChange={(e) => maj("nomComplet", e.target.value)} autoComplete="name" placeholder="Ex. MOUANDA Jean Paul" />
             </Bloc>
             <Bloc libelle="Vous êtes">
@@ -248,7 +280,7 @@ export default function DemandeMutationPortail() {
             <Bloc libelle="Fonction">
               <Choix valeur={f.statutAgent} changer={(v) => maj("statutAgent", v)} options={[["ENSEIGNANT", "Enseignant"], ["PERSONNEL_ADMINISTRATIF", "Personnel administratif"]]} />
             </Bloc>
-            <Bloc libelle="Téléphone *" aide="Pour vous joindre si une pièce manque">
+            <Bloc champ="telephone" libelle="Téléphone *" aide="Pour vous joindre si une pièce manque">
               <input className={GRANDS} type="tel" inputMode="tel" autoComplete="tel" value={f.telephone} onChange={(e) => maj("telephone", e.target.value)} placeholder="Ex. 06 000 00 00" />
             </Bloc>
           </>
@@ -269,7 +301,7 @@ export default function DemandeMutationPortail() {
             </Bloc>
             {f.lieuTravail === "DEPARTEMENT" ? (
               <>
-                <Bloc libelle="Département actuel *">
+                <Bloc champ="departementOrigine" libelle="Département actuel *">
                   <select className={GRANDS} value={f.departementOrigineId} onChange={(e) => setF((x) => ({ ...x, departementOrigineId: e.target.value, structureOrigineId: "" }))}>
                     <option value="">— Choisir —</option>
                     {refs.departements.map((d) => (
@@ -280,7 +312,7 @@ export default function DemandeMutationPortail() {
                   </select>
                 </Bloc>
                 {f.departementOrigineId && (
-                  <Bloc libelle="Votre établissement *" aide="Votre demande lui arrive d’abord, puis à l’inspection et à la direction départementale">
+                  <Bloc champ="etablissement" libelle="Votre établissement *" aide="Votre demande lui arrive d’abord, puis à l’inspection et à la direction départementale">
                     <select className={GRANDS} value={f.structureOrigineId} onChange={(e) => maj("structureOrigineId", e.target.value)}>
                       <option value="">{structuresDep.length ? "— Choisir —" : "Aucun établissement enregistré"}</option>
                       {structuresDep.map((s) => (
@@ -301,7 +333,7 @@ export default function DemandeMutationPortail() {
                 )}
               </>
             ) : (
-              <Bloc libelle="Votre service *">
+              <Bloc champ="service" libelle="Votre service *">
                 <select className={GRANDS} value={f.structureOrigineId} onChange={(e) => maj("structureOrigineId", e.target.value)}>
                   <option value="">{services.length ? "— Choisir —" : "Aucun service enregistré"}</option>
                   {services.map((s) => (
@@ -316,7 +348,7 @@ export default function DemandeMutationPortail() {
               <SaisieReferentiel liste="ETABLISSEMENT" valeur={f.lieuService} changer={(v) => maj("lieuService", v)} placeholder="Tapez le nom de votre école ou de votre bureau" />
             </Bloc>
             <div className="grid grid-cols-2 gap-3">
-              <Bloc libelle="Cycle *">
+              <Bloc champ="cycle" libelle="Cycle *">
                 <select className={GRANDS} value={f.cycle} onChange={(e) => maj("cycle", e.target.value)}>
                   <option value="">—</option>
                   {refs.cycles.map((c) => (
@@ -334,7 +366,7 @@ export default function DemandeMutationPortail() {
               <input className={GRANDS} type="date" value={f.datePriseService} onChange={(e) => maj("datePriseService", e.target.value)} />
             </Bloc>
             <div className="h-px bg-zinc-100" />
-            <Bloc libelle="Département demandé *">
+            <Bloc champ="departementSollicite" libelle="Département demandé *">
               <select className={GRANDS} value={f.departementSolliciteId} onChange={(e) => maj("departementSolliciteId", e.target.value)}>
                 <option value="">— Choisir —</option>
                 {refs.departements.map((d) => (
@@ -348,7 +380,7 @@ export default function DemandeMutationPortail() {
               <SaisieReferentiel liste="ETABLISSEMENT" valeur={f.lieuSollicite} changer={(v) => maj("lieuSollicite", v)} departementId={f.departementSolliciteId} placeholder="Ex. Lycée de Ouesso" />
             </Bloc>
             {!type?.motif && (
-              <Bloc libelle="Motif *">
+              <Bloc champ="motif" libelle="Motif *">
                 <select className={GRANDS} value={f.motif} onChange={(e) => maj("motif", e.target.value)}>
                   <option value="">— Choisir —</option>
                   {refs.motifs.map((m) => (
@@ -367,7 +399,7 @@ export default function DemandeMutationPortail() {
 
         {etape === 3 && (
           <>
-            <h2 className="text-[16px] font-semibold">Vos pièces</h2>
+            <h2 className="text-[16px] font-semibold" id="champ-pieces">Vos pièces</h2>
             <p className="text-[13px] text-zinc-500">
               Prenez une photo nette de chaque pièce, ou joignez le fichier (PDF, JPG ou PNG, 10 Mo au plus). La première, votre demande manuscrite signée, est
               obligatoire.
@@ -434,7 +466,16 @@ export default function DemandeMutationPortail() {
             <p className="rounded-2xl bg-zinc-50 px-4 py-3 text-[12px] text-zinc-600">
               En envoyant, vous certifiez que les informations sont exactes. Votre demande suivra la voie hiérarchique ; chaque niveau donnera un avis motivé.
             </p>
-            {erreur && <Message ton="rouge">{erreur}</Message>}
+            {erreur && (
+              <Message ton="rouge">
+                {erreur}
+                {champDe(erreur) && (
+                  <button type="button" onClick={() => corriger(erreur)} className="ml-2 font-semibold underline">
+                    Corriger
+                  </button>
+                )}
+              </Message>
+            )}
           </>
         )}
       </section>
@@ -463,14 +504,18 @@ export default function DemandeMutationPortail() {
           </button>
         )}
       </div>
-      {bloquant && etape < ETAPES.length - 1 && <p className="text-center text-[13px] text-zinc-500">{bloquant}</p>}
+      {bloquant && etape < ETAPES.length - 1 && (
+        <button type="button" onClick={() => corriger(bloquant)} className="block w-full text-center text-[13px] font-medium text-rouge-700 underline decoration-dotted underline-offset-2">
+          {bloquant} {champDe(bloquant) && "(cliquez pour y aller)"}
+        </button>
+      )}
     </div>
   );
 }
 
-function Bloc({ libelle, aide, children }: { libelle: string; aide?: string; children: React.ReactNode }) {
+function Bloc({ libelle, aide, champ, children }: { libelle: string; aide?: string; champ?: string; children: React.ReactNode }) {
   return (
-    <label className="block">
+    <label className="block transition" id={champ ? `champ-${champ}` : undefined}>
       <span className="mb-1.5 block text-[13px] font-medium text-zinc-700">{libelle}</span>
       {children}
       {aide && <span className="mt-1 block text-[12px] text-zinc-400">{aide}</span>}

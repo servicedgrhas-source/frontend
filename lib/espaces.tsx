@@ -334,6 +334,14 @@ export const ESPACES: Espace[] = [
         explication: "L’évaluation annuelle par le chef immédiat : compétence professionnelle et compétence sociale sur 5, la globale et ce que dit leur écart.",
       },
       {
+        groupe: "Suivi des agents",
+        href: "/personnel/retards-echelons",
+        libelle: "Échelons en retard",
+        icone: Award,
+        visible: (p) => peut.traiter(p.role) || p.role === "DDEPPSA",
+        explication: "Les agents qui ont des échelons en retard (promotions ou avancements dus), avec des filtres et l’export Excel, Word, PDF : préparer la commission administrative paritaire sans demander de dossier.",
+      },
+      {
         groupe: "Recensement",
         href: "/personnel/import",
         libelle: "Modèle Excel, import et scans",
@@ -385,15 +393,22 @@ export const ESPACES: Espace[] = [
     titre: "Nominations",
     icone: Award,
     description:
-      "Les nominations aux postes de responsabilité : chef de bureau, chef de service, directeur, inspecteur, chef d’établissement… De la proposition à l’acte signé, et l’historique des responsables de chaque structure.",
-    circuit: "Poste vacant → proposition → avis → acte de nomination → prise de fonction",
+      "Les nominations des cadres de gestion des établissements et des inspections : directeurs, directeurs des études, surveillants généraux, économes, proviseurs, intendants, inspecteurs, conseillers pédagogiques… Chaque année, la DDEPPSA propose (reconduire, muter, promouvoir, permuter, relever), la DGRHAS décide, puis les notes de service.",
+    circuit: "Reprise de l’année précédente → propositions des DDEPPSA → décision DGRHAS → notes de nomination → signature",
     rubriques: [
       {
         href: "/nominations",
         libelle: "Nominations",
         icone: Award,
+        visible: (p) => peut.traiter(p.role) || p.role === "DDEPPSA",
+        explication: "La base des nominations de l’année, par département : les propositions des DDEPPSA, les nouveaux, les décisions de la DGRHAS.",
+      },
+      {
+        href: "/notes/nomination",
+        libelle: "Notes de nomination",
+        icone: FileText,
         visible: traiter,
-        explication: "Les nominations aux postes de responsabilité, de la proposition à l’acte signé (module en cours de conception).",
+        explication: "Une note de service par fonction avec les nominations validées, jusqu’à la signature du ministre.",
       },
     ],
   },
@@ -454,6 +469,15 @@ export const ESPACES: Espace[] = [
       },
       {
         groupe: "Besoins en personnel",
+        href: "/structures/besoins-administratifs",
+        libelle: "Besoins des administrations",
+        icone: Briefcase,
+        // Les écoles ont leurs besoins en enseignants : seuls les responsables des structures administratives
+        visible: (p) => peut.traiter(p.role) || p.role === "DDEPPSA" || (p.role === "STRUCTURE" && !!p.structureType && p.structureType !== "ETABLISSEMENT"),
+        explication: "Chaque structure administrative fixe l’effectif normal de ses postes (directeur, chef de service, collaborateurs…) et exprime ses besoins ; la DGRHAS les compare à l’effectif normal et répond.",
+      },
+      {
+        groupe: "Besoins en personnel",
         href: "/enrolement/besoins",
         libelle: "Besoins par établissement",
         icone: School,
@@ -466,7 +490,7 @@ export const ESPACES: Espace[] = [
     cle: "notes",
     titre: "Notes de service",
     icone: FileText,
-    description: "Les notes d’affectation, de mutation et d’enrôlement, jusqu’à la signature du ministre.",
+    description: "Les notes d’affectation, de mutation, d’enrôlement et de nomination, jusqu’à la signature du ministre.",
     circuit: "À soumettre au DG → soumise au DG → validée par le DG → signée",
     rubriques: [
       {
@@ -494,6 +518,13 @@ export const ESPACES: Espace[] = [
         libelle: "Notes d’enrôlement",
         icone: FileText,
         explication: "Les notes de service des volontaires retenus à l’enrôlement.",
+      },
+      {
+        href: "/notes/nomination",
+        libelle: "Notes de nomination",
+        icone: FileText,
+        visible: traiter,
+        explication: "Une note par fonction (directeurs, directeurs des études, surveillants généraux, économes, proviseurs, inspecteurs…) avec les nominations validées.",
       },
     ],
   },

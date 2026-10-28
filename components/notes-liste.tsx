@@ -24,6 +24,10 @@ const TITRES = {
     aide: "Une note par type (préscolaire, primaire, DEMA, établissements, personnel administratif, décrets) et par lot (un lot = un quota et un type de texte dans un paquet). Les notes se préparent depuis l’écran « Traitement des affectations ».",
   },
   MUTATION: { titre: "Notes de mutation", aide: "Une note par motif et par groupe de cycles, avec les demandes accordées par le Ministre." },
+  NOMINATION: {
+    titre: "Notes de nomination",
+    aide: "Une note par fonction (directeurs d’école, directeurs des études, surveillants généraux, économes, proviseurs, inspecteurs…), avec les nominations validées dans « Nominations », par département puis par circonscription. Les personnes relevées n’y figurent pas.",
+  },
   ENROLEMENT: {
     titre: "Notes d’enrôlement",
     aide: "Une note par diplôme avec les volontaires retenus par la DGRHAS, classés par département puis par établissement. Pas de lots ici : on choisit la campagne et l’année scolaire.",
@@ -78,11 +82,24 @@ function PreparerEnrolement({ fermer, apres }: { fermer: () => void; apres: (tex
   );
 }
 
-export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "ENROLEMENT" }) {
+export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "ENROLEMENT" | "NOMINATION" }) {
   const { profil } = useSession();
   const { donnees, erreur, recharger } = useApi<NoteResume[]>(`/notes${qs({ module })}`);
   const [message, setMessage] = useState<{ ton: "vert" | "rouge"; texte: string } | null>(null);
   const [enrolement, setEnrolement] = useState(false);
+
+  async function preparerNominations() {
+    try {
+      const n = await api.post<NoteResume[]>("/notes/preparer/nomination", {});
+      setMessage({
+        ton: "vert",
+        texte: n.length ? `${n.length} note(s) de nomination préparée(s).` : "Aucune nouvelle nomination validée à mettre en note (ou leurs notes sont déjà en préparation).",
+      });
+      recharger();
+    } catch (e) {
+      setMessage({ ton: "rouge", texte: (e as Error).message });
+    }
+  }
 
   async function preparerMutations() {
     try {
@@ -107,6 +124,10 @@ export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "E
           (module === "MUTATION" ? (
             <Bouton variante="principal" onClick={preparerMutations}>
               Préparer les notes de mutation
+            </Bouton>
+          ) : module === "NOMINATION" ? (
+            <Bouton variante="principal" onClick={preparerNominations}>
+              Préparer les notes de nomination
             </Bouton>
           ) : module === "ENROLEMENT" ? (
             <Bouton variante="principal" onClick={() => setEnrolement(true)}>

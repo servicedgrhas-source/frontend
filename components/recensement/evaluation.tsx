@@ -116,7 +116,8 @@ export function ModaleEvaluation({
   const fige = !!existante?.valideeLe;
   const globale = pro && social ? (pro + social) / 2 : null;
   const app = globale ? appreciation(globale) : null;
-  const proposees = app ? (decisions[app] ?? []) : [];
+  // Avant les deux notes : toutes les décisions possibles (la proposition dépend de l'appréciation)
+  const proposees = app ? (decisions[app] ?? []) : [...new Set(Object.values(decisions).flat())];
   async function enregistrer(valider: boolean) {
     if (valider && !(await demander("Valider définitivement l’évaluation ? Une fois validée, personne ne pourra plus la modifier ni la retirer.", "Valider définitivement"))) return;
     setErreur(null);
@@ -174,8 +175,13 @@ export function ModaleEvaluation({
           </div>
         )}
         <div className="grid gap-3 sm:grid-cols-[1fr_11rem]">
-          <Champ libelle="Décision proposée" aide="Proposée selon l’appréciation ; vous pouvez en écrire une autre. Elle figure dans la fiche de l’agent et sur la fiche d’évaluation.">
-            <>
+          {/* La liste et « Autre décision » chacune dans son propre libellé : deux champs dans un même
+              libellé ne réagissent pas bien au clic sous Firefox (DG, 28/10/2026) */}
+          <div className="flex flex-col gap-1.5">
+            <Champ
+              libelle="Décision proposée"
+              aide={app ? "Proposée selon l’appréciation ; vous pouvez en écrire une autre. Elle figure dans la fiche de l’agent et sur la fiche d’évaluation." : "Donnez d’abord les deux notes : la liste propose alors les décisions qui conviennent à l’appréciation."}
+            >
               <Liste
                 value={proposees.includes(decision) ? decision : ""}
                 vide="— Choisir ou écrire ci-dessous —"
@@ -183,9 +189,11 @@ export function ModaleEvaluation({
                 onChange={(e) => setDecision(e.target.value)}
                 options={proposees.map((x) => ({ valeur: x, libelle: x }))}
               />
-              <Saisie className="mt-2" value={decision} disabled={fige} onChange={(e) => setDecision(e.target.value)} placeholder="Autre décision" />
-            </>
-          </Champ>
+            </Champ>
+            <Champ libelle="Ou une autre décision">
+              <Saisie value={decision} disabled={fige} onChange={(e) => setDecision(e.target.value)} placeholder="Écrivez la décision" />
+            </Champ>
+          </div>
           <Champ libelle="Date de l’évaluation">
             <Saisie type="date" value={date} disabled={fige} onChange={(e) => setDate(e.target.value)} />
           </Champ>

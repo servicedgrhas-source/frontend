@@ -222,7 +222,7 @@ export type StatutNote = "BROUILLON" | "SOUMISE" | "VALIDEE" | "SIGNEE";
 
 export interface NoteResume {
   id: string;
-  module: "AFFECTATION" | "MUTATION" | "ENROLEMENT";
+  module: "AFFECTATION" | "MUTATION" | "ENROLEMENT" | "NOMINATION";
   typeNote: string;
   motif: string | null;
   lotNumero: number | null;

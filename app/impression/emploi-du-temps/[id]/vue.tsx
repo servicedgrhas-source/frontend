@@ -1,11 +1,11 @@
 "use client";
 
 import { useParams, useSearchParams } from "next/navigation";
-import { useEffect, useMemo } from "react";
-import { GrilleEdt, type ReponseEdt } from "@/components/ecoles/emploi-du-temps";
+import { useEffect, useMemo, useState } from "react";
+import { GrilleEdt, type ReponseEdt, resumeJours } from "@/components/ecoles/emploi-du-temps";
 import { EnteteOfficielle } from "@/components/impression-officielle";
 import { PagesA4, StyleImpressionA4, type Bloc } from "@/components/pages-a4";
-import { Alerte, Bouton, Chargement } from "@/components/ui";
+import { Alerte, Bouton, Chargement, Segments } from "@/components/ui";
 import { lireSession, useApi } from "@/lib/api";
 
 /**
@@ -18,6 +18,8 @@ export function ImpressionEmploiDuTemps() {
   const vue = q.get("vue") === "enseignants" ? "enseignants" : "classes";
   const agent = q.get("agent");
   const annee = q.get("annee") ?? "";
+  // Paysage par défaut : il remplit mieux la page affichée à l'école (DG, 27/10/2026)
+  const [paysage, setPaysage] = useState(q.get("orientation") !== "portrait");
   const d = useApi<ReponseEdt>(`/etablissements/${id}/emploi-du-temps?annee=${annee}`);
   useEffect(() => {
     if (!lireSession().jeton) window.location.href = "/connexion";
@@ -61,7 +63,11 @@ export function ImpressionEmploiDuTemps() {
           <div>
             <EnteteOfficielle titre="EMPLOI DU TEMPS DE L’ENSEIGNANT" sousTitre={`${ecole} — année scolaire ${d.donnees!.annee}`} />
             {titre(c.agent, `${c.heures} h par semaine · ${[...new Set(c.classes)].join(", ")}`)}
-            <GrilleEdt e={e} seances={e.seances.filter((s) => s.agentId === c.agentId)} vue="enseignant" impression />
+            {/* Ses jours et heures de travail (réglés depuis l'école) : les cases grises, il n'est pas là */}
+            <div className="mb-1.5 text-[9pt]">
+              <strong>Jours et heures de travail :</strong> {resumeJours(d.donnees!.enseignants?.find((x) => x.id === c.agentId)?.jours)}.
+            </div>
+            <GrilleEdt e={e} seances={e.seances.filter((s) => s.agentId === c.agentId)} vue="enseignant" impression joursTravail={d.donnees!.enseignants?.find((x) => x.id === c.agentId)?.jours ?? null} />
             <div className="mt-6 grid grid-cols-2 gap-10 text-center text-[10pt]">
               <div>
                 <div className="font-bold">L’enseignant</div>
@@ -97,16 +103,26 @@ export function ImpressionEmploiDuTemps() {
     );
   return (
     <div className="min-h-screen bg-zinc-200 py-6 print:bg-white print:py-0">
-      <StyleImpressionA4 />
-      <div className="no-print mx-auto mb-4 flex w-[210mm] items-center justify-between">
+      <StyleImpressionA4 paysage={paysage} />
+      <div className={`no-print mx-auto mb-4 flex flex-wrap items-center justify-between gap-3 ${paysage ? "w-[297mm]" : "w-[210mm]"}`}>
         <span className="text-sm text-zinc-700">
           {vue === "classes" ? "Emploi du temps général" : "Emplois du temps des enseignants"} — {d.donnees.structure.nom}
         </span>
-        <Bouton variante="principal" onClick={() => window.print()}>
-          Imprimer / Enregistrer en PDF
-        </Bouton>
+        <div className="flex items-center gap-3">
+          <Segments
+            valeur={paysage ? "paysage" : "portrait"}
+            changer={(v) => setPaysage(v === "paysage")}
+            options={[
+              { valeur: "paysage", libelle: "Paysage (page couchée)" },
+              { valeur: "portrait", libelle: "Portrait (page debout)" },
+            ]}
+          />
+          <Bouton variante="principal" onClick={() => window.print()}>
+            Imprimer / Enregistrer en PDF
+          </Bouton>
+        </div>
       </div>
-      <PagesA4 blocs={blocs} tableaux={{}} pied={{ gauche: `Emploi du temps — ${d.donnees.structure.nom}`, droite: "MEPPSA · DGRHAS" }} classeFeuille="feuille-liste" margeCote={10} />
+      <PagesA4 key={paysage ? "paysage" : "portrait"} paysage={paysage} blocs={blocs} tableaux={{}} pied={{ gauche: `Emploi du temps — ${d.donnees.structure.nom}`, droite: "MEPPSA · DGRHAS" }} classeFeuille="feuille-liste" margeCote={10} />
     </div>
   );
 }

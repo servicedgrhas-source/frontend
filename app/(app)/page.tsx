@@ -237,6 +237,7 @@ function TableauDeBordDgrhas() {
             ["AFFECTATION", "Affectations", "/notes/affectation"],
             ["MUTATION", "Mutations", "/notes/mutation"],
             ["ENROLEMENT", "Enrôlement", "/notes/enrolement"],
+            ["NOMINATION", "Nominations", "/notes/nomination"],
           ].map(([m, lib, href]) => (
             <Link key={m} href={href} className="-mx-2 block rounded-2xl px-2 py-2.5 transition hover:bg-zinc-50">
               <div className="mb-2 flex items-center gap-2.5">

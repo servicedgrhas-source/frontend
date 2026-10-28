@@ -147,6 +147,11 @@ div.page-a4 {
   break-after: page;
 }
 
+div.page-a4.page-a4-paysage {
+  width: 297mm !important;
+  height: 209mm !important;
+}
+
 div.page-a4:last-of-type {
   break-after: auto;
 }

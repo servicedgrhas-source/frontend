@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Download, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import { CheckCircle2, Download, FileText, LogOut, Printer, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { categoriesDe, FicheVolontaire, deMois, fcfa, LISTES, moisFr, nf, peutGerer, type Population, useConfigEnrolement } from "@/components/enrolement/volontaires";
@@ -64,6 +64,9 @@ export default function BourseMensuelle() {
   const [message, setMessage] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [confirmation, demander] = useConfirmation();
+  /** « Déjà recruté à la FP » cochés, à sortir du registre d'un coup (DG, 27/10/2026). */
+  const [coches, setCoches] = useState<Set<string>>(new Set());
+  const [sortie, setSortie] = useState(false);
   const id = choisi ?? etats.donnees?.[0]?.id ?? null;
   const detail = useApi<Detail>(id ? `/enrolement/bourse/${id}${qs({ recherche, departement, page, taille: 50 })}` : null);
   if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
@@ -80,6 +83,13 @@ export default function BourseMensuelle() {
     anomalies.reduce<Record<string, number>>((t, a) => ({ ...t, [a.code]: (t[a.code] ?? 0) + 1 }), {}),
   ).sort(([a], [b]) => (detail.donnees?.controles[a]?.gravite === "BLOQUANT" ? -1 : 1) - (detail.donnees?.controles[b]?.gravite === "BLOQUANT" ? -1 : 1));
   const visibles = anomalies.filter((a) => !code || a.code === code);
+  const sortieGroupee = code === "RECRUTE_FP" && gerer && e?.statut === "BROUILLON";
+  const recrutes = sortieGroupee ? visibles.slice(0, 300) : [];
+  const motifFP = c?.motifsSortie.find((x) => x.code === "RECRUTE_FP");
+  const precedent = (m: string) => {
+    const [a, mm] = m.split("-").map(Number);
+    return mm === 1 ? `${a - 1}-12` : `${a}-${String(mm - 1).padStart(2, "0")}`;
+  };
 
   async function agir(f: () => Promise<unknown>, ok: string) {
     setErreur(null);
@@ -189,8 +199,14 @@ export default function BourseMensuelle() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Bouton onClick={() => api.telecharger(`/enrolement/bourse/${e.id}/excel`, `Bourse ${e.mois}${e.statut === "VALIDE" ? "" : " (projet)"}.xlsx`)}>
+            <Bouton onClick={() => api.telecharger(`/enrolement/bourse/${e.id}/excel`, `${population === "VOLONTAIRE" ? "Bourse" : "Communautaires"} ${e.mois}${e.statut === "VALIDE" ? "" : " (projet)"}.xlsx`).catch((x: Error) => setErreur(x.message))}>
               <Download /> État de paiement Excel
+            </Bouton>
+            <Bouton onClick={() => api.telecharger(`/enrolement/bourse/${e.id}/word`, `${population === "VOLONTAIRE" ? "Bourse" : "Communautaires"} ${e.mois}${e.statut === "VALIDE" ? "" : " (projet)"}.docx`).catch((x: Error) => setErreur(x.message))}>
+              <FileText /> Word
+            </Bouton>
+            <Bouton onClick={() => window.open(`/impression/bourse/${e.id}`, "_blank")} title="État à imprimer ou à enregistrer en PDF : en-tête, CNI, émargement, total et signature">
+              <Printer /> Imprimer / PDF
             </Bouton>
             {gerer && e.statut === "BROUILLON" && (
               <Bouton onClick={() => preparer(e.mois)}>
@@ -240,19 +256,42 @@ export default function BourseMensuelle() {
               ) : (
                 <>
                   <div className="mb-4 flex flex-wrap gap-2">
-                    <button type="button" onClick={() => setCode("")} className={`rounded-full px-3 py-1 text-[12px] ring-1 ${!code ? "bg-nuit text-white ring-nuit" : "ring-zinc-200"}`}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCode("");
+                        setCoches(new Set());
+                      }}
+                      className={`rounded-full px-3 py-1 text-[12px] ring-1 ${!code ? "bg-nuit text-white ring-nuit" : "ring-zinc-200"}`}>
                       Tous
                     </button>
                     {parCode.map(([k, n]) => (
-                      <button key={k} type="button" onClick={() => setCode(k)} className={`rounded-full px-3 py-1 text-[12px] ring-1 ${code === k ? "bg-nuit text-white ring-nuit" : "ring-zinc-200"}`}>
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => {
+                          setCode(k);
+                          setCoches(new Set());
+                        }}
+                        className={`rounded-full px-3 py-1 text-[12px] ring-1 ${code === k ? "bg-nuit text-white ring-nuit" : "ring-zinc-200"}`}>
                         {detail.donnees?.controles[k]?.libelle ?? k} · {nf.format(n)}
                         {detail.donnees?.controles[k]?.gravite === "BLOQUANT" && " · bloquant"}
                       </button>
                     ))}
                   </div>
+                  {sortieGroupee && !!recrutes.length && (
+                    <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl bg-zinc-50 p-3 text-[13px] ring-1 ring-zinc-200">
+                      <span className="text-zinc-600">Cochez ceux qui sont bien recrutés (vérifiez le matricule), puis sortez-les du registre en une fois.</span>
+                      <Bouton onClick={() => setCoches(coches.size === recrutes.length ? new Set() : new Set(recrutes.map((a) => a.volontaireId)))}>{coches.size === recrutes.length ? "Tout décocher" : `Tout cocher (${nf.format(recrutes.length)})`}</Bouton>
+                      <Bouton variante="principal" disabled={!coches.size} onClick={() => setSortie(true)}>
+                        <LogOut /> Sortir du registre ({nf.format(coches.size)})
+                      </Bouton>
+                    </div>
+                  )}
                   <Tableau>
                     <thead>
                       <tr>
+                        {sortieGroupee && <th className="w-8" aria-label="Cocher" />}
                         <th>Volontaire</th>
                         <th>Contrôle</th>
                         <th>Détail</th>
@@ -261,6 +300,22 @@ export default function BourseMensuelle() {
                     <tbody>
                       {visibles.slice(0, 300).map((a, i) => (
                         <tr key={`${a.code}-${a.volontaireId}-${i}`}>
+                          {sortieGroupee && (
+                            <td>
+                              <input
+                                type="checkbox"
+                                aria-label={`Cocher ${a.nomComplet}`}
+                                className="size-4 accent-marque-600"
+                                checked={coches.has(a.volontaireId)}
+                                onChange={() => {
+                                  const n = new Set(coches);
+                                  if (n.has(a.volontaireId)) n.delete(a.volontaireId);
+                                  else n.add(a.volontaireId);
+                                  setCoches(n);
+                                }}
+                              />
+                            </td>
+                          )}
                           <td>
                             <button type="button" className="text-left font-medium underline decoration-zinc-300 decoration-dotted underline-offset-2 hover:text-marque-700" onClick={() => setFiche({ id: a.volontaireId, controle: a.gravite === "BLOQUANT" && ["DOUBLON", "RECRUTE_FP"].includes(a.code) ? a.code : undefined })}>
                               {a.nomComplet}
@@ -398,6 +453,54 @@ export default function BourseMensuelle() {
           }}
           apres={() => setFiche((f) => (f ? { ...f, modifiee: true } : f))}
         />
+      )}
+      {e && (
+        <Modale titre="Sortir du registre les recrutés cochés" ouverte={sortie} fermer={() => setSortie(false)}>
+          <div className="space-y-3 text-[13px] text-zinc-700">
+            <p>
+              <strong>{nf.format(coches.size)}</strong> {L.des} sortiront du registre avec le motif « {motifFP?.libelle ?? "Recruté à la Fonction Publique"} ».
+            </p>
+            <p>
+              Date de sortie : <strong>01/{e.mois.slice(5)}/{e.mois.slice(0, 4)}</strong>, le 1er du mois de cette bourse.{" "}
+              {motifFP?.dernierMoisPaye === "MOIS_DE_SORTIE" ? (
+                <>
+                  Le motif est configuré pour payer le mois de la sortie : ils sont encore payés en <strong>{moisFr(e.mois)}</strong>, leur dernier mois.
+                </>
+              ) : (
+                <>
+                  Ils ne sont donc <strong>pas payés en {moisFr(e.mois)}</strong> ; leur dernier mois payé est <strong>{moisFr(precedent(e.mois))}</strong>.
+                </>
+              )}
+            </p>
+            <p className="text-zinc-500">Ce que le contrôle a retrouvé (fiche, matricule) est noté dans l’historique de chacun. La bourse est ensuite recalculée.</p>
+          </div>
+          <div className="mt-6 flex justify-end gap-2">
+            <Bouton onClick={() => setSortie(false)}>Annuler</Bouton>
+            <Bouton
+              variante="principal"
+              onClick={async () => {
+                setSortie(false);
+                setErreur(null);
+                try {
+                  const ids = [...coches];
+                  const r = await api.post<{ sortis: number; erreurs: string[] }>("/enrolement/volontaires/sortie", {
+                    ids,
+                    motif: "RECRUTE_FP",
+                    date: `${e.mois}-01`,
+                    observations: Object.fromEntries(recrutes.filter((a) => coches.has(a.volontaireId)).map((a) => [a.volontaireId, a.message.replace(/ S’il est recruté.*$/, "")])),
+                  });
+                  setCoches(new Set());
+                  await preparer(e.mois, true);
+                  setMessage(`${nf.format(r.sortis)} ${L.des} sorti(s) du registre.${r.erreurs.length ? ` ${r.erreurs.length} non sorti(s) : ${r.erreurs.slice(0, 5).join(" ; ")}` : ""}`);
+                } catch (x) {
+                  setErreur((x as Error).message);
+                }
+              }}
+            >
+              Sortir du registre
+            </Bouton>
+          </div>
+        </Modale>
       )}
       <Modale titre="Rouvrir l’état validé" ouverte={rouvrir} fermer={() => setRouvrir(false)}>
         <Champ libelle="Pourquoi rouvrir cet état ?">

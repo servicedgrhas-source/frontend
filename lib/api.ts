@@ -31,6 +31,8 @@ export interface Profil {
   role: Role;
   departementId: number | null;
   structureId?: number | null;
+  /** Type de sa structure (ETABLISSEMENT, SERVICE…), donné par /auth/moi. */
+  structureType?: string | null;
   /** A un code personnel de connexion. */
   aCode?: boolean;
   /** Rubriques réglées par le DG pour ce compte (Administration › Droits par rubrique). */

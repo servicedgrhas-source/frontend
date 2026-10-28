@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo } from "react";
-import { EnteteOfficielle, SignatureOfficielle } from "@/components/impression-officielle";
+import { EnteteOfficielle, SignatureOfficielle, editeLe } from "@/components/impression-officielle";
 import { PagesA4, StyleImpressionA4, type Bloc, type Tableau } from "@/components/pages-a4";
 import { Alerte, Bouton, Chargement } from "@/components/ui";
 import { lireSession, qs, useApi } from "@/lib/api";
@@ -81,7 +81,7 @@ export function ImpressionBottin() {
         cle: "entete",
         type: "libre",
         garderAvecSuivant: true,
-        contenu: <EnteteOfficielle titre="BOTTIN DU PERSONNEL" sousTitre={`${portee} — situation au ${new Date().toLocaleDateString("fr-FR")} : ${nf.format(d.lignes.length)} agent(s)`} />,
+        contenu: <EnteteOfficielle titre="BOTTIN DU PERSONNEL" sousTitre={`${portee} — situation au ${new Date().toLocaleDateString("fr-FR")} : ${nf.format(d.lignes.length)} agent(s)`} sousNumero={editeLe()} />,
       },
       ...d.lignes.map(
         (l, i): Bloc => ({

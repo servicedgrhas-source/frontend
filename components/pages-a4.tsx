@@ -43,9 +43,12 @@ interface Props {
   margeHaut?: number;
   margeCote?: number;
   margeBas?: number;
+  /** Page A4 couchée (297 × 210 mm) : tableaux larges, emploi du temps affiché à l'école. */
+  paysage?: boolean;
 }
 
 const HAUTEUR_PAGE = 296; // mm (un peu moins que 297 pour éviter une page blanche)
+const HAUTEUR_PAYSAGE = 209;
 
 /** Regroupe les lignes consécutives d'un même tableau dans un <table>. */
 function rendre(blocs: Bloc[], tableaux: Record<string, Tableau>, mesure = false) {
@@ -79,7 +82,7 @@ function rendre(blocs: Bloc[], tableaux: Record<string, Tableau>, mesure = false
   return sortie;
 }
 
-export function PagesA4({ blocs, tableaux, pied, classeFeuille, margeHaut = 12, margeCote = 16, margeBas = 20 }: Props) {
+export function PagesA4({ blocs, tableaux, pied, classeFeuille, margeHaut = 12, margeCote = 16, margeBas = 20, paysage = false }: Props) {
   const mesureur = useRef<HTMLDivElement>(null);
   const sonde = useRef<HTMLDivElement>(null);
   const [pages, setPages] = useState<string[][] | null>(null);
@@ -103,9 +106,9 @@ export function PagesA4({ blocs, tableaux, pied, classeFeuille, margeHaut = 12, 
     return () => {
       actif = false;
     };
-  }, [blocs]);
+  }, [blocs, paysage]);
 
-  const largeur = `${210 - 2 * margeCote}mm`;
+  const largeur = `${(paysage ? 297 : 210) - 2 * margeCote}mm`;
   const parCle = new Map(blocs.map((b) => [b.cle, b]));
 
   return (
@@ -113,7 +116,7 @@ export function PagesA4({ blocs, tableaux, pied, classeFeuille, margeHaut = 12, 
       {/* Mesure invisible : même largeur et même police que la page */}
       {!pages && (
         <div aria-hidden className="pointer-events-none fixed top-0 left-[-10000px] opacity-0">
-          <div ref={sonde} style={{ height: `${HAUTEUR_PAGE - margeHaut - margeBas}mm` }} />
+          <div ref={sonde} style={{ height: `${(paysage ? HAUTEUR_PAYSAGE : HAUTEUR_PAGE) - margeHaut - margeBas}mm` }} />
           <div ref={mesureur} className={classeFeuille} style={{ width: largeur }}>
             {rendre(blocs, tableaux, true)}
           </div>
@@ -122,7 +125,7 @@ export function PagesA4({ blocs, tableaux, pied, classeFeuille, margeHaut = 12, 
       {(pages ?? []).map((cles, i) => (
         <div
           key={i}
-          className={`page-a4 ${classeFeuille}`}
+          className={`page-a4 ${paysage ? "page-a4-paysage " : ""}${classeFeuille}`}
           style={{ "--marge-haut": `${margeHaut}mm`, "--marge-cote": `${margeCote}mm` } as React.CSSProperties}
         >
           {rendre(
@@ -143,6 +146,6 @@ export function PagesA4({ blocs, tableaux, pied, classeFeuille, margeHaut = 12, 
 }
 
 /** À placer dans les pages d'impression : marge nulle, le système gère les marges. */
-export function StyleImpressionA4() {
-  return <style>{`@page { size: A4 portrait; margin: 0; } @media print { html, body { margin: 0 !important; } }`}</style>;
+export function StyleImpressionA4({ paysage = false }: { paysage?: boolean }) {
+  return <style>{`@page { size: A4 ${paysage ? "landscape" : "portrait"}; margin: 0; } @media print { html, body { margin: 0 !important; } }`}</style>;
 }

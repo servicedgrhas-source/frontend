@@ -283,7 +283,20 @@ const styleSaisie =
   "rounded-xl border border-transparent bg-zinc-100/80 px-3 py-2 text-[13px] text-encre outline-none transition placeholder:text-zinc-400 hover:bg-zinc-100 focus:border-marque-300 focus:bg-white focus:ring-4 focus:ring-marque-100 disabled:opacity-60";
 
 export function Saisie(props: React.ComponentProps<"input">) {
-  return <input {...props} className={cx(styleSaisie, props.className)} />;
+  // Une date : un clic n'importe où sur le champ ouvre le calendrier (sous Firefox, un clic sur le
+  // texte ne fait que choisir le jour ou le mois, et l'on croit le champ bloqué : DG, 28/10/2026)
+  const calendrier =
+    props.type === "date" || props.type === "month"
+      ? (e: React.MouseEvent<HTMLInputElement>) => {
+          props.onClick?.(e);
+          try {
+            if (!props.disabled && !props.readOnly) e.currentTarget.showPicker?.();
+          } catch {
+            // Calendrier déjà ouvert, ou navigateur qui ne le permet pas : la saisie au clavier reste possible
+          }
+        }
+      : props.onClick;
+  return <input {...props} onClick={calendrier} className={cx(styleSaisie, props.className)} />;
 }
 
 export function Zone(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {

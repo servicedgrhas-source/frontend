@@ -566,6 +566,10 @@ function RapportPresence() {
             />
           </div>
           <Carte titre="Par structure">
+            <p className="-mt-2 mb-3 text-[12px] leading-relaxed text-zinc-500">
+              Chaque semaine, le chef de la structure pointe ses agents puis <strong>valide la semaine</strong> (onglet « Pointage de la semaine »). La dernière colonne donne les semaines terminées
+              de la période qu’il n’a pas encore validées (du lundi au samedi) : c’est le retard de pointage. Les chiffres de présence ne comptent que les journées pointées.
+            </p>
             {!r.donnees.structures.length ? (
               <Vide>Aucune structure avec des agents rattachés dans votre périmètre.</Vide>
             ) : (
@@ -579,7 +583,7 @@ function RapportPresence() {
                     <th className="text-right">Absences justifiées</th>
                     <th className="text-right">Absences non justifiées</th>
                     <th className="text-right">Présence</th>
-                    <th>Semaines non validées</th>
+                    <th title="Semaines terminées que le chef de la structure n’a pas encore pointées et validées">Semaines pas encore validées par le chef</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -597,7 +601,10 @@ function RapportPresence() {
                       <td className="text-right tabular-nums">{s.taux === null ? "—" : `${s.taux} %`}</td>
                       <td className="text-[12px]">
                         {s.semainesNonValidees.length ? (
-                          <span className="text-rouge-600">{s.semainesNonValidees.map((l) => `sem. du ${dateFr(l)}`).join(", ")}</span>
+                          <span className="text-rouge-600">
+                            <strong>{s.semainesNonValidees.length} semaine(s)</strong>
+                            <span className="block text-[11px]">{s.semainesNonValidees.map((l) => `du ${dateFr(l).slice(0, 5)} au ${dateFr(decaler(l, 5)).slice(0, 5)}`).join(" · ")}</span>
+                          </span>
                         ) : (
                           <span className="text-marque-700">à jour</span>
                         )}

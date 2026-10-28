@@ -370,7 +370,7 @@ function LienMenu({
 interface AlerteCircuit {
   id: number;
   demandeId: string;
-  type: "NOUVELLE" | "A_TRAITER" | "INSTRUCTION" | "DECISION";
+  type: "NOUVELLE" | "A_TRAITER" | "INSTRUCTION" | "DECISION" | "CLOTURE";
   texte: string;
   creeLe: string;
   lue: boolean;
@@ -383,6 +383,7 @@ const TYPE_ALERTE: Record<AlerteCircuit["type"], string> = {
   A_TRAITER: "À traiter",
   INSTRUCTION: "Instruction",
   DECISION: "Décision",
+  CLOTURE: "Dossier clos : réponse à remettre",
 };
 
 /** Alerte de présence (fin de semaine) : absent, peu d'heures, deux semaines d'affilée sans travailler. */

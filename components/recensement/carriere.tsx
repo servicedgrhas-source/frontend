@@ -84,6 +84,8 @@ export interface DossierCarriere {
     /** Promotions (ou avancements) attendues depuis la dernière, avec l'échelon attendu. */
     attendues?: { date: string; echelon: number | null; echelle?: string | null }[];
     dernierEchelon: boolean;
+    /** Échelon au-delà du 1er sans date de dernière promotion : promotions attendues impossibles à calculer. */
+    dateManquante?: boolean;
   };
   elements: ElementCarriere[];
   types: {
@@ -180,6 +182,29 @@ export function CarteCarriere({
           <Bouton variante="discret" onClick={() => window.open(`/impression/carriere/${agentId}`, "_blank")}>
             <Printer className="size-3.5" /> Imprimer le dossier
           </Bouton>
+          {peutModifier && (
+            <Bouton
+              variante="secondaire"
+              disabled={!!attente}
+              title={attente ?? "Promotion ou avancement exceptionnel : un échelon obtenu avant le délai normal. La suite se recalcule à partir de cette date."}
+              onClick={() =>
+                setEdition({
+                  id: null,
+                  saisie: {
+                    type: "EXCEPTIONNEL",
+                    dateEffet: "",
+                    acteNature: "ARRETE",
+                    acteNumero: "",
+                    acteDate: "",
+                    nouveau: {},
+                    commentaire: "",
+                  },
+                })
+              }
+            >
+              Exception
+            </Bouton>
+          )}
           {peutModifier && (
             <Bouton
               variante="principal"
@@ -294,7 +319,11 @@ export function Situation({ d }: { d: DossierCarriere }) {
       v: av ? (
         <>
           {av.origine === "DERNIER" ? dateFr(av.depuis) : <span className="text-zinc-500">aucune (entrée le {dateFr(av.depuis)})</span>}
-          {d.situation.dernierEchelon ? (
+          {d.situation.dateManquante ? (
+            <span className="block text-[11px] font-semibold text-rouge-600">
+              à renseigner : l’agent est au {val("ECHELON")}e échelon, il a donc eu des promotions ; leur date manque
+            </span>
+          ) : d.situation.dernierEchelon ? (
             <span className="block text-[11px] text-zinc-500">dernier échelon de l’échelle</span>
           ) : d.situation.prochainEchelon ? (
             <span className={`block text-[11px] ${du ? "font-semibold text-or-700" : "text-zinc-500"}`}>

@@ -6,6 +6,9 @@
  * République à droite, le titre du document au centre ; la signature du Directeur général en bas.
  */
 
+/** « Édité le 28/10/2026 à 07:14 » : la date et l’heure où le document est produit (DG, 28/10/2026). */
+export const editeLe = (d = new Date()) => `Édité le ${d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).replace(" ", " à ")}`;
+
 const SEP = <div className="leading-none">-------------------</div>;
 
 export function EnteteOfficielle({

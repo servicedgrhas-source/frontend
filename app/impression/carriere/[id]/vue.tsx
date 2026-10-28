@@ -2,14 +2,13 @@
 
 import { useParams } from "next/navigation";
 import { useEffect, useMemo } from "react";
-import { EnteteOfficielle, SignatureOfficielle } from "@/components/impression-officielle";
+import { EnteteOfficielle, SignatureOfficielle, editeLe } from "@/components/impression-officielle";
 import { PagesA4, StyleImpressionA4, type Bloc, type Tableau } from "@/components/pages-a4";
 import { dateFr, type DossierCarriere, GENRES } from "@/components/recensement/carriere";
 import { Alerte, Bouton, Chargement } from "@/components/ui";
 import { lireSession, useApi } from "@/lib/api";
 
 /** « 23/10/2026 à 21:17 » */
-const creeLe = (iso: string) => new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).replace(" ", " à ");
 
 /**
  * Dossier de carrière imprimé (A4), tel que le bureau du fichier le tient (DG, 24/10/2026) :
@@ -121,7 +120,7 @@ function construire(d: DossierCarriere) {
           sousTitre={`Situation au ${new Date().toLocaleDateString("fr-FR")}`}
           numero={d.agent.numeroFiche ? `N° de fiche ${d.agent.numeroFiche}` : null}
           // Sous le numéro : quand la fiche a été créée (DG, 26/10/2026), à ne pas confondre avec la date d'édition
-          sousNumero={d.agent.creeLe ? `Fiche créée le ${creeLe(d.agent.creeLe)}` : null}
+          sousNumero={editeLe()}
         />
       ),
     },
@@ -149,7 +148,15 @@ function construire(d: DossierCarriere) {
           {ligne("Statut", d.agent.libelleStatut)}
           {ligne("Grade", val("GRADE"))}
           {ligne("Catégorie · échelle · échelon", [val("CATEGORIE"), val("ECHELLE"), val("ECHELON")].join(" · "))}
-          {av && ligne(av.libelle, av.origine === "DERNIER" ? dateFr(av.depuis) : "Aucune depuis l’entrée")}
+          {av &&
+            ligne(
+              av.libelle,
+              av.origine === "DERNIER"
+                ? dateFr(av.depuis)
+                : d.situation.dateManquante
+                  ? `À renseigner (agent au ${val("ECHELON")}e échelon : la date de sa dernière promotion manque)`
+                  : "Aucune depuis l’entrée",
+            )}
           {/* Chaque promotion (ou avancement) attendue depuis la dernière, avec l'échelon attendu */}
           {av &&
             !!d.situation.attendues?.length &&
