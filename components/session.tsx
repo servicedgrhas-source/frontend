@@ -196,9 +196,11 @@ export function Coquille({ children }: { children: ReactNode }) {
               <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-white p-1.5 shadow-lg shadow-black/20">
                 <Image src="/armoiries.png" alt="Armoiries de la République du Congo" width={56} height={56} className="h-full w-full object-contain" priority />
               </div>
-              <div className="min-w-0 leading-tight">
+              {/* Même hauteur que les armoiries : le texte est centré dans les deux sens, à côté d'elles */}
+              <div className="flex h-16 min-w-0 flex-1 flex-col items-center justify-center text-center leading-tight">
                 <div className="text-[10.5px] font-semibold whitespace-nowrap uppercase text-white">République du Congo</div>
                 <div className="mt-1 text-[10px] whitespace-nowrap text-white/45">Unité · Travail · Progrès</div>
+                <div className="mt-1.5 text-[11px] font-bold tracking-wide whitespace-nowrap text-or-400">SIGRHAS-MEPPSA</div>
               </div>
             </div>
           </div>

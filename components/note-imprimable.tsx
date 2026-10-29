@@ -117,6 +117,13 @@ function construire(note: NoteDetail) {
               <div>DIRECTION DES RECRUTEMENTS</div>
               <div>ET DU SUIVI DES CARRIERES</div>
               {SEP}
+              {/* Le service suit le numéro : « …-DRSC-SR » (une note signée avant garde son en-tête) */}
+              {/-SR$/.test(e.reference) && (
+                <>
+                  <div>SERVICE DES RECRUTEMENTS</div>
+                  {SEP}
+                </>
+              )}
               <div className="mt-1 font-semibold">
                 N°{note.numero ? ` ${note.numero}` : "__________"}/{e.reference}
               </div>
