@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckCircle2, PencilLine, TriangleAlert, UserRound } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { CorrectionAnomalies, CorrectionCyclesGroupee } from "@/components/correction-anomalies";
 import { FicheDossier } from "@/components/fiche-dossier";
@@ -24,9 +25,28 @@ interface Rapport {
   lignesLues: number;
   crees: number;
   misAJour: number;
+  /** Lignes d'une personne déjà lue dans une autre feuille, réunies en une fiche. */
+  fusionnees: number;
   affectationsCreees: number;
-  lots: { numero: number; agents: number }[];
+  lots: { numero: number; libelle: string; agents: number; meppsa: number; autresAvec: number; autresSans: number }[];
   anomalies: Record<string, number>;
+  doublons: number;
+  anciennesFichesEcartees: number;
+}
+
+/** Ce que contient le classeur, avant l'import (aucun nom). */
+interface ApercuClasseur {
+  personnes: number;
+  feuilles: {
+    nom: string;
+    lignes: number;
+    groupe: "MEPPSA" | "AUTRES";
+    avecDepartement: number;
+    /** Personnes déjà vues dans une feuille précédente (elles seront réunies). */
+    dejaVues: number;
+    sansLot: number;
+    lots: { libelle: string; n: number }[];
+  }[];
 }
 
 export default function Recrutement() {
@@ -85,12 +105,21 @@ export default function Recrutement() {
         sousTitre="Liste générale des candidats retenus (commission) et retour de la Fonction Publique (textes reçus)."
       />
       {peut.importerBase(profil.role) ? (
-        <ImportBase
-          apres={() => {
-            recharger();
-            stats.recharger();
-          }}
-        />
+        <div className="grid gap-4 xl:grid-cols-2">
+          <div className="xl:col-span-2">
+            <GuideImports ici="base" />
+          </div>
+          {(["MEPPSA", "AUTRES"] as const).map((g) => (
+            <ImportBase
+              key={g}
+              groupe={g}
+              apres={() => {
+                recharger();
+                stats.recharger();
+              }}
+            />
+          ))}
+        </div>
       ) : (
         peut.traiter(profil.role) && (
           <p className="text-[12px] text-zinc-400">
@@ -328,20 +357,49 @@ export default function Recrutement() {
   );
 }
 
-function ImportBase({ apres }: { apres: () => void }) {
+/**
+ * Import de la base d'affectation, un bloc par quota (DG, 30/10/2026) : le bloc dit si les personnes
+ * sont du quota MEPPSA ou du quota « Autres » (avec ou sans département). On choisit les feuilles ;
+ * une personne présente dans plusieurs feuilles n'a qu'une fiche ; chacune est rangée dans le lot de
+ * publication écrit dans le fichier (« Arrêtés — lot VIII »).
+ */
+function ImportBase({ groupe, apres }: { groupe: "MEPPSA" | "AUTRES"; apres: () => void }) {
   const [envoi, setEnvoi] = useState(false);
   const [rapport, setRapport] = useState<Rapport | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
-  // Fichier en attente de la confirmation « ATTENTION »
-  const [enAttente, setEnAttente] = useState<File | null>(null);
+  // Fichier lu, en attente du choix des feuilles et de la confirmation « ATTENTION »
+  const [enAttente, setEnAttente] = useState<{ fichier: File; apercu: ApercuClasseur } | null>(null);
+  const [feuilles, setFeuilles] = useState<string[]>([]);
+  const autres = groupe === "AUTRES";
+  const nomBloc = autres ? "Quota « Autres »" : "Quota MEPPSA";
 
-  async function envoyer(f: File) {
-    setEnAttente(null);
+  async function lire(f: File) {
     const fd = new FormData();
     fd.append("fichier", f);
     setEnvoi(true);
     setErreur(null);
     setRapport(null);
+    try {
+      const a = await api.post<ApercuClasseur>("/import/base/apercu", fd);
+      setEnAttente({ fichier: f, apercu: a });
+      // Feuilles cochées d'office : celles qui ressemblent à ce bloc (« QA… », « Quota Autres » ; sinon MEPPSA)
+      setFeuilles(a.feuilles.filter((x) => x.groupe === groupe).map((x) => x.nom));
+    } catch (e) {
+      setErreur((e as Error).message);
+    } finally {
+      setEnvoi(false);
+    }
+  }
+
+  async function envoyer() {
+    if (!enAttente) return;
+    const fd = new FormData();
+    fd.append("fichier", enAttente.fichier);
+    fd.append("groupe", groupe);
+    fd.append("feuilles", JSON.stringify(feuilles));
+    setEnAttente(null);
+    setEnvoi(true);
+    setErreur(null);
     try {
       setRapport(await api.post<Rapport>("/import/base", fd));
       apres();
@@ -352,57 +410,147 @@ function ImportBase({ apres }: { apres: () => void }) {
     }
   }
 
+  const choisies = enAttente?.apercu.feuilles.filter((f) => feuilles.includes(f.nom)) ?? [];
+  const autreBloc = choisies.filter((f) => f.groupe !== groupe);
+
   return (
-    <Carte titre="Importer / actualiser la base Excel">
-      <p className="mb-4 max-w-4xl text-[13px] leading-relaxed text-zinc-500">
-        Chargez la « Fiche de suivi Recrutement » à jour (feuilles visibles « Cumul » et « Quota Autres »). Les agents sont reconnus d’un import à
-        l’autre : rien n’est dupliqué, les corrections faites ici sont conservées, et chaque agent dont le texte est arrivé est automatiquement
-        pointé et préparé pour l’affectation. Une colonne facultative « Date de signature » est prise en compte si elle existe.
+    <Carte titre={`Importer la base : ${nomBloc}`}>
+      <p className="mb-4 text-[13px] leading-relaxed text-zinc-500">
+        {autres ? (
+          <>
+            Les feuilles du <strong>quota « Autres »</strong>, <strong>avec ou sans département</strong> (ex. « QA arrêtés avec département », « QA arrêtés sans
+            département », « QA décrets Licence-Master »). Une personne présente dans plusieurs feuilles n’a qu’une fiche, qui garde son département.
+          </>
+        ) : (
+          <>
+            Les feuilles du <strong>quota MEPPSA</strong> (ex. « Cumul Lot 8 »). Si une ligne a « MEPPSA » dans la colonne Département, le département écrit
+            sous Source est repris.
+          </>
+        )}{" "}
+        Chaque personne est rangée dans son <strong>lot de publication</strong> (colonne « Lot de publicat° », en chiffres romains), les arrêtés et les décrets
+        à part. Les personnes déjà enregistrées sont reconnues : rien n’est dupliqué, vos corrections sont gardées.
       </p>
-      <div className="mb-4">
-        <GuideImports ici="base" />
-      </div>
-      <ZoneFichier accept=".xlsx" envoi={envoi} envoyer={setEnAttente} aide="Fiche de suivi Recrutement (.xlsx)" />
-      <Modale titre="ATTENTION : entrée directe dans la base" ouverte={!!enAttente} fermer={() => setEnAttente(null)}>
-        <div className="space-y-3 text-[13px] leading-relaxed text-zinc-600">
-          <p>
-            Les personnes du fichier « {enAttente?.name} » vont entrer <strong>directement</strong> dans la base des recrutés, avec leurs textes s’ils sont notés :
-          </p>
-          <ul className="list-disc space-y-1 pl-5">
-            <li>
-              <strong>sans</strong> contrôle, <strong>sans</strong> validation du DG et <strong>sans</strong> envoi à la FP dans le système ;
-            </li>
-            <li>celles dont le texte est noté seront tout de suite prêtes pour l’affectation ;</li>
-            <li>l’import est noté dans le journal, avec votre nom.</li>
-          </ul>
-          <p>
-            À utiliser seulement pour un <strong>travail fait avant le système ou en dehors</strong>. Pour de nouveaux candidats, passez par « Saisie des candidats » ;
-            pour des textes qui reviennent de la FP, par « Réception des textes ».
-          </p>
-        </div>
-        <div className="mt-6 flex justify-end gap-2">
-          <Bouton onClick={() => setEnAttente(null)}>Annuler</Bouton>
-          <Bouton variante="danger" disabled={envoi} onClick={() => enAttente && envoyer(enAttente)}>
-            Je comprends : importer
-          </Bouton>
-        </div>
+      <ZoneFichier accept=".xlsx" envoi={envoi} envoyer={lire} aide={`Base d’affectation (.xlsx) — ${nomBloc}`} />
+      <Modale titre={`ATTENTION : entrée directe dans la base — ${nomBloc}`} ouverte={!!enAttente} fermer={() => setEnAttente(null)} large>
+        {enAttente && (
+          <div className="space-y-4 text-[13px] leading-relaxed text-zinc-600">
+            <p>
+              Fichier « {enAttente.fichier.name} ». Cochez les feuilles du <strong>{nomBloc}</strong> à importer :
+            </p>
+            <div className="space-y-2">
+              {enAttente.apercu.feuilles.map((f) => {
+                const coche = feuilles.includes(f.nom);
+                return (
+                  <label
+                    key={f.nom}
+                    className={`flex cursor-pointer gap-3 rounded-2xl border px-3 py-2.5 ${coche ? "border-marque-500 bg-marque-50" : "border-zinc-200"}`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={coche}
+                      onChange={() => setFeuilles(coche ? feuilles.filter((x) => x !== f.nom) : [...feuilles, f.nom])}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="font-semibold text-encre">{f.nom}</span>{" "}
+                      <span className="text-zinc-400">
+                        · {f.lignes} ligne(s) · {f.avecDepartement} avec département
+                        {f.dejaVues ? ` · ${f.dejaVues} déjà dans une feuille précédente (réunies)` : ""}
+                      </span>
+                      <span className="mt-1 flex flex-wrap gap-1">
+                        {f.lots.map((l) => (
+                          <Badge key={l.libelle}>
+                            {l.libelle} : {l.n}
+                          </Badge>
+                        ))}
+                        {f.sansLot > 0 && <Badge ton="jaune">Sans lot de publication : {f.sansLot}</Badge>}
+                        {f.groupe !== groupe && <Badge ton="jaune">Semble être du {f.groupe === "AUTRES" ? "quota « Autres »" : "quota MEPPSA"}</Badge>}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+            {autreBloc.length > 0 && (
+              <Alerte ton="jaune">
+                {autreBloc.map((f) => `« ${f.nom} »`).join(", ")} semble{autreBloc.length > 1 ? "nt" : ""} appartenir à l’autre bloc. Importées ici, ces
+                personnes seront enregistrées au <strong>{nomBloc}</strong>.
+              </Alerte>
+            )}
+            <ul className="list-disc space-y-1 pl-5">
+              <li>
+                entrée <strong>directe</strong> dans la base des recrutés : <strong>sans</strong> contrôle, <strong>sans</strong> validation du DG et{" "}
+                <strong>sans</strong> envoi à la FP dans le système ;
+              </li>
+              <li>la base du personnel n’est pas touchée : les affectés n’y entrent que lorsque vous les déportez, après la signature de leur note ;</li>
+              <li>l’import est noté dans le journal, avec votre nom.</li>
+            </ul>
+            <div className="flex justify-end gap-2">
+              <Bouton onClick={() => setEnAttente(null)}>Annuler</Bouton>
+              <Bouton variante="danger" disabled={envoi || !feuilles.length} onClick={envoyer}>
+                Je comprends : importer {choisies.reduce((n, f) => n + f.lignes, 0)} ligne(s)
+              </Bouton>
+            </div>
+          </div>
+        )}
       </Modale>
       <Annonce ton="rouge" fermer={() => setErreur(null)}>
         {erreur}
       </Annonce>
       <Annonce fermer={() => setRapport(null)}>
         {rapport && (
-          <div className="space-y-3">
-            <p>
-              {rapport.lignesLues} lignes lues ({rapport.feuilles.map((f) => `${f.nom} : ${f.lignes}`).join(", ")}) — {rapport.crees} nouvelles fiches,{" "}
-              {rapport.misAJour} mises à jour, {rapport.affectationsCreees} nouveaux agents à affecter.
+          <div className="space-y-3 text-left">
+            <p className="text-center">
+              {rapport.lignesLues} lignes lues ({rapport.feuilles.map((f) => `${f.nom} : ${f.lignes}`).join(", ")}) — {rapport.crees} nouvelle(s) fiche(s),{" "}
+              {rapport.misAJour} mise(s) à jour
+              {rapport.fusionnees ? `, ${rapport.fusionnees} ligne(s) d’une personne déjà lue dans une autre feuille (réunies)` : ""},{" "}
+              {rapport.affectationsCreees} nouvelle(s) personne(s) à affecter.
             </p>
+            {rapport.lots.length > 0 && (
+              <Tableau>
+                <thead>
+                  <tr>
+                    <th>Lot</th>
+                    <th className="text-right">Personnes</th>
+                    <th className="text-right">MEPPSA</th>
+                    <th className="text-right">Autres avec dép.</th>
+                    <th className="text-right">Autres sans dép.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rapport.lots.map((l) => (
+                    <tr key={l.numero}>
+                      <td>
+                        <Link href={`/affectations?lot=${l.numero}`} className="font-medium text-marque-700 underline">
+                          {l.libelle}
+                        </Link>
+                      </td>
+                      <td className="text-right tabular-nums">{l.agents}</td>
+                      <td className="text-right tabular-nums">{l.meppsa}</td>
+                      <td className="text-right tabular-nums">{l.autresAvec}</td>
+                      <td className="text-right tabular-nums">{l.autresSans}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Tableau>
+            )}
+            {rapport.anciennesFichesEcartees > 0 && (
+              <p className="text-center text-[12px] text-zinc-500">
+                {rapport.anciennesFichesEcartees} ancienne(s) fiche(s) en double (même nom, même texte, sans date de naissance) écartée(s) : la personne est suivie
+                sur sa fiche complète.
+              </p>
+            )}
             <div className="flex flex-wrap justify-center gap-1.5">
-              {Object.entries(rapport.anomalies).map(([k, v]) => (
-                <Badge key={k} ton="jaune" titre={libelleAnomalie(k).detail || undefined}>
-                  {libelleAnomalie(k).titre} : {v}
-                </Badge>
-              ))}
+              {Object.entries(rapport.anomalies)
+                // Le quota « Autres » arrive souvent sans département : ce n'est pas une erreur du fichier
+                .filter(([k]) => !(autres && k === "Département absent"))
+                .map(([k, v]) => (
+                  <Badge key={k} ton="jaune" titre={libelleAnomalie(k).detail || undefined}>
+                    {libelleAnomalie(k).titre}
+                    {/* Comparaison de toute la base, pas seulement du fichier */}
+                    {k === "Ressemble à une autre fiche" || k === "N° de texte partagé" ? " (dans toute la base)" : ""} : {v}
+                  </Badge>
+                ))}
             </div>
           </div>
         )}

@@ -32,8 +32,10 @@ export interface Referentiels {
 export interface LotRepere {
   id: number;
   numero: number;
-  /** ARRETE, DECRET_PM (licence) ou DECRET_PR (master). */
-  typeTexte?: "ARRETE" | "DECRET_PM" | "DECRET_PR" | null;
+  /** ARRETE, DECRET_PM (licence) ou DECRET_PR (master) ; ARRETE ou DECRET pour un lot du fichier. */
+  typeTexte?: "ARRETE" | "DECRET" | "DECRET_PM" | "DECRET_PR" | null;
+  /** Lot de publication écrit dans la base de la DGRHAS (« VIII ») : arrêtés et décrets à part. */
+  numeroFichier?: number | null;
   quota?: number | null;
   autres?: boolean;
   /** N° du lot dans son quota et son type. */
@@ -66,7 +68,16 @@ export interface Lot extends LotRepere {
   };
   exclus: number;
   affectes: number;
+  /** Lot déjà traité : plus proposé à l'affectation. */
+  archive: boolean;
+  /** Personnes du lot par groupe de quota. */
+  groupes: Record<GroupeQuota, { total: number; aTraiter: number; affectes: number }>;
+  /** Affectés (note signée) pas encore déportés dans la base du personnel. */
+  aDeporter: number;
 }
+
+/** Quota MEPPSA, quota « Autres » arrivé avec son département, ou sans département. */
+export type GroupeQuota = "MEPPSA" | "AUTRES_AVEC" | "AUTRES_SANS";
 
 export interface Agent {
   id: string;

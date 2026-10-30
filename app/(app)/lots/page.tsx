@@ -30,13 +30,20 @@ export default function Lots() {
     }
   }
 
-  const aCompleter = donnees?.filter((l) => !l[champSignature(l)]).length ?? 0;
+  const aCompleter = donnees?.filter((l) => !l.archive && !l[champSignature(l)]).length ?? 0;
   // Regroupement par paquet : le dernier importé en haut, mis en évidence (DG, 28/10/2026 : un paquet
   // importé aujourd'hui avec une date ancienne se perdait plus bas), puis les autres par date
   const paquets = new Map<string, { numero: number; libelle: string; date: string | null; lots: Lot[] }>();
   for (const l of donnees ?? []) {
-    const cle = l.paquet ? String(l.paquet.numero) : "aucun";
-    const p = paquets.get(cle) ?? { numero: l.paquet?.numero ?? 0, libelle: l.paquet?.libelle ?? "Sans paquet", date: l.paquet?.dateReception ?? null, lots: [] };
+    // Lots de publication écrits dans la base (« Arrêtés — lot VIII », DG 30/10/2026) : ensemble, en tête
+    const fichier = !!l.numeroFichier;
+    const cle = fichier ? "fichier" : l.paquet ? String(l.paquet.numero) : "aucun";
+    const p = paquets.get(cle) ?? {
+      numero: fichier ? Number.MAX_SAFE_INTEGER : (l.paquet?.numero ?? 0),
+      libelle: fichier ? "Lots de publication de la base (arrêtés et décrets)" : (l.paquet?.libelle ?? "Sans paquet"),
+      date: l.paquet?.dateReception ?? null,
+      lots: [],
+    };
     p.lots.push(l);
     paquets.set(cle, p);
   }

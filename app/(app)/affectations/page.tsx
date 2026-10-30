@@ -16,29 +16,42 @@ import { CorrectionAnomalies } from "@/components/correction-anomalies";
 import { ResoudreProbleme } from "@/components/resoudre-probleme";
 import { ChoixEtablissement } from "@/components/choix-etablissement";
 import { useSession } from "@/components/session";
-import { Aide, Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Modale, Pastille, Saisie, Tableau, Vide, Zone } from "@/components/ui";
+import { Aide, Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Modale, Pastille, Saisie, SaisieDate, Tableau, Vide, Zone } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
 import { peut, STATUT_AFFECTATION, libelleAnomalie } from "@/lib/libelles";
 import type { Affectation, Lot, NoteResume } from "@/lib/types";
 import { useParametreUrl } from "@/lib/url";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
+import { ChoixLots, familleDe, GROUPES, type Famille } from "@/components/choix-lots";
+import { DeportPersonnel } from "@/components/deport-personnel";
+import type { GroupeQuota } from "@/lib/types";
 
-type Resume = Record<
-  string,
-  {
-    total: number;
-    prets: number;
-    bloques: number;
-    exclus: number;
-    affectes: number;
-  }
->;
+type Compte = {
+  total: number;
+  prets: number;
+  bloques: number;
+  exclus: number;
+  affectes: number;
+};
+type Resume = {
+  parType: Record<string, Compte>;
+  parGroupe: Partial<Record<GroupeQuota, Compte>>;
+  /** Raisons qui empêchent d'entrer dans une note, avec leur nombre. */
+  raisons: Record<string, number>;
+  aDeporter: number;
+  aRepartir: number;
+};
+const TOUS_GROUPES: GroupeQuota[] = ["MEPPSA", "AUTRES_AVEC", "AUTRES_SANS"];
 
 export default function Affectations() {
   const { profil, refs } = useSession();
   const lotUrl = useParametreUrl("lot");
   const lots = useApi<Lot[]>("/lots");
-  const [lotChoisi, setLot] = useState<number | null>(null);
+  // Lots choisis (n°) et quotas traités ; null : pas encore choisis (lot de l'URL, sinon le plus récent)
+  const [selectionChoisie, setSelection] = useState<number[] | null>(null);
+  const [familleChoisie, setFamille] = useState<Famille | null>(null);
+  const [groupes, setGroupes] = useState<GroupeQuota[]>(TOUS_GROUPES);
+  const [deport, setDeport] = useState(false);
   // « ?typeNote=… » (lien depuis une note) : ce type de note seulement
   const typeUrl = useParametreUrl("typeNote");
   const [typeChoisi, setTypeNote] = useState<string | null>(null);
@@ -61,23 +74,71 @@ export default function Affectations() {
     texte: React.ReactNode;
   } | null>(null);
 
-  // Lot affiché : celui choisi, sinon celui de l'URL, sinon le dernier reçu
-  const lot = useMemo(() => {
-    if (lotChoisi !== null) return lotChoisi;
+  // Lot de l'URL (lien depuis une note), sinon le lot d'arrêtés le plus récent du fichier
+  const depart = useMemo(() => {
     if (lotUrl === undefined || !lots.donnees) return null;
-    const n = Number(lotUrl);
-    return lots.donnees.some((l) => l.numero === n)
-      ? n
-      : (lots.donnees.at(-1)?.numero ?? null);
-  }, [lotChoisi, lotUrl, lots.donnees]);
+    const ouverts = lots.donnees.filter((l) => !l.archive);
+    const l =
+      lots.donnees.find((x) => x.numero === Number(lotUrl)) ??
+      [...ouverts].filter((x) => familleDe(x) === "ARRETE").sort((a, b) => (b.numeroFichier ?? 0) - (a.numeroFichier ?? 0))[0] ??
+      ouverts.at(-1) ??
+      null;
+    return l ? { famille: familleDe(l), selection: [l.numero] } : { famille: "ARRETE" as Famille, selection: [] };
+  }, [lotUrl, lots.donnees]);
+  const famille = familleChoisie ?? depart?.famille ?? "ARRETE";
+  const selection = selectionChoisie ?? depart?.selection ?? [];
+  const choisis = (lots.donnees ?? []).filter((l) => selection.includes(l.numero));
+  const filtreLots = selection.length && groupes.length ? { lots: selection.join(","), groupes: groupes.join(",") } : null;
 
   const liste = useApi<Affectation[]>(
-    lot
-      ? `/affectations${qs({ lot, typeNote, departementId, statut, probleme })}`
+    filtreLots
+      ? `/affectations${qs({ ...filtreLots, typeNote, departementId, statut, probleme })}`
       : null,
   );
-  const resume = useApi<Resume>(lot ? `/lots/${lot}/resume` : null);
-  const libelleChoisi = lots.donnees?.find((l) => l.numero === lot)?.libelle ?? `Lot ${lot}`;
+  const resume = useApi<Resume>(filtreLots ? `/lots/selection/resume${qs(filtreLots)}` : null);
+  const libelleChoisi = choisis.length ? choisis.map((l) => l.libelle).join(" + ") : "Aucun lot";
+  const libelleGroupes =
+    groupes.length === TOUS_GROUPES.length ? "tous les quotas" : GROUPES.filter((g) => groupes.includes(g.code)).map((g) => g.libelle).join(", ");
+
+  function choisirFamille(f: Famille) {
+    setFamille(f);
+    // Arrêtés et décrets ne se traitent pas ensemble : le lot le plus récent de la famille
+    const l = (lots.donnees ?? []).filter((x) => familleDe(x) === f && !x.archive).sort((a, b) => (b.numeroFichier ?? 0) - (a.numeroFichier ?? 0) || b.numero - a.numero)[0];
+    setSelection(l ? [l.numero] : []);
+    setTypeNote("");
+    setProbleme("");
+  }
+
+  async function dateSignature(l: Lot, champ: "dateSignatureArretes" | "dateSignatureDecrets", valeur: string) {
+    try {
+      await api.patch(`/lots/${l.id}`, { [champ]: valeur || null });
+      setMessage({ ton: "vert", texte: `${l.libelle} : date de signature enregistrée. Les personnes qui n’attendaient qu’elle entrent dans les notes.` });
+      rafraichir();
+    } catch (e) {
+      setMessage({ ton: "rouge", texte: (e as Error).message });
+    }
+  }
+
+  async function archiverTous(liste: Lot[]) {
+    try {
+      for (const l of liste) await api.patch(`/lots/${l.id}`, { archive: true });
+      setSelection(selection.filter((n) => !liste.some((l) => l.numero === n)));
+      setMessage({ ton: "vert", texte: `${liste.length} ancien(s) lot(s) marqué(s) comme déjà traité(s) : ils ne sont plus proposés.` });
+      lots.recharger();
+    } catch (e) {
+      setMessage({ ton: "rouge", texte: (e as Error).message });
+    }
+  }
+
+  async function archiver(l: Lot, archive: boolean) {
+    try {
+      await api.patch(`/lots/${l.id}`, { archive });
+      if (archive) setSelection(selection.filter((x) => x !== l.numero));
+      lots.recharger();
+    } catch (e) {
+      setMessage({ ton: "rouge", texte: (e as Error).message });
+    }
+  }
   const libType = useMemo(
     () => Object.fromEntries(refs.typesNote.map((t) => [t.code, t.libelle])),
     [refs],
@@ -111,14 +172,13 @@ export default function Affectations() {
   const rafraichir = () => {
     liste.recharger();
     resume.recharger();
+    lots.recharger();
   };
 
   async function preparer() {
     try {
-      const notes = await api.post<NoteResume[]>(
-        `/notes/preparer/affectation/${lot}`,
-      );
-      const r = resume.donnees ?? {};
+      const notes = await api.post<NoteResume[]>("/notes/preparer/affectation", { lots: selection, groupes });
+      const r = resume.donnees?.parType ?? {};
       const bloques = Object.values(r).reduce((n, x) => n + x.bloques, 0);
       setMessage({
         ton: "vert",
@@ -126,8 +186,8 @@ export default function Affectations() {
           <div className="space-y-3 text-left">
             <p className="text-center">
               {notes.length
-                ? `${notes.length} note(s) préparée(s) pour ${libelleChoisi}, une par type de note :`
-                : "Aucune nouvelle note : les notes ouvertes de ce lot sont déjà à jour (elles se recalculent automatiquement)."}
+                ? `${notes.length} note(s) préparée(s) pour ${libelleChoisi} (${libelleGroupes}), une par type de note :`
+                : "Aucune nouvelle note : ces personnes sont déjà dans des notes ouvertes (elles se recalculent automatiquement), ou aucune n’est prête."}
             </p>
             {notes.length > 0 && (
               <ul className="rounded-2xl bg-zinc-50 px-4 py-2 text-[12px]">
@@ -192,9 +252,9 @@ export default function Affectations() {
         sousTitre="Grade, classification, statut contractuel, référence du texte et département sont remplis automatiquement. Vérifiez, complétez et préparez les notes."
         actions={
           peut.traiter(profil.role) &&
-          lot && (
+          filtreLots && (
             <Bouton variante="principal" onClick={preparer}>
-              Préparer les notes de ce lot
+              Préparer les notes {choisis.length > 1 ? "de ces lots" : "de ce lot"}
             </Bouton>
           )
         }
@@ -203,39 +263,129 @@ export default function Affectations() {
         {message?.texte}
       </Annonce>
 
-      {lots.donnees && (
-        <label className="flex flex-wrap items-center gap-3 rounded-2xl bg-white px-4 py-3 text-[13px] shadow-doux">
-          <span className="font-medium text-zinc-600">Lot traité</span>
-          <select
-            value={lot ?? ""}
-            onChange={(e) => setLot(Number(e.target.value))}
-            className="min-w-72 flex-1 rounded-xl bg-zinc-100/80 px-3 py-2 text-[13px] text-encre outline-none focus:bg-white focus:ring-4 focus:ring-marque-100"
-          >
-            {/* Un groupe par paquet, le plus récent en haut */}
-            {[...new Map(lots.donnees.map((l) => [l.paquet?.libelle ?? "Sans paquet", l.paquet?.dateReception ?? ""])).entries()]
-              .sort((x, y) => y[1].localeCompare(x[1]))
-              .map(([paquet]) => (
-                <optgroup key={paquet} label={paquet}>
-                  {lots.donnees!
-                    .filter((l) => (l.paquet?.libelle ?? "Sans paquet") === paquet)
-                    .map((l) => (
-                      <option key={l.numero} value={l.numero}>
-                        {l.libelle} ({l.arretes + l.decrets}){l.aTraiter ? ` · ${l.aTraiter} pas encore affectés` : " · terminé"}
-                      </option>
-                    ))}
-                </optgroup>
+      {lots.erreur && <Alerte>{lots.erreur}</Alerte>}
+      {!lots.donnees ? (
+        <Chargement />
+      ) : (
+        <ChoixLots
+          lots={lots.donnees}
+          famille={famille}
+          choisirFamille={choisirFamille}
+          selection={selection}
+          choisir={(n) => {
+            setSelection(n);
+            setTypeNote("");
+          }}
+          groupes={groupes}
+          choisirGroupes={setGroupes}
+          archiver={peut.traiter(profil.role) ? archiver : undefined}
+          archiverTous={peut.traiter(profil.role) ? archiverTous : undefined}
+        />
+      )}
+      {selection.length > 0 && !groupes.length && <Alerte ton="jaune">Cochez au moins un quota.</Alerte>}
+
+      {resume.donnees && resume.donnees.aRepartir > 0 && (
+        <Alerte ton="jaune">
+          <strong>{resume.donnees.aRepartir} personne(s) du quota « Autres » n’ont pas de département</strong> : elles n’entrent pas dans les notes rangées par
+          département.{" "}
+          <Link href={`/pilotage?onglet=repartition&lots=${selection.join(",")}`} className="font-semibold underline">
+            Leur donner un département (répartition des lots choisis)
+          </Link>
+        </Alerte>
+      )}
+      {resume.donnees && resume.donnees.aDeporter > 0 && (
+        <Alerte ton="bleu">
+          <strong>{resume.donnees.aDeporter} personne(s) affectée(s) par une note signée</strong> ne sont pas encore dans la base du personnel. Elles y
+          entrent quand vous les déportez (les doublons possibles vous sont montrés à ce moment-là).{" "}
+          {peut.traiter(profil.role) && (
+            <button type="button" className="font-semibold underline" onClick={() => setDeport(true)}>
+              Déporter dans la base du personnel
+            </button>
+          )}
+        </Alerte>
+      )}
+      {deport && (
+        <DeportPersonnel
+          lots={selection}
+          fermer={() => setDeport(false)}
+          apres={(texte) => {
+            setDeport(false);
+            setMessage({ ton: "vert", texte });
+            rafraichir();
+          }}
+        />
+      )}
+
+      {resume.donnees && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          {GROUPES.filter((g) => groupes.includes(g.code)).map((g) => {
+            const r = resume.donnees!.parGroupe[g.code];
+            return (
+              <div key={g.code} className="rounded-3xl bg-white p-4 shadow-doux">
+                <div className="text-xs text-zinc-500">{g.libelle}</div>
+                <div className="mt-0.5 text-2xl font-semibold tabular-nums">{r?.total ?? 0}</div>
+                {r && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    <Badge ton="vert">{r.prets} prêts</Badge>
+                    {r.bloques > 0 && <BadgeACompleter n={r.bloques} voir={() => voirACompleter()} />}
+                    {r.affectes > 0 && <Badge ton="bleu">{r.affectes} déjà affectés</Badge>}
+                    {r.exclus > 0 && <Badge>{r.exclus} exclus</Badge>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {resume.donnees && Object.keys(resume.donnees.raisons).length > 0 && (
+        <Carte titre="Erreurs à corriger dans ce choix">
+          <ul className="space-y-1 text-[13px]">
+            {Object.entries(resume.donnees.raisons)
+              .sort((a, b) => b[1] - a[1])
+              .map(([k, n]) => (
+                <li key={k} className="flex items-center justify-between gap-3 rounded-xl bg-zinc-50 px-3 py-1.5">
+                  <span>{k}</span>
+                  <strong className="tabular-nums">{n}</strong>
+                </li>
               ))}
-          </select>
-          <Aide>
-            Un lot = les textes d’un même quota et d’un même type (Arrêtés, Décrets PM, Décrets PR) arrivés dans un même paquet. Les lots sont rangés par paquet
-            (date de réception).
-          </Aide>
-        </label>
+          </ul>
+          {Object.keys(resume.donnees.raisons).some((k) => k.startsWith("Date de signature")) && (
+            <div className="mt-4 rounded-2xl bg-or-100/60 px-4 py-3 text-[13px]">
+              <p className="mb-2 text-zinc-700">
+                <strong>Date de signature des textes</strong> : la base n’en donne pas. Saisissez celle de chaque lot (elle vaut pour toutes ses personnes qui
+                n’ont pas leur propre date) :
+              </p>
+              <div className="flex flex-wrap gap-4">
+                {choisis.map((l) => {
+                  const champ = l.typeTexte === "DECRET" || l.typeTexte === "DECRET_PM" || l.typeTexte === "DECRET_PR" ? "dateSignatureDecrets" : "dateSignatureArretes";
+                  return (
+                    <label key={l.numero} className="flex items-center gap-2">
+                      <span className="font-medium">{l.libelle}</span>
+                      {peut.traiter(profil.role) ? (
+                        <SaisieDate
+                          value={l[champ] ?? ""}
+                          className={!l[champ] ? "rounded-xl ring-2 ring-or-400" : ""}
+                          onChange={(v) => dateSignature(l, champ, v)}
+                          aria-label={`Date de signature – ${l.libelle}`}
+                        />
+                      ) : (
+                        <span>{l[champ] ?? "—"}</span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          <button type="button" className="mt-3 text-[13px] font-semibold text-marque-700 underline" onClick={() => voirACompleter()}>
+            Voir ces personnes et les corriger
+          </button>
+        </Carte>
       )}
 
       {resume.donnees &&
         (() => {
-          const lignes = Object.values(resume.donnees);
+          const lignes = Object.values(resume.donnees.parType);
           const somme = (
             k: "total" | "prets" | "bloques" | "affectes" | "exclus",
           ) => lignes.reduce((n, r) => n + r[k], 0);
@@ -247,7 +397,7 @@ export default function Affectations() {
             >
               <div>
                 <div className="text-[11px] text-white/60">
-                  {libelleChoisi}
+                  {libelleChoisi} · {libelleGroupes}
                 </div>
                 <div className="text-3xl font-semibold tabular-nums">
                   {somme("total")} agents
@@ -272,7 +422,7 @@ export default function Affectations() {
 
       {resume.donnees && (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-3">
-          {Object.entries(resume.donnees).map(([t, r]) => (
+          {Object.entries(resume.donnees.parType).map(([t, r]) => (
             <button
               key={t}
               onClick={() => setTypeNote(typeNote === t ? "" : t)}

@@ -120,8 +120,30 @@ export const TYPE_LOT: Record<string, { pluriel: string; aide: string }> = {
 };
 
 /** « Arrêtés quota 2024 — lot 3 » (un ancien lot pas encore rangé : « Lot 3 »). */
-export function libelleLot(l: { numero: number; typeTexte?: string | null; quota?: number | null; autres?: boolean | null; rang?: number | null } | null | undefined) {
+/** Chiffres romains des lots de la base (« VIII ») ; au-delà, le nombre. */
+export function romain(n: number) {
+  if (n <= 0 || n >= 40) return String(n);
+  let r = "";
+  for (const [v, x] of [
+    [10, "X"],
+    [9, "IX"],
+    [5, "V"],
+    [4, "IV"],
+    [1, "I"],
+  ] as const)
+    while (n >= v) {
+      r += x;
+      n -= v;
+    }
+  return r;
+}
+
+export function libelleLot(
+  l: { numero: number; typeTexte?: string | null; quota?: number | null; autres?: boolean | null; rang?: number | null; numeroFichier?: number | null } | null | undefined,
+) {
   if (!l) return "—";
+  // Lot de publication du fichier (DG, 30/10/2026) : « Arrêtés — lot VIII »
+  if (l.numeroFichier) return `${l.typeTexte === "DECRET" ? "Décrets" : "Arrêtés"} — lot ${romain(l.numeroFichier)}`;
   if (!l.typeTexte || !l.rang) return `Lot ${l.numero}`;
   const q = l.autres ? "quota « Autres »" : l.quota ? `quota ${l.quota}` : "sans quota";
   return `${TYPE_LOT[l.typeTexte]?.pluriel ?? l.typeTexte} ${q} — lot ${l.rang}`;

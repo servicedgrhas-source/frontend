@@ -9,6 +9,7 @@ import { Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, EnTete, Liste
 import { api, qs, useApi } from "@/lib/api";
 import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
+import { useParametreUrl } from "@/lib/url";
 
 const nf = new Intl.NumberFormat("fr-FR");
 const f = (n: number | null | undefined) => (n === null || n === undefined ? "—" : nf.format(Math.round(n)));
@@ -39,7 +40,10 @@ interface Tableau {
 
 export default function Pilotage() {
   const { profil } = useSession();
-  const [onglet, setOnglet] = useState<"incidences" | "beneficiaires" | "repartition">("incidences");
+  // « ?onglet=repartition&lots=38,39 » : lien depuis l'écran des affectations
+  const ongletUrl = useParametreUrl("onglet");
+  const [ongletChoisi, setOnglet] = useState<"incidences" | "beneficiaires" | "repartition" | null>(null);
+  const onglet = ongletChoisi ?? (ongletUrl === "repartition" ? "repartition" : "incidences");
   if (!peut.parametrer(profil.role) && !accesDonne(profil)) return <Alerte>Module réservé au DGRHAS.</Alerte>;
   return (
     <div className="space-y-6">
@@ -289,8 +293,16 @@ function Repartition() {
   const { refs } = useSession();
   const [texteRecu, setTexteRecu] = useState(true);
   const [lot, setLot] = useState("");
-  const etat = useApi<EtatRep>(`/pilotage/repartition${qs({ texteRecu: texteRecu ? 1 : "0", lot })}`);
+  // Lots choisis à l'écran des affectations (« Arrêtés — lot VIII ») : la répartition s'y limite
+  const lotsUrl = useParametreUrl("lots");
+  const [lotsAffectation, setLotsAffectation] = useState<string | null>(null);
+  const lotsChoisis = lotsAffectation ?? (lotsUrl || "");
+  const etat = useApi<EtatRep>(`/pilotage/repartition${qs({ texteRecu: texteRecu ? 1 : "0", ...(lotsChoisis ? { lots: lotsChoisis } : { lot }) })}`);
   const lots = useApi<{ numero: number; libelle?: string }[]>("/lots");
+  const libellesChoisis = lotsChoisis
+    .split(",")
+    .map((n) => lots.donnees?.find((l) => l.numero === Number(n))?.libelle ?? `Lot ${n}`)
+    .join(" + ");
   const [quotas, setQuotas] = useState<Record<string, string>>({});
   const [proposition, setProposition] = useState<Proposition | null>(null);
   const [confirmer, setConfirmer] = useState(false);
@@ -307,7 +319,8 @@ function Repartition() {
   const precedents = etat.donnees?.quotasPrecedents;
   const [prerempli, setPrerempli] = useState(false);
   useEffect(() => {
-    if (!precedents || !dispo) return;
+    // Pas de reprise si elle dépasse les personnes à placer (lots choisis à l'écran des affectations)
+    if (!precedents || !dispo || Object.values(precedents).reduce((n, v) => n + Number(v), 0) > dispo) return;
     const t = setTimeout(
       () =>
         setQuotas((q) => {
@@ -335,7 +348,7 @@ function Repartition() {
         await api.post<Proposition>("/pilotage/repartition/proposer", {
           quotas: Object.fromEntries(Object.entries(quotas).map(([k, v]) => [k, Number(v) || 0])),
           texteRecu,
-          lot: lot ? Number(lot) : undefined,
+          ...(lotsChoisis ? { lots: lotsChoisis.split(",").map(Number) } : { lot: lot ? Number(lot) : undefined }),
         }),
       );
       setVoirListe(false);
@@ -388,9 +401,19 @@ function Repartition() {
             <input type="checkbox" checked={texteRecu} onChange={(e) => { setTexteRecu(e.target.checked); setProposition(null); }} />
             Seulement celles dont le texte de la FP est reçu
           </label>
-          <Champ libelle="Lot de réception" className="w-44">
-            <Liste value={lot} onChange={(e) => { setLot(e.target.value); setProposition(null); }} vide="Tous les lots" options={(lots.donnees ?? []).map((l) => ({ valeur: l.numero, libelle: l.libelle ?? `Lot ${l.numero}` }))} />
-          </Champ>
+          {lotsChoisis ? (
+            <div className="flex flex-wrap items-center gap-2 pb-2 text-[13px]">
+              <span className="text-zinc-500">Lots choisis :</span>
+              <Badge ton="bleu">{libellesChoisis}</Badge>
+              <button type="button" className="text-[12px] font-semibold text-marque-700 underline" onClick={() => { setLotsAffectation(""); setProposition(null); }}>
+                Tous les lots
+              </button>
+            </div>
+          ) : (
+            <Champ libelle="Lot" className="w-56">
+              <Liste value={lot} onChange={(e) => { setLot(e.target.value); setProposition(null); }} vide="Tous les lots" options={(lots.donnees ?? []).map((l) => ({ valeur: l.numero, libelle: l.libelle ?? `Lot ${l.numero}` }))} />
+            </Champ>
+          )}
         </div>
         {!etat.donnees ? (
           <Chargement />
@@ -411,7 +434,7 @@ function Repartition() {
         <Carte titre="Combien de personnes par département ?">
           <div className="rounded-2xl bg-marque-50 px-4 py-3 text-[13px] leading-relaxed text-marque-800">
             <strong>Il n’y a personne à répartir.</strong>{" "}
-            {texteRecu || lot
+            {texteRecu || lot || lotsChoisis
               ? "Avec les choix ci-dessus (texte reçu, lot), toutes les personnes du quota « Autres » ont déjà un département. Décochez la case ou choisissez « Tous les lots » pour voir les autres."
               : "Toutes les personnes du quota « Autres » ont déjà reçu un département."}{" "}
             Vos répartitions sont dans « Répartitions déjà validées » ci-dessous : « Voir le bilan » montre qui peut entrer dans une note et ce qui bloque encore
