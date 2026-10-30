@@ -1,5 +1,6 @@
 "use client";
 
+import { SpecimenVisa, type StyleVisa } from "@/components/visa-specimen";
 import { Fragment, useMemo } from "react";
 import { dateLongue } from "@/lib/libelles";
 import type { NoteDetail } from "@/lib/types";
@@ -34,11 +35,11 @@ const LARGEUR: Record<string, number> = {
 };
 
 /** Rendu officiel d'une note de service, découpé en pages A4 par le système. */
-export function NoteImprimable({ note }: { note: NoteDetail }) {
-  const { blocs, tableaux } = useMemo(() => construire(note), [note]);
+export function NoteImprimable({ note, visas = true }: { note: NoteDetail; /** Imprimer avec les spécimens de visa (sinon sans). */ visas?: boolean }) {
+  const { blocs, tableaux } = useMemo(() => construire(note, visas), [note, visas]);
   return (
     <PagesA4
-      key={`${note.id}-${note.statut}-${note.contenu.total}-${note.introduction.length}`}
+      key={`${note.id}-${note.statut}-${note.contenu.total}-${note.introduction.length}-${visas}`}
       blocs={blocs}
       tableaux={tableaux}
       classeFeuille="feuille-note"
@@ -47,43 +48,36 @@ export function NoteImprimable({ note }: { note: NoteDetail }) {
   );
 }
 
-/** « Jean Paul MOUKOKO » → « J.P.M. » : le visa (paraphe) en attendant le spécimen de chacun (réunion du 29/10/2026). */
-const initiales = (nom: string) =>
-  nom
-    .split(/[\s-]+/)
-    .filter(Boolean)
-    .map((m) => `${m[0].toUpperCase()}.`)
-    .join("");
+/**
+ * Visas de l'en-tête (DG, 30/10/2026) : à droite du service des recrutements (chef de service, sinon
+ * chef de bureau), de la direction des recrutements (directeur), de la direction générale (DG qui
+ * a validé). Seuls les avis « conforme » (et la validation du DG) donnent un visa.
+ */
+function visasDe(note: NoteDetail) {
+  const avis = (n: string) => (note.conformite ?? []).find((x) => x.niveau === n && x.conforme);
+  const service = avis("SERVICE") ?? avis("BUREAU");
+  const direction = avis("DIRECTION");
+  return {
+    SERVICE: service ? { nom: service.par, le: service.le } : null,
+    DIRECTION: direction ? { nom: direction.par, le: direction.le } : null,
+    DG: note.valideePar ? { nom: note.valideePar, le: note.valideeLe } : null,
+  };
+}
 
-/** Visas du chef de bureau, du chef de service et du directeur (avis « conforme »), en bas à gauche de la note. */
-function Visas({ note }: { note: NoteDetail }) {
-  const visas = (["BUREAU", "SERVICE", "DIRECTION"] as const).map((n) => ({ n, a: (note.conformite ?? []).find((x) => x.niveau === n && x.conforme) }));
-  const lib = { BUREAU: "Bureau", SERVICE: "Service", DIRECTION: "Direction" };
+/** Une entité de l'en-tête, avec le visa de son responsable juste à sa droite. */
+function AvecVisa({ visa, style, children }: { visa: { nom: string; le: string | null } | null; style: StyleVisa; children: React.ReactNode }) {
   return (
-    <div className="row-span-2 self-start">
-      {visas.some((v) => v.a) && (
-        <>
-          <div className="text-[8pt] font-bold underline">Visas</div>
-          <table className="mt-0.5 text-[8pt]">
-            <tbody>
-              {visas.map(({ n, a }) => (
-                <tr key={n}>
-                  <td className="pr-2">{lib[n]}</td>
-                  <td className="min-w-14 pr-2 text-[11pt] italic" style={{ fontFamily: "'Brush Script MT', 'Segoe Script', cursive" }} title={a ? `${a.par}, le ${new Date(a.le).toLocaleDateString("fr-FR")}` : undefined}>
-                    {a ? initiales(a.par) : ""}
-                  </td>
-                  <td className="text-[7pt] text-zinc-600">{a ? new Date(a.le).toLocaleDateString("fr-FR") : "…………"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
-      )}
+    <div className="relative">
+      <span className="relative inline-block">
+        {children}
+        {visa && <SpecimenVisa style={style} nom={visa.nom} date={visa.le} className="absolute top-1/2 left-full ml-1 -translate-y-1/2" />}
+      </span>
     </div>
   );
 }
 
-function construire(note: NoteDetail) {
+function construire(note: NoteDetail, avecVisas: boolean) {
+  const v = avecVisas ? visasDe(note) : { SERVICE: null, DIRECTION: null, DG: null };
   const c = note.contenu;
   const e = note.entete;
   const autres = c.colonnes.filter((x) => !["nom", "grade", "reference"].includes(x.cle));
@@ -148,16 +142,22 @@ function construire(note: NoteDetail) {
               {SEP}
               <div>CABINET</div>
               {SEP}
-              <div>DIRECTION GENERALE DES RESSOURCES HUMAINES</div>
-              <div>ET DE L’ADMINISTRATION SCOLAIRE</div>
+              <AvecVisa visa={v.DG} style="DG">
+                <div>DIRECTION GENERALE DES RESSOURCES HUMAINES</div>
+                <div>ET DE L’ADMINISTRATION SCOLAIRE</div>
+              </AvecVisa>
               {SEP}
-              <div>DIRECTION DES RECRUTEMENTS</div>
-              <div>ET DU SUIVI DES CARRIERES</div>
+              <AvecVisa visa={v.DIRECTION} style="DIRECTION">
+                <div>DIRECTION DES RECRUTEMENTS</div>
+                <div>ET DU SUIVI DES CARRIERES</div>
+              </AvecVisa>
               {SEP}
               {/* Le service suit le numéro : « …-DRSC-SR » (une note signée avant garde son en-tête) */}
               {/-SR$/.test(e.reference) && (
                 <>
-                  <div>SERVICE DES RECRUTEMENTS</div>
+                  <AvecVisa visa={v.SERVICE} style="SERVICE">
+                    <div>SERVICE DES RECRUTEMENTS</div>
+                  </AvecVisa>
                   {SEP}
                 </>
               )}
@@ -265,9 +265,9 @@ function construire(note: NoteDetail) {
         // « Fait à », le titre et le nom alignés sur la même verticale ;
         // « Ampliations : » sur la même ligne que le nom du signataire
         <div className="grid grid-cols-[1fr_44%] gap-x-8 pt-6">
-          {/* Visas du bureau, du service et de la direction, à gauche du « Fait à » et du titre */}
-          <Visas note={note} />
+          <div />
           <div>Fait à {e.lieu}, le {dateLongue(note.dateSignature) ?? " ".repeat(24)}</div>
+          <div />
           <div className="mt-2">{e.signataireTitre}</div>
           {/* Plus d'espace pour la signature (demande du DG, 19/10/2026) */}
           <div className="mt-24 self-end text-[10pt] font-bold underline">Ampliations :</div>

@@ -15,6 +15,7 @@ export function VueNote() {
   const { profil } = useSession();
   const { donnees: note, erreur, recharger } = useApi<NoteDetail>(`/notes/${id}`);
   const [message, setMessage] = useState<{ ton: "vert" | "rouge"; texte: string } | null>(null);
+  const [avecVisas, setAvecVisas] = useState(true);
   const [dialogue, setDialogue] = useState<"renvoyer" | "signer" | "intro" | "rouvrir" | "supprimer" | "reunir" | "separer" | null>(null);
 
   if (erreur) return <Alerte>{erreur}</Alerte>;
@@ -42,6 +43,8 @@ export function VueNote() {
 
   const s = note.statut;
   const bloques = note.contenu.bloques ?? [];
+  // Visas dans l'en-tête : la note s'imprime avec ou sans eux (DG, 30/10/2026)
+  const aDesVisas = !!note.valideePar || (note.conformite ?? []).some((a) => a.conforme);
 
   return (
     <div className="space-y-4">
@@ -60,7 +63,13 @@ export function VueNote() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Bouton onClick={() => window.open(`/impression/${id}`, "_blank")}>
+          {aDesVisas && (
+            <label className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-[13px] ring-1 ring-zinc-200" title="Les spécimens de visa du service, de la direction et de la direction générale, à droite de leur ligne dans l’en-tête">
+              <input type="checkbox" className="size-4 accent-marque-600" checked={avecVisas} onChange={(e) => setAvecVisas(e.target.checked)} />
+              Avec les visas
+            </label>
+          )}
+          <Bouton onClick={() => window.open(`/impression/${id}${aDesVisas && !avecVisas ? "?visas=0" : ""}`, "_blank")}>
             Imprimer / PDF
             <Aide>Ouvre la note telle qu’elle sera imprimée (pages A4, bas de page). De là, imprimez-la ou enregistrez-la en PDF.</Aide>
           </Bouton>
@@ -74,7 +83,7 @@ export function VueNote() {
           </Bouton>
           <Bouton
             onClick={() =>
-              api.telecharger(`/notes/${id}/word`, `${note.libelle}.docx`).catch((e: Error) => setMessage({ ton: "rouge", texte: e.message }))
+              api.telecharger(`/notes/${id}/word${aDesVisas && !avecVisas ? "?visas=0" : ""}`, `${note.libelle}.docx`).catch((e: Error) => setMessage({ ton: "rouge", texte: e.message }))
             }
           >
             Word
@@ -191,7 +200,7 @@ export function VueNote() {
       )}
 
       <div className="overflow-x-auto rounded-3xl bg-zinc-200/70 p-8">
-        <NoteImprimable note={note} />
+        <NoteImprimable note={note} visas={avecVisas} />
       </div>
 
       <Modale titre="Supprimer cette note ?" ouverte={dialogue === "supprimer"} fermer={() => setDialogue(null)}>
