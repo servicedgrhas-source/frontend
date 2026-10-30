@@ -37,6 +37,8 @@ export interface Profil {
   aCode?: boolean;
   /** Rubriques réglées par le DG pour ce compte (Administration › Droits par rubrique). */
   droits?: Record<string, NiveauDroit>;
+  /** Nom du rôle créé par le DG et donné à ce compte (« Secrétariat DRSC »). */
+  rolePerso?: string | null;
 }
 
 /** Masquée, lecture seule, ou ouverte (même au-delà du rôle). */

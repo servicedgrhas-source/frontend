@@ -153,7 +153,7 @@ function CarteLot({ l, modifiable, modifier }: { l: Lot; modifiable: boolean; mo
       {l.aTraiter > 0 && <DetailATraiter lot={l} />}
 
       <div className="mt-5 border-t border-zinc-100 pt-4">
-        <Champ libelle={`Date de signature des ${l.typeTexte ? TYPE_LOT[l.typeTexte].pluriel.toLowerCase() : "textes"} de ce lot`} aide={dateLongue(l[champ]) ?? "à renseigner"}>
+        <Champ libelle={`Date de signature des ${l.typeTexte ? (TYPE_LOT[l.typeTexte]?.pluriel.toLowerCase() ?? "textes") : "textes"} de ce lot`} aide={dateLongue(l[champ]) ?? "à renseigner"}>
           {modifiable ? (
             // Au clavier (« 31/12/2025 ») ou au calendrier : DG, 28/10/2026
             <SaisieDate value={l[champ] ?? ""} className={!l[champ] ? "rounded-xl ring-2 ring-or-400" : ""} onChange={(v) => modifier(l, champ, v)} aria-label="Date de signature" />

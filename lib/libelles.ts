@@ -117,6 +117,8 @@ export const TYPE_LOT: Record<string, { pluriel: string; aide: string }> = {
   ARRETE: { pluriel: "Arrêtés", aide: "Signés par le ministre de la Fonction Publique (catégories II et III)" },
   DECRET_PM: { pluriel: "Décrets PM", aide: "Signés par le Premier ministre : diplômes de niveau licence" },
   DECRET_PR: { pluriel: "Décrets PR", aide: "Signés par le Président de la République : diplômes de niveau master" },
+  // Lot de publication écrit dans la base (« Décrets — lot III ») : licence et master ensemble
+  DECRET: { pluriel: "Décrets", aide: "Signés par le Premier ministre (licence) ou le Président de la République (master)" },
 };
 
 /** « Arrêtés quota 2024 — lot 3 » (un ancien lot pas encore rangé : « Lot 3 »). */
