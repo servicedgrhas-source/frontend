@@ -169,7 +169,15 @@ function detailDe(type: string, v: Valeur) {
     case "CATEGORIE_AGENT":
       return d.ageRetraite ? `retraite à ${d.ageRetraite} ans` : "";
     case "ECHELLE":
-      return [d.nombreEchelons && `${d.nombreEchelons} échelons`, d.dureeEchelonMois && `${d.dureeEchelonMois} mois par échelon`, d.echelleSuivante && `puis échelle ${d.echelleSuivante}`].filter(Boolean).join(" · ");
+      return [
+        d.nombreEchelons && `${d.nombreEchelons} échelons`,
+        d.dureeEchelonMois && `${d.dureeEchelonMois} mois par échelon`,
+        // Rien de réglé : 4 échelons hors classe (DG, 29/10/2026)
+        Number(d.echelonsHorsClasse ?? 4) > 0 ? `puis ${String(d.libelleHorsClasse || "hors classe").toLowerCase()} HC 1 à HC ${d.echelonsHorsClasse ?? 4}` : "pas de hors classe",
+        d.echelleSuivante && `puis échelle ${d.echelleSuivante}`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
     case "CYCLE":
       return [d.description, d.quotaDefaut !== undefined && `quota par défaut ${d.quotaDefaut}`].filter(Boolean).join(" · ");
     case "NIVEAU":
@@ -365,7 +373,18 @@ function Edition({ v, cycles, echelles, fermer, apres }: { v: Partial<Valeur>; c
             <Champ libelle="Durée d’un échelon (mois)" aide="Vide : le délai général des promotions (configuration du personnel).">
               <Saisie inputMode="numeric" value={d("dureeEchelonMois")} onChange={(e) => setD("dureeEchelonMois", Number(e.target.value) || null)} />
             </Champ>
-            <Champ libelle="Après le dernier échelon" aide="L’agent passe au 1er échelon de l’échelle choisie ; « aucune » : le dernier échelon est le dernier." className="sm:col-span-2">
+            <Champ libelle="Échelons hors classe" aide="Après le dernier échelon (16), l’agent passe hors classe : HC 1, HC 2… Vide : 4 ; 0 : pas de hors classe.">
+              <Saisie
+                inputMode="numeric"
+                value={d("echelonsHorsClasse")}
+                placeholder="4"
+                onChange={(e) => setD("echelonsHorsClasse", e.target.value.trim() === "" ? null : Number(e.target.value.replace(/\D/g, "")) || 0)}
+              />
+            </Champ>
+            <Champ libelle="Nom du hors classe" aide="Le nom affiché (« Hors classe », « Hors catégorie »…) ; dans la fiche on écrit « HC 1 », « HC 2 »…">
+              <Saisie value={d("libelleHorsClasse")} placeholder="Hors classe" onChange={(e) => setD("libelleHorsClasse", e.target.value || null)} />
+            </Champ>
+            <Champ libelle="Après le dernier échelon hors classe" aide="L’agent passe au 1er échelon de l’échelle choisie ; « aucune » : le dernier échelon hors classe est le dernier." className="sm:col-span-2">
               <Liste
                 value={d("echelleSuivante")}
                 onChange={(e) => setD("echelleSuivante", e.target.value || null)}

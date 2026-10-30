@@ -9,6 +9,7 @@ import { api, CLE_JETON, fermerSession, lireSession, memoriserProfil, ouvrirSess
 import { appliquerMenu, cheminDe, ESPACES, espaceDe, lienEspace, MENU, MENU_MODIFIE, niveauPage, POLES, poleDe, rubriquesVisibles, travailEspace, type Compteurs, type ConfigMenu } from "@/lib/espaces";
 import { ROLES } from "@/lib/libelles";
 import type { Referentiels } from "@/lib/types";
+import { ChargementFichiers } from "./chargement-fichiers";
 import { Alerte, Bouton, Champ, Chargement, cx, Modale, Saisie } from "./ui";
 
 interface Session {
@@ -189,6 +190,8 @@ export function Coquille({ children }: { children: ReactNode }) {
 
   return (
     <Contexte.Provider value={session}>
+      {/* Envois et téléchargements de fichiers : fenêtre de chargement animée */}
+      <ChargementFichiers />
       <div className="flex min-h-screen gap-0 p-0 lg:p-3">
         <aside className="no-print sticky top-0 flex h-screen w-64 shrink-0 flex-col overflow-hidden bg-nuit text-white lg:top-3 lg:h-[calc(100vh-1.5rem)] lg:rounded-[28px]">
           <div className="px-6 pt-7 pb-6">

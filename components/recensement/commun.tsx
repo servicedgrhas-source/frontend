@@ -4,7 +4,7 @@ import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { useSession } from "@/components/session";
 import { type ListeReference, SaisieReferentiel } from "@/components/saisie-referentiel";
-import { Champ, Liste, Saisie, Zone, cx } from "@/components/ui";
+import { Champ, Liste, Saisie, SaisieDate, Zone, cx } from "@/components/ui";
 import { useApi } from "@/lib/api";
 import type { Role } from "@/lib/api";
 
@@ -208,6 +208,108 @@ export function Taux({ taux, complet }: { taux: number; complet: boolean }) {
 const enTexte = (v: unknown) => (estVide(v) ? "" : String(v));
 
 /** Champ de saisie d'une rubrique, selon son type (texte, date, liste, plusieurs lignes…). */
+/* ------------------------------ Suggestions et contrôles de saisie (DG, 30/10/2026) ------------------------------ */
+
+/** Grade tapé à la main : à relire. */
+const AVERTIR_GRADE = "Veuillez relire ce que vous venez de taper, ou choisissez ce qui s’affiche dans les suggestions.";
+/** Autres rubriques : tapé à la main, gardé tel quel. */
+const AVERTIR_MAIN = "Tapé à la main : ce n’est pas identique à ce que le système connaît (vous pouvez le garder).";
+
+/**
+ * Rubriques avec des suggestions : on propose ce que le système connaît, la personne peut toujours
+ * écrire autre chose (une phrase en jaune le signale, sans bloquer). Lieu de naissance et nationalité :
+ * des suggestions seulement, sans phrase (un lieu ou une nationalité d'ailleurs est normal).
+ */
+const SUGGESTIONS: Record<string, { liste: ListeReference; avertissement: string | null }> = {
+  GRADE: { liste: "GRADE", avertissement: AVERTIR_GRADE },
+  CATEGORIE: { liste: "CATEGORIE", avertissement: AVERTIR_MAIN },
+  ECHELLE: { liste: "ECHELLE", avertissement: AVERTIR_MAIN },
+  ECHELON: { liste: "ECHELON", avertissement: AVERTIR_MAIN },
+  LIEU_NAISSANCE: { liste: "LIEU_NAISSANCE", avertissement: null },
+  NATIONALITE: { liste: "NATIONALITE", avertissement: null },
+  FONCTION_STRUCTURE: { liste: "POSTE", avertissement: AVERTIR_MAIN },
+  // Cases des tableaux : « rubrique.case »
+  "PROMOTIONS.GRADE": { liste: "GRADE", avertissement: AVERTIR_GRADE },
+  "PROMOTIONS.ECHELON": { liste: "ECHELON", avertissement: AVERTIR_MAIN },
+  "AUTRES_DIPLOMES.SPECIALITE": { liste: "SPECIALITE", avertissement: AVERTIR_MAIN },
+};
+
+/** Années d'obtention : quatre chiffres, de 1940 à cette année. */
+const ANNEES = new Set(["PROMOTION_FORMATION", "AUTRES_DIPLOMES.ANNEE"]);
+
+/** Même règle que le serveur : un ou deux numéros (séparés par « / »), 8 à 15 chiffres sans le +242. */
+export function telephoneFaux(v: string) {
+  const numeros = v
+    .split(/\s*[/;|]\s*|\s+(?:ou|et)\s+/i)
+    .map((t) => t.replace(/[^\d+]/g, "").replace(/^\+?242/, "").replace(/\D/g, ""))
+    .filter(Boolean);
+  return !!v.trim() && (!numeros.length || numeros.some((n) => n.length < 8 || n.length > 15));
+}
+export const emailFaux = (v: string) => !!v.trim() && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(v.trim());
+const anneeFausse = (v: string) => !!v.trim() && (!/^\d{4}$/.test(v.trim()) || +v < 1940 || +v > new Date().getFullYear());
+
+/** Saisie contrôlée : seuls les caractères permis passent, et un message rouge dit ce qui ne va pas (à la sortie du champ). */
+function SaisieControlee({
+  valeur,
+  changer,
+  filtre,
+  faux,
+  message,
+  desactive,
+  placeholder,
+  className,
+  inputMode,
+  maxLength,
+  type = "text",
+  "aria-label": libelle,
+}: {
+  valeur: string;
+  changer: (v: string) => void;
+  filtre?: (v: string) => string;
+  faux: (v: string) => boolean;
+  message: string;
+  desactive?: boolean;
+  placeholder?: string;
+  className?: string;
+  inputMode?: "numeric" | "tel" | "email";
+  maxLength?: number;
+  type?: string;
+  "aria-label"?: string;
+}) {
+  const [vu, setVu] = useState(false);
+  const erreur = vu && faux(valeur);
+  return (
+    <span className="flex flex-col gap-0.5">
+      <Saisie
+        type={type}
+        inputMode={inputMode}
+        maxLength={maxLength}
+        aria-label={libelle}
+        aria-invalid={erreur || undefined}
+        value={valeur}
+        disabled={desactive}
+        placeholder={placeholder}
+        onChange={(e) => changer(filtre ? filtre(e.target.value) : e.target.value)}
+        onBlur={() => setVu(true)}
+        className={cx(className, erreur && "ring-2 ring-rouge-400")}
+      />
+      {erreur && <span className="text-[11px] text-rouge-600">{message}</span>}
+    </span>
+  );
+}
+
+const SaisieAnnee = (p: { valeur: string; changer: (v: string) => void; desactive?: boolean; className?: string; "aria-label"?: string }) => (
+  <SaisieControlee
+    {...p}
+    inputMode="numeric"
+    maxLength={4}
+    placeholder="Ex. 2015"
+    filtre={(v) => v.replace(/\D/g, "").slice(0, 4)}
+    faux={anneeFausse}
+    message={`Une année sur quatre chiffres, au plus ${new Date().getFullYear()}.`}
+  />
+);
+
 export function SaisieRubrique({
   ch,
   valeur,
@@ -319,14 +421,28 @@ export function SaisieRubrique({
       );
       break;
     case "DATE":
-      saisie = <Saisie type="date" value={enTexte(valeur)} disabled={desactive} onChange={(e) => changer(e.target.value || null)} />;
+      // Date tapée au clavier ; le calendrier ne s'ouvre qu'avec son bouton (DG, 30/10/2026)
+      saisie = <SaisieDate aria-label={ch.libelle} value={enTexte(valeur)} disabled={desactive} onChange={(v) => changer(v || null)} />;
       break;
     case "NOMBRE":
       saisie = <Saisie inputMode="numeric" value={enTexte(valeur)} disabled={desactive} onChange={(e) => changer(e.target.value.replace(/[^\d]/g, "") || null)} placeholder={ch.exemple ? `Ex. ${ch.exemple}` : undefined} />;
       break;
     case "TEXTE":
-      if (ch.code === "NOMS_PRENOMS") {
-        saisie = <SaisieNom valeur={enTexte(valeur)} changer={(v) => changer(v || null)} desactive={desactive} />;
+      if (ANNEES.has(ch.code)) {
+        saisie = <SaisieAnnee aria-label={ch.libelle} valeur={enTexte(valeur)} changer={(v) => changer(v || null)} desactive={desactive} />;
+        break;
+      }
+      if (!ch.referentiel && SUGGESTIONS[ch.code]) {
+        saisie = (
+          <SaisieReferentiel
+            liste={SUGGESTIONS[ch.code].liste}
+            avertissement={SUGGESTIONS[ch.code].avertissement}
+            valeur={enTexte(valeur)}
+            changer={(v) => changer(v || null)}
+            desactive={desactive}
+            placeholder={ch.exemple ? `Ex. ${ch.exemple}` : undefined}
+          />
+        );
         break;
       }
       if (ch.referentiel) {
@@ -352,11 +468,41 @@ export function SaisieRubrique({
         />
       );
       break;
+    case "TELEPHONE":
+      // Chiffres, espaces, « + » et « / » (deux numéros) seulement
+      saisie = (
+        <SaisieControlee
+          inputMode="tel"
+          aria-label={ch.libelle}
+          valeur={enTexte(valeur)}
+          changer={(v) => changer(v || null)}
+          filtre={(v) => v.replace(/[^\d\s+/]/g, "")}
+          faux={telephoneFaux}
+          message="Numéro incomplet ou trop long : 9 chiffres au Congo (ex. 06 649 12 52), deux numéros séparés par « / »."
+          desactive={desactive}
+          placeholder={ch.exemple ? `Ex. ${ch.exemple}` : "Ex. 06 649 12 52"}
+        />
+      );
+      break;
+    case "EMAIL":
+      saisie = (
+        <SaisieControlee
+          type="email"
+          inputMode="email"
+          aria-label={ch.libelle}
+          valeur={enTexte(valeur)}
+          changer={(v) => changer(v.trim() || null)}
+          faux={emailFaux}
+          message="Adresse e-mail incomplète (ex. nom@exemple.com)."
+          desactive={desactive}
+          placeholder={ch.exemple ? `Ex. ${ch.exemple}` : "Ex. nom@exemple.com"}
+        />
+      );
+      break;
     default:
       saisie = (
         <Saisie
-          type={ch.type === "EMAIL" ? "email" : "text"}
-          inputMode={ch.type === "TELEPHONE" ? "tel" : undefined}
+          type="text"
           value={enTexte(valeur)}
           disabled={desactive}
           onChange={(e) => changer(e.target.value)}
@@ -364,10 +510,20 @@ export function SaisieRubrique({
         />
       );
   }
+  // Noms et prénoms : deux cases, chacune son libellé (« Nom(s) », « Prénom(s) »)
+  if (ch.code === "NOMS_PRENOMS" && ch.type === "TEXTE")
+    return (
+      <div id={`champ-${ch.code}`} className="scroll-mt-24 transition-shadow sm:col-span-2">
+        <SaisieNom valeur={enTexte(valeur)} changer={(v) => changer(v || null)} desactive={desactive} requis={requis} erreur={erreur} aide={aide || undefined} />
+      </div>
+    );
+  // Repère de la rubrique : « Corriger » (anomalies de la fiche) y mène directement
   return (
-    <Champ libelle={libelle} aide={aide || undefined} erreur={erreur} className={large ? "col-span-full" : ch.code === "NOMS_PRENOMS" ? "sm:col-span-2" : undefined}>
-      {saisie}
-    </Champ>
+    <div id={`champ-${ch.code}`} className={cx("scroll-mt-24 transition-shadow", large ? "col-span-full" : ch.code === "NOMS_PRENOMS" ? "sm:col-span-2" : undefined)}>
+      <Champ libelle={libelle} aide={aide || undefined} erreur={erreur}>
+        {saisie}
+      </Champ>
+    </div>
   );
 }
 
@@ -390,7 +546,21 @@ export function couperNom(v: string) {
  * Le nom et les prénoms dans deux cases (DG, 24/10/2026) : le NOM s'écrit tout seul en majuscules,
  * les Prénoms avec une majuscule au début ; on voit ainsi où finit le nom, même avec plusieurs noms.
  */
-function SaisieNom({ valeur, changer, desactive }: { valeur: string; changer: (v: string) => void; desactive?: boolean }) {
+function SaisieNom({
+  valeur,
+  changer,
+  desactive,
+  requis,
+  erreur,
+  aide,
+}: {
+  valeur: string;
+  changer: (v: string) => void;
+  desactive?: boolean;
+  requis?: boolean;
+  erreur?: string | null;
+  aide?: string;
+}) {
   const [p, setP] = useState(() => couperNom(valeur));
   const maj = (x: { nom: string; prenoms: string }) => {
     setP(x);
@@ -399,10 +569,15 @@ function SaisieNom({ valeur, changer, desactive }: { valeur: string; changer: (v
   const toutEnMajuscules = !!p.nom && !p.prenoms && p.nom.includes(" ");
   return (
     <div className="space-y-1">
-      <div className="grid gap-2 sm:grid-cols-2">
-        <Saisie aria-label="Nom" value={p.nom.toUpperCase()} disabled={desactive} onChange={(e) => maj({ ...p, nom: e.target.value.toUpperCase() })} placeholder="NOM (ex. MOUKOKO)" />
-        <Saisie aria-label="Prénoms" value={p.prenoms} disabled={desactive} onChange={(e) => maj({ ...p, prenoms: prenomsJolis(e.target.value) })} placeholder="Prénoms (ex. Jean Pierre)" />
+      <div className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
+        <Champ libelle={`Nom(s)${requis ? " *" : ""}`} erreur={erreur}>
+          <Saisie value={p.nom.toUpperCase()} disabled={desactive} onChange={(e) => maj({ ...p, nom: e.target.value.toUpperCase() })} placeholder="NOM (ex. MOUKOKO)" />
+        </Champ>
+        <Champ libelle="Prénom(s)">
+          <Saisie value={p.prenoms} disabled={desactive} onChange={(e) => maj({ ...p, prenoms: prenomsJolis(e.target.value) })} placeholder="Prénoms (ex. Jean Pierre)" />
+        </Champ>
       </div>
+      {aide && <p className="text-[11px] text-zinc-400">{aide}</p>}
       {toutEnMajuscules && <p className="text-[11px] text-or-700">Tout est écrit en majuscules : laissez le nom à gauche et écrivez les prénoms dans la case de droite.</p>}
     </div>
   );
@@ -471,12 +646,27 @@ function SaisieTableau({
                 ]}
                 className="bg-white"
               />
+            ) : c.type === "DATE" ? (
+              // Date au clavier ; le calendrier par son bouton seulement
+              <SaisieDate key={c.code} aria-label={c.libelle} value={enTexte(l[c.code])} disabled={desactive} onChange={(v) => maj(i, c.code, v)} className="[&>input]:bg-white" />
+            ) : ANNEES.has(`${ch.code}.${c.code}`) ? (
+              <SaisieAnnee key={c.code} aria-label={c.libelle} valeur={enTexte(l[c.code])} changer={(v) => maj(i, c.code, v)} desactive={desactive} className="bg-white" />
+            ) : SUGGESTIONS[`${ch.code}.${c.code}`] ? (
+              <SaisieReferentiel
+                key={c.code}
+                liste={SUGGESTIONS[`${ch.code}.${c.code}`].liste}
+                avertissement={SUGGESTIONS[`${ch.code}.${c.code}`].avertissement}
+                valeur={enTexte(l[c.code])}
+                changer={(v) => maj(i, c.code, v)}
+                desactive={desactive}
+                placeholder={c.libelle}
+              />
             ) : (
               <Saisie
                 key={c.code}
                 aria-label={c.libelle}
                 placeholder={c.libelle}
-                type={c.type === "DATE" ? "date" : "text"}
+                type="text"
                 inputMode={c.type === "NOMBRE" ? "numeric" : undefined}
                 value={enTexte(l[c.code])}
                 disabled={desactive}

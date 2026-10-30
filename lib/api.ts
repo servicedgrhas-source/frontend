@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useState, useSyncExternalStore } from "react";
 
 /**
  * En ligne : NEXT_PUBLIC_API_URL (adresse de l'API sur Render, « …/api »).
@@ -257,6 +257,51 @@ function enregistrerSous(blob: Blob, nom: string) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+/* ------------------------- Fichiers en cours d'envoi ou de réception ------------------------- */
+
+/**
+ * Envois et téléchargements de fichiers en cours (DG, 29/10/2026) : la fenêtre « chargement » les
+ * suit pour dire, pendant qu'on attend, que le travail avance.
+ */
+export interface Transfert {
+  id: number;
+  sens: "envoi" | "reception";
+  debut: number;
+  /** Nom du fichier envoyé ou attendu, s'il est connu. */
+  nom?: string;
+}
+let transferts: Transfert[] = [];
+let prochainTransfert = 1;
+const suiveursTransferts = new Set<() => void>();
+const prevenirTransferts = () => suiveursTransferts.forEach((f) => f());
+
+function suivre<T>(sens: Transfert["sens"], travail: Promise<T>, nom?: string): Promise<T> {
+  const t: Transfert = { id: prochainTransfert++, sens, debut: Date.now(), nom };
+  transferts = [...transferts, t];
+  prevenirTransferts();
+  return travail.finally(() => {
+    transferts = transferts.filter((x) => x.id !== t.id);
+    prevenirTransferts();
+  });
+}
+
+/** Les transferts en cours (pour la fenêtre de chargement). */
+export function useTransferts() {
+  return useSyncExternalStore(
+    (f) => {
+      suiveursTransferts.add(f);
+      return () => suiveursTransferts.delete(f);
+    },
+    () => transferts,
+    () => transferts,
+  );
+}
+
+const nomEnvoye = (fd: FormData) => {
+  const f = [...fd.values()].filter((v): v is File => v instanceof File);
+  return f.length > 1 ? `${f.length} fichiers` : f[0]?.name;
+};
+
 /* ------------------------- Fichiers Excel envoyés une fois ------------------------- */
 
 /** Fichiers Excel déjà reçus par le serveur (empreinte → dernier envoi) : il les garde 10 min. */
@@ -297,7 +342,7 @@ export const api = {
   get: <T>(c: string) => requete<T>(c),
   post: <T>(c: string, corps?: unknown) =>
     corps instanceof FormData
-      ? envoyerFichier<T>(c, corps)
+      ? suivre("envoi", envoyerFichier<T>(c, corps), nomEnvoye(corps))
       : requete<T>(c, {
           method: "POST",
           body: JSON.stringify(corps ?? {}),
@@ -309,17 +354,17 @@ export const api = {
   delete: <T>(c: string) => requete<T>(c, { method: "DELETE" }),
   /** Téléchargement authentifié d'un fichier (ouvert dans un nouvel onglet). */
   async ouvrirFichier(c: string) {
-    const url = URL.createObjectURL(await fichier(c));
+    const url = URL.createObjectURL(await suivre("reception", fichier(c)));
     window.open(url, "_blank", "noopener");
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   },
   /** Téléchargement authentifié d'un fichier enregistré sous `nom`. */
   async telecharger(c: string, nom: string) {
-    enregistrerSous(await fichier(c), nom);
+    enregistrerSous(await suivre("reception", fichier(c), nom), nom);
   },
   /** Fichier produit par le serveur à partir de données envoyées (POST), enregistré sous `nom`. */
   async telechargerPost(c: string, corps: FormData, nom: string) {
-    enregistrerSous(await fichier(c, { method: "POST", body: corps }), nom);
+    enregistrerSous(await suivre("envoi", fichier(c, { method: "POST", body: corps }), nomEnvoye(corps) ?? nom), nom);
   },
 };
 

@@ -183,7 +183,7 @@ export function ImpressionSoitTransmis() {
             Vous en souhaitant bonne réception, je vous prie de croire, {d.appel.replace(/,$/, "")}, en l’expression de ma franche collaboration.
           </p>
           <div className="mt-10 ml-[50%] text-center">
-            <div className="font-bold">{f.titre}</div>
+            <div>{f.titre}</div>
             <div className="mt-20 font-bold">{f.nom}</div>
           </div>
         </div>

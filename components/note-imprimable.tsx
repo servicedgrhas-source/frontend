@@ -22,8 +22,9 @@ const LARGEUR: Record<string, number> = {
   obs: 16,
   ge: 13,
   matricule: 18,
-  ancienPoste: 25,
-  nouveauPoste: 25,
+  // Noms d'établissements longs (« Lycée Nestor MAKOUDZIWOLO ») : DG, 30/10/2026
+  ancienPoste: 34,
+  nouveauPoste: 34,
   vague: 11,
   origine: 19,
   naissance: 20,

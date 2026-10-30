@@ -22,10 +22,12 @@ interface Ligne {
   structure: string | null;
   cycle: string | null;
   echelon: number | null;
+  echelonLibelle: string;
   depuis: string;
   origine: "DERNIER" | "ENTREE";
   dus: number;
   echelonTheorique: number | null;
+  echelonTheoriqueLibelle: string;
   echeances: string[];
   dateManquante: boolean;
 }
@@ -34,7 +36,7 @@ interface Reponse {
   total: number;
   echelonsDus: number;
   dateManquante: number;
-  parDus: { k: string; n: number }[];
+  parAttendu: { k: string; n: number }[];
   parCategorie: { k: string; n: number }[];
   parDepartement: { k: string; n: number }[];
   lignes: Ligne[];
@@ -53,13 +55,17 @@ const PAGE = 200;
 
 /**
  * Échelons en retard (réunion DG du 27/10/2026) : les fonctionnaires et contractuels qui auraient dû
- * avancer, avec le nombre d'échelons dus, pour préparer la commission administrative paritaire
- * (révision de carrière) sans demander de dossier aux agents.
+ * avancer, pour préparer la commission administrative paritaire (révision de carrière) sans demander
+ * de dossier aux agents. Classés par échelon attendu (DG, 28/10/2026 : la commission traite ensemble
+ * ceux qui passent au même échelon), comptés par année (l'échelon de l'année est acquis au 31/12).
  */
+const eme = (n: number | string) => (String(n) === "1" ? "1er" : `${n}e`);
+/** « 5 » → « 5e échelon » ; « HC 2 » → « 2e échelon hors classe » (après le 16e, DG 29/10/2026) */
+const echelonEnClair = (k: string) => (k.startsWith("HC ") ? `${eme(k.slice(3))} échelon hors classe` : `${eme(k)} échelon`);
 export default function RetardsEchelons() {
   const { profil, refs } = useSession();
   const annee = new Date().getFullYear();
-  const [f, setF] = useState({ annee: "", departement: "", categorie: "", cycle: "", dus: "", statut: "", recherche: "" });
+  const [f, setF] = useState({ annee: "", departement: "", categorie: "", cycle: "", attendu: "", statut: "", recherche: "" });
   const [page, setPage] = useState(1);
   const ouvert = peut.traiter(profil.role) || profil.role === "DDEPPSA" || accesDonne(profil);
   const filtre = qs(f);
@@ -125,14 +131,12 @@ export default function RetardsEchelons() {
             ]}
           />
           <Liste
-            aria-label="Échelons dus"
-            value={f.dus}
-            onChange={(e) => maj("dus", e.target.value)}
-            vide="Tous les retards"
+            aria-label="Échelon attendu"
+            value={f.attendu}
+            onChange={(e) => maj("attendu", e.target.value)}
+            vide="Tous les échelons attendus"
             options={[
-              ...[1, 2, 3, 4].map((n) => ({ valeur: String(n), libelle: `${n} échelon${n > 1 ? "s" : ""} dû${n > 1 ? "s" : ""}` })),
-              { valeur: "5+", libelle: "5 échelons ou plus" },
-              { valeur: "10+", libelle: "10 échelons ou plus" },
+              ...[...Array.from({ length: 15 }, (_, i) => String(i + 2)), ...Array.from({ length: 4 }, (_, i) => `HC ${i + 1}`)].map((k) => ({ valeur: k, libelle: `Attendus au ${echelonEnClair(k)}` })),
               { valeur: "date", libelle: "Date de dernière promotion à renseigner" },
             ]}
           />
@@ -145,24 +149,24 @@ export default function RetardsEchelons() {
       {r.erreur ? (
         <Alerte>{r.erreur}</Alerte>
       ) : !d ? (
-        <Chargement texte="Calcul des échelons dus pour chaque agent…" />
+        <Chargement texte="Calcul de l’échelon attendu pour chaque agent…" />
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-3">
             <Chiffre libelle={`Agents en retard au ${dateFr(d.reference)}`} valeur={nf.format(d.total)} />
-            <Chiffre libelle="Échelons dus au total" valeur={nf.format(d.echelonsDus)} />
+            <Chiffre libelle="Échelons de retard au total" valeur={nf.format(d.echelonsDus)} detail="Pour chiffrer les moyens de la commission" />
             <Chiffre libelle="Date de dernière promotion à renseigner" valeur={nf.format(d.dateManquante)} detail="Échelon au-delà du 1er sans date : rien ne peut être calculé" />
           </div>
           <Carte titre="Répartition (pour préparer la commission)" className="no-print">
             <div className="flex flex-wrap gap-1.5">
-              {d.parDus.map((x) => (
+              {d.parAttendu.map((x) => (
                 <button
                   key={x.k}
                   type="button"
-                  onClick={() => maj("dus", f.dus === x.k ? "" : x.k)}
-                  className={cx("rounded-xl px-3 py-1.5 text-[12px] ring-1", f.dus === x.k ? "bg-marque-500 text-white ring-marque-500" : "bg-white ring-zinc-200 hover:bg-zinc-50")}
+                  onClick={() => maj("attendu", f.attendu === x.k ? "" : x.k)}
+                  className={cx("rounded-xl px-3 py-1.5 text-[12px] ring-1", f.attendu === x.k ? "bg-marque-500 text-white ring-marque-500" : "bg-white ring-zinc-200 hover:bg-zinc-50")}
                 >
-                  {x.k === "date" ? "Date à renseigner" : `${x.k} échelon${x.k === "1" ? "" : "s"} dû${x.k === "1" ? "" : "s"}`} · <strong>{nf.format(x.n)}</strong>
+                  {x.k === "date" ? "Date à renseigner" : `Attendus au ${echelonEnClair(x.k)}`} · <strong>{nf.format(x.n)}</strong>
                 </button>
               ))}
             </div>
@@ -183,7 +187,6 @@ export default function RetardsEchelons() {
                       <th>Département · structure</th>
                       <th className="text-right">Échelon actuel</th>
                       <th>Dernière promotion</th>
-                      <th className="text-right">Échelons dus</th>
                       <th className="text-right">Échelon attendu</th>
                     </tr>
                   </thead>
@@ -205,14 +208,13 @@ export default function RetardsEchelons() {
                           {l.departement ?? "—"}
                           <div className="text-[11px] text-zinc-500">{[l.structure, l.cycle].filter(Boolean).join(" · ")}</div>
                         </td>
-                        <td className="text-right tabular-nums">{l.echelon ?? "—"}</td>
+                        <td className="text-right tabular-nums">{l.echelonLibelle || "—"}</td>
                         <td className="text-[12px]">
                           {l.dateManquante ? <Badge ton="rouge">à renseigner</Badge> : `${dateFr(l.depuis)}${l.origine === "ENTREE" ? " (entrée)" : ""}`}
                         </td>
-                        <td className="text-right font-semibold tabular-nums" title={l.echeances.map(dateFr).join(", ")}>
-                          {l.dateManquante ? "—" : l.dus}
+                        <td className="text-right font-semibold tabular-nums" title={l.echeances.length ? `Échéances : ${l.echeances.map((x) => x.slice(0, 4)).join(", ")}` : undefined}>
+                          {l.dateManquante ? "—" : l.echelonTheoriqueLibelle || "—"}
                         </td>
-                        <td className="text-right tabular-nums">{l.dateManquante ? "—" : (l.echelonTheorique ?? "—")}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -225,7 +227,7 @@ export default function RetardsEchelons() {
               </>
             )}
             <p className="mt-3 text-[11px] text-zinc-400">
-              Échelon actuel : celui de la fiche (dernier arrêté). Échelon attendu : celui qu’il aurait en avançant normalement jusqu’au {dateFr(d.reference)}. Les promotions exceptionnelles se saisissent sur la fiche (bouton « Exception » du dossier de carrière).
+              Échelon actuel : celui de la fiche (dernier arrêté). Échelon attendu : celui qu’il aurait en avançant normalement jusqu’au {dateFr(d.reference)}, compté par année (l’échelon d’une année est acquis au 31 décembre ; choisissez « Situation au 31/12 » pour compter celui de l’année). Les promotions exceptionnelles se saisissent sur la fiche (bouton « Exception » du dossier de carrière).
             </p>
           </Carte>
         </>

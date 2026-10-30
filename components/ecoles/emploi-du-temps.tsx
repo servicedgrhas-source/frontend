@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarDays, CalendarRange, Printer, RefreshCw, Settings2, TriangleAlert } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Alerte, Badge, Bouton, Carte, Champ, Chargement, Liste, Modale, Saisie, Segments, Tableau, Vide, Zone, cx, useConfirmation } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 
@@ -18,6 +18,8 @@ export interface Seance {
   agent: string | null;
   jour: number;
   creneau: number;
+  /** Plage saisie par l'école (sinon placée par le système). */
+  fixe?: boolean;
 }
 export interface EmploiDuTemps {
   jours: number[];
@@ -37,7 +39,20 @@ export interface ReponseEdt {
   /** `propres` : réglages de l'école (sinon ceux d'Administration › Paramètres). */
   reglages: { jours: number[]; creneaux: Creneau[]; heuresEnseignant: number; propres?: boolean };
   /** Enseignants en poste et leurs jours de travail (vide : tous les jours, toute la journée). */
-  enseignants?: { id: number; nom: string; specialite: string | null; jours: Record<string, { debut: string | null; fin: string | null }> | null }[];
+  enseignants?: {
+    id: number;
+    nom: string;
+    specialite: string | null;
+    /** Matière enseignée (code), reconnue d'après la spécialité de sa fiche. */
+    matiere?: string | null;
+    matiereLibelle?: string | null;
+    jours: Record<string, { debut: string | null; fin: string | null }> | null;
+    /** Plages horaires saisies par l'école : son emploi du temps, créneau par créneau. */
+    plages?: { classeId: number; jour: number; debut: string; fin: string }[];
+  }[];
+  /** Classes de l'année, et le programme (heures par matière) de leur niveau. */
+  classes?: { id: number; nom: string; niveau: string }[];
+  programme?: Record<string, { matiere: string; heures: number }[]>;
   emploi: EmploiDuTemps | null;
   /** Ce qui a changé depuis la génération (classes, enseignants, matières, quotas) : à regénérer. */
   aRegenerer?: string[];
@@ -126,7 +141,8 @@ export function GrilleEdt({
                 >
                   {absent && <span className={impression ? "text-[7pt]" : "text-[10px]"}>—</span>}
                   {s && (
-                    <div className="leading-tight">
+                    <div className="relative leading-tight" title={s.fixe ? "Plage horaire saisie par l’école" : undefined}>
+                      {s.fixe && !impression && <span className="absolute -top-0.5 right-0 size-1.5 rounded-full bg-marque-600" aria-label="Plage saisie par l’école" />}
                       <div className="font-semibold">{s.matiereLibelle}</div>
                       <div className={cx(impression ? "" : "text-[11px]", !s.agent && vue === "classe" && "font-medium text-rouge-600")}>{vue === "classe" ? (s.agent ?? "à pourvoir") : s.classe}</div>
                     </div>
@@ -214,8 +230,8 @@ export function CarteEmploiDuTemps({ ecole, annee, peutGenerer }: { ecole: numbe
               <Bouton variante="discret" onClick={() => setReglages(true)} title="Jours de cours, créneaux et heures des enseignants propres à cette école">
                 <Settings2 className="size-4" /> Réglages de l’école
               </Bouton>
-              <Bouton variante="discret" onClick={() => setJoursProfs(true)} title="Les jours et heures où chaque enseignant peut avoir cours">
-                <CalendarDays className="size-4" /> Jours des enseignants
+              <Bouton variante="discret" onClick={() => setJoursProfs(true)} title="L’emploi du temps de chaque enseignant, créneau par créneau : dans chaque case, la classe où il fait cours">
+                <CalendarDays className="size-4" /> Plages horaires des enseignants
               </Bouton>
               <Bouton variante={e ? "secondaire" : "principal"} chargement={envoi} onClick={generer}>
                 {e ? <RefreshCw /> : <CalendarRange />} {e ? "Regénérer" : "Générer l’emploi du temps"}
@@ -224,11 +240,11 @@ export function CarteEmploiDuTemps({ ecole, annee, peutGenerer }: { ecole: numbe
           )
         }
       >
-        <p className="-mt-2 mb-3 text-[12px] leading-relaxed text-zinc-500">
-          Le système répartit les heures du programme de chaque classe entre les enseignants de la matière (au plus {r.heuresEnseignant} h chacun), puis place chaque heure sur la semaine : jamais
-          deux cours en même temps pour une classe, un enseignant ou une salle ; les jours et heures de travail de chaque enseignant respectés ; la vague A le matin, la vague B l’après-midi ; deux
-          heures d’une matière par jour au plus. {r.jours.length} jours ({r.jours.map((j) => NOMS_JOURS[j].toLowerCase()).join(", ")}), {r.creneaux.length} créneaux par jour,{" "}
-          {r.heuresEnseignant} h au plus par enseignant : {r.propres ? <strong>réglages propres à cette école</strong> : "réglages généraux (Administration › Paramètres), modifiables pour cette école avec « Réglages de l’école »"}.
+        <PrisEnCompte d={d.donnees} />
+        <p className="mb-3 text-[12px] leading-relaxed text-zinc-500">
+          D’abord les <strong>plages horaires</strong> saisies par l’école, placées telles quelles. Puis le reste du programme de chaque classe, réparti entre les enseignants de la matière qui n’ont
+          pas de plages (au plus {r.heuresEnseignant} h chacun) et placé sur la semaine : jamais deux cours en même temps pour une classe, un enseignant ou une salle ; leurs jours et heures
+          respectés ; la vague A le matin, la vague B l’après-midi ; deux heures d’une matière par jour au plus. Ce qui n’a pas d’enseignant est marqué « à pourvoir ».
         </p>
         {erreur && (
           <div className="mb-3">
@@ -280,7 +296,17 @@ export function CarteEmploiDuTemps({ ecole, annee, peutGenerer }: { ecole: numbe
           }}
         />
       )}
-      {joursProfs && d.donnees && <ModaleJoursEnseignants ecole={ecole} jours={r.jours} enseignants={d.donnees.enseignants ?? []} fermer={() => setJoursProfs(false)} apres={() => d.recharger()} />}
+      {joursProfs && d.donnees && (
+        <ModalePlagesEnseignants
+          ecole={ecole}
+          r={r}
+          enseignants={d.donnees.enseignants ?? []}
+          classes={d.donnees.classes ?? []}
+          programme={d.donnees.programme ?? {}}
+          fermer={() => setJoursProfs(false)}
+          apres={() => d.recharger()}
+        />
+      )}
 
       {e && !!deficits.length && (
         <Carte titre="Enseignants à trouver">
@@ -460,63 +486,141 @@ function ModaleReglagesEcole({ ecole, r, fermer, apres }: { ecole: number; r: Re
 }
 
 /**
- * Jours et heures de travail de chaque enseignant, réglés depuis l'école (DG, 28/10/2026) : un
- * professeur peut venir le lundi de 9 h à 12 h, le mardi de 7 h à 9 h, le jeudi toute la journée…
- * L'emploi du temps ne lui donne cours que dans ces heures ; ce sont aussi ses jours dans Présence.
+ * Ce que l'emploi du temps prend en compte (DG, 28/10/2026 : « l'emploi du temps affiché doit
+ * prendre en compte les vraies données ») : les chiffres d'aujourd'hui, et s'il est à jour.
  */
-function ModaleJoursEnseignants({
+function PrisEnCompte({ d }: { d: ReponseEdt }) {
+  const r = d.reglages;
+  const e = d.emploi;
+  const ens = d.enseignants ?? [];
+  const classes = d.classes ?? [];
+  const programme = classes.reduce((t, c) => t + (d.programme?.[c.niveau] ?? []).reduce((u, p) => u + Math.round(p.heures), 0), 0);
+  const avecPlages = ens.filter((x) => x.plages?.length);
+  const sansMatiere = ens.filter((x) => !x.matiere);
+  const aJour = e && !d.aRegenerer?.length;
+  const ligne = (titre: string, valeur: ReactNode, detail?: ReactNode) => (
+    <div className="rounded-xl bg-zinc-50 px-3 py-2 ring-1 ring-zinc-200">
+      <div className="text-[11px] text-zinc-500">{titre}</div>
+      <div className="text-[13px] font-semibold">{valeur}</div>
+      {detail && <div className="text-[11px] text-zinc-500">{detail}</div>}
+    </div>
+  );
+  return (
+    <div className="mb-3">
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px] font-medium text-zinc-600">
+        Ce que l’emploi du temps prend en compte
+        {e ? (
+          aJour ? (
+            <Badge ton="vert">À jour : généré le {new Date(e.genereLe).toLocaleDateString("fr-FR")} à {new Date(e.genereLe).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</Badge>
+          ) : (
+            <Badge ton="jaune">Pas à jour : ces données ont changé depuis la génération</Badge>
+          )
+        ) : (
+          <Badge ton="gris">Pas encore généré</Badge>
+        )}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        {ligne(`Classes ouvertes (${d.annee})`, classes.length, "onglet « Classes » de l’école")}
+        {ligne("Programme de ces classes", `${programme} h par semaine`, "Référentiels › Programmes")}
+        {ligne("Enseignants en poste", ens.length, sansMatiere.length ? <span className="text-rouge-600">{sansMatiere.length} sans matière reconnue : aucune heure</span> : "tous avec leur matière")}
+        {ligne(
+          "Plages horaires saisies",
+          avecPlages.length ? `${avecPlages.reduce((t, x) => t + (x.plages?.length ?? 0), 0)} h · ${avecPlages.length} enseignant(s)` : "aucune",
+          avecPlages.length ? "placées telles quelles" : "tout est réparti automatiquement",
+        )}
+        {ligne("Semaine de l’école", `${r.jours.length} jours · ${r.creneaux.length} créneaux`, `${r.heuresEnseignant} h au plus par enseignant · ${r.propres ? "réglages de l’école" : "réglages généraux"}`)}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Plages horaires des enseignants (DG, 28/10/2026) : l'emploi du temps de chaque enseignant tel que
+ * l'école le fait, créneau par créneau — dans chaque case de sa semaine, la classe où il fait cours
+ * (le lundi 07:30-08:25 en 6ème 1, le mardi 10:30-11:25 en 5ème 2…), dans sa matière. L'emploi du
+ * temps reprend ces plages telles quelles et n'ajoute rien à cet enseignant ; il est regénéré à
+ * l'enregistrement. Sans plages, l'enseignant est réparti automatiquement, dans ses jours et heures.
+ */
+function ModalePlagesEnseignants({
   ecole,
-  jours,
+  r,
   enseignants,
+  classes,
+  programme,
   fermer,
   apres,
 }: {
   ecole: number;
-  jours: number[];
+  r: ReponseEdt["reglages"];
   enseignants: NonNullable<ReponseEdt["enseignants"]>;
+  classes: NonNullable<ReponseEdt["classes"]>;
+  programme: NonNullable<ReponseEdt["programme"]>;
   fermer: () => void;
   apres: () => void;
 }) {
-  type Jour = { travaille: boolean; debut: string; fin: string };
-  const versLignes = (x: JoursTravail): Record<number, Jour> =>
-    Object.fromEntries(
-      [1, 2, 3, 4, 5, 6].map((j) => {
-        const vide = !x || !Object.keys(x).length;
-        const h = x?.[String(j)];
-        return [j, { travaille: vide ? jours.includes(j) : !!h, debut: h?.debut ?? "", fin: h?.fin ?? "" }];
-      }),
-    );
   const [choisi, setChoisi] = useState<number | null>(null);
-  const [lignes, setLignes] = useState<Record<number, Jour>>({});
+  /** La semaine de l'enseignant ouvert : « jour:début » → classe. */
+  const [grille, setGrille] = useState<Record<string, number>>({});
+  const [lignes, setLignes] = useState<Record<number, { travaille: boolean; debut: string; fin: string }>>({});
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const prof = enseignants.find((x) => x.id === choisi) ?? null;
-  const maj = (j: number, v: Partial<Jour>) => setLignes((l) => ({ ...l, [j]: { ...l[j], ...v } }));
+  const nomClasse = (id: number) => classes.find((c) => c.id === id)?.nom ?? "classe fermée";
+  const heuresProgramme = (classeId: number, matiere: string | null) => {
+    const c = classes.find((x) => x.id === classeId);
+    return matiere && c ? Math.round(programme[c.niveau]?.find((p) => p.matiere === matiere)?.heures ?? 0) : 0;
+  };
+  // Les classes déjà prises par un collègue, créneau par créneau : « jour:début:classe » → son nom
+  const prises = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const x of enseignants) if (x.id !== choisi) for (const p of x.plages ?? []) m.set(`${p.jour}:${p.debut}:${p.classeId}`, x.nom);
+    return m;
+  }, [enseignants, choisi]);
+  const resume = (x: (typeof enseignants)[number]) => {
+    const parClasse = new Map<number, number>();
+    for (const p of x.plages ?? []) parClasse.set(p.classeId, (parClasse.get(p.classeId) ?? 0) + 1);
+    return [...parClasse].map(([id, n]) => `${nomClasse(id)} (${n} h)`).join(", ");
+  };
   const ouvrir = (id: number) => {
+    const x = enseignants.find((y) => y.id === id);
     setErreur(null);
     setChoisi(id);
-    setLignes(versLignes(enseignants.find((x) => x.id === id)?.jours ?? null));
+    setGrille(Object.fromEntries((x?.plages ?? []).map((p) => [`${p.jour}:${p.debut}`, p.classeId])));
+    const vide = !x?.jours || !Object.keys(x.jours).length;
+    setLignes(
+      Object.fromEntries(
+        [1, 2, 3, 4, 5, 6].map((j) => {
+          const h = x?.jours?.[String(j)];
+          return [j, { travaille: vide ? r.jours.includes(j) : !!h, debut: h?.debut ?? "", fin: h?.fin ?? "" }];
+        }),
+      ),
+    );
   };
-  // Les mêmes heures pour tous les jours cochés (le cas le plus courant), à partir du premier jour rempli
-  const recopier = () => {
-    const modele = [1, 2, 3, 4, 5, 6].map((j) => lignes[j]).find((l) => l.travaille && (l.debut || l.fin));
-    if (!modele) return;
-    setLignes((l) => Object.fromEntries(Object.entries(l).map(([j, x]) => [j, x.travaille ? { ...x, debut: modele.debut, fin: modele.fin } : x])));
-  };
+  const saisies = Object.entries(grille).filter(([, c]) => c);
+  // Heures saisies pour lui, par classe, face au programme de sa matière
+  const parClasse = new Map<number, number>();
+  for (const [, c] of saisies) parClasse.set(c, (parClasse.get(c) ?? 0) + 1);
+
   async function enregistrer() {
     if (!prof) return;
     setErreur(null);
-    const faux = [1, 2, 3, 4, 5, 6].find((j) => lignes[j].travaille && lignes[j].debut && lignes[j].fin && lignes[j].fin <= lignes[j].debut);
-    if (faux) return setErreur(`${NOMS_JOURS[faux]} : l’heure de départ doit être après l’heure d’arrivée.`);
-    if (![1, 2, 3, 4, 5, 6].some((j) => lignes[j].travaille)) return setErreur("Cochez au moins un jour de travail.");
     setEnvoi(true);
     try {
-      await api.put(`/presence/horaires/${prof.id}`, {
-        structureId: ecole,
-        jours: Object.fromEntries(
-          [1, 2, 3, 4, 5, 6].filter((j) => lignes[j].travaille).map((j) => [String(j), { debut: lignes[j].debut || null, fin: lignes[j].fin || null }]),
-        ),
+      const plages = saisies.map(([k, classeId]) => {
+        const [jour, debut] = k.split(/:(.+)/);
+        return { classeId, jour: Number(jour), debut, fin: r.creneaux.find((c) => c.debut === debut)?.fin ?? "" };
       });
+      // Sans plages : ses jours et heures de disponibilité (répartition automatique, Présence)
+      if (!plages.length) {
+        const faux = [1, 2, 3, 4, 5, 6].find((j) => lignes[j].travaille && lignes[j].debut && lignes[j].fin && lignes[j].fin <= lignes[j].debut);
+        if (faux) throw new Error(`${NOMS_JOURS[faux]} : l’heure de départ doit être après l’heure d’arrivée.`);
+        await api.put(`/presence/horaires/${prof.id}`, {
+          structureId: ecole,
+          jours: Object.fromEntries([1, 2, 3, 4, 5, 6].filter((j) => lignes[j].travaille).map((j) => [String(j), { debut: lignes[j].debut || null, fin: lignes[j].fin || null }])),
+        });
+      }
+      // Les plages, puis l'emploi du temps regénéré par le serveur
+      await api.put(`/etablissements/${ecole}/emploi-du-temps/enseignants/${prof.id}/plages`, { plages });
       apres();
       setChoisi(null);
     } catch (x) {
@@ -525,13 +629,14 @@ function ModaleJoursEnseignants({
       setEnvoi(false);
     }
   }
+
   return (
-    <Modale titre={prof ? `Jours et heures de ${prof.nom}` : "Jours et heures des enseignants"} ouverte fermer={fermer} large>
+    <Modale titre={prof ? `Plages horaires de ${prof.nom}` : "Plages horaires des enseignants"} ouverte fermer={fermer} large>
       {!prof ? (
         <>
           <p className="mb-3 text-[13px] text-zinc-600">
-            Pour chaque enseignant, les jours où il vient et, chaque jour, ses heures (par exemple le lundi de 9 h à 12 h, le mardi de 7 h à 9 h). L’emploi du temps ne lui donne cours que dans ces
-            heures, à la prochaine génération ; ce sont aussi ses jours de travail dans Présence. Sans réglage : tous les jours de cours, toute la journée.
+            Pour chaque enseignant, saisissez son emploi du temps comme l’école le fait : dans chaque case de sa semaine, la classe où il fait cours. L’emploi du temps reprend ces plages telles
+            quelles, n’ajoute rien à cet enseignant, et complète le reste du programme avec les enseignants sans plages. Il est regénéré à chaque enregistrement.
           </p>
           {!enseignants.length ? (
             <Vide>Aucun enseignant en poste rattaché à l’école.</Vide>
@@ -541,21 +646,28 @@ function ModaleJoursEnseignants({
                 <thead>
                   <tr>
                     <th>Enseignant</th>
-                    <th>Jours et heures de travail</th>
+                    <th>Matière</th>
+                    <th>Plages horaires</th>
                     <th />
                   </tr>
                 </thead>
                 <tbody>
                   {enseignants.map((x) => (
                     <tr key={x.id}>
+                      <td className="text-[12px] font-medium">{x.nom}</td>
+                      <td className={cx("text-[12px]", !x.matiere && "text-rouge-600")}>{x.matiereLibelle ?? "matière à choisir (onglet Personnel)"}</td>
                       <td className="text-[12px]">
-                        <div className="font-medium">{x.nom}</div>
-                        <div className="text-[11px] text-zinc-400">{x.specialite ?? "matière à choisir"}</div>
+                        {x.plages?.length ? (
+                          <>
+                            <strong>{x.plages.length} h</strong> · {resume(x)}
+                          </>
+                        ) : (
+                          <span className="text-zinc-400">aucune : réparti automatiquement ({resumeJours(x.jours)})</span>
+                        )}
                       </td>
-                      <td className={cx("text-[12px]", !x.jours || !Object.keys(x.jours).length ? "text-zinc-400" : "")}>{resumeJours(x.jours)}</td>
                       <td className="text-right">
                         <Bouton variante="discret" onClick={() => ouvrir(x.id)}>
-                          Régler
+                          Saisir ses plages
                         </Bouton>
                       </td>
                     </tr>
@@ -570,41 +682,122 @@ function ModaleJoursEnseignants({
         </>
       ) : (
         <>
-          <p className="mb-3 text-[13px] text-zinc-600">Cochez les jours où il vient. Pour chacun, l’heure d’arrivée et l’heure de départ ; vides : toute la journée.</p>
-          <Tableau>
-            <thead>
-              <tr>
-                <th>Jour</th>
-                <th>Arrivée</th>
-                <th>Départ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[1, 2, 3, 4, 5, 6].map((j) => {
-                const l = lignes[j];
-                return (
-                  <tr key={j} className={l.travaille ? "" : "text-zinc-400"}>
-                    <td>
-                      <label className="flex items-center gap-2 font-medium">
-                        <input type="checkbox" className="size-4 accent-marque-600" checked={l.travaille} onChange={(e) => maj(j, { travaille: e.target.checked })} />
-                        {NOMS_JOURS[j]}
-                        {!jours.includes(j) && <span className="text-[11px] font-normal text-or-700">(pas un jour de cours de l’école)</span>}
-                      </label>
-                    </td>
-                    <td>
-                      <Saisie type="time" className="w-32" disabled={!l.travaille} value={l.debut} onChange={(e) => maj(j, { debut: e.target.value })} aria-label={`${NOMS_JOURS[j]} : arrivée`} />
-                    </td>
-                    <td>
-                      <Saisie type="time" className="w-32" disabled={!l.travaille} value={l.fin} onChange={(e) => maj(j, { fin: e.target.value })} aria-label={`${NOMS_JOURS[j]} : départ`} />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Tableau>
-          <button type="button" className="mt-2 text-[12px] font-medium text-marque-700 underline" onClick={recopier}>
-            Mettre les mêmes heures à tous les jours cochés
-          </button>
+          {!prof.matiere ? (
+            <Alerte>
+              Sa matière n’est pas connue (spécialité de sa fiche : « {prof.specialite ?? "vide"} »). Choisissez-la dans l’onglet « Personnel » de l’école : ses plages se saisissent dans sa matière.
+            </Alerte>
+          ) : (
+            <>
+              <p className="mb-2 text-[13px] text-zinc-600">
+                Matière : <strong>{prof.matiereLibelle}</strong>. Dans chaque case, choisissez la classe où il fait cours (vide : pas de cours). Une classe déjà prise par un collègue à cette heure
+                est indiquée et ne peut pas être choisie.
+              </p>
+              {!classes.length ? (
+                <Vide>Aucune classe ouverte cette année : ouvrez d’abord les classes de l’école.</Vide>
+              ) : (
+                <div className="max-h-[52vh] overflow-auto">
+                  <table className="w-full table-fixed border-collapse text-[12px]">
+                    <thead>
+                      <tr>
+                        <th className="w-20 border border-zinc-300 bg-zinc-50 px-1 py-1">Heure</th>
+                        {r.jours.map((j) => (
+                          <th key={j} className="border border-zinc-300 bg-zinc-50 px-1 py-1">
+                            {NOMS_JOURS[j]}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {r.creneaux.map((c) => (
+                        <tr key={c.debut}>
+                          <td className="border border-zinc-300 px-1 py-1 text-center tabular-nums text-zinc-600">
+                            {c.debut}
+                            <br />
+                            {c.fin}
+                          </td>
+                          {r.jours.map((j) => {
+                            const k = `${j}:${c.debut}`;
+                            const v = grille[k] ?? 0;
+                            return (
+                              <td key={j} className={cx("border border-zinc-300 p-0.5", v ? "bg-marque-50" : "")}>
+                                <select
+                                  aria-label={`${NOMS_JOURS[j]} ${c.debut}-${c.fin}`}
+                                  value={v || ""}
+                                  onChange={(e) => setGrille((g) => ({ ...g, [k]: Number(e.target.value) || 0 }))}
+                                  className={cx("w-full rounded-md bg-transparent px-1 py-1.5 text-[12px] outline-none focus:ring-2 focus:ring-marque-300", v ? "font-semibold text-marque-800" : "text-zinc-400")}
+                                >
+                                  <option value="">—</option>
+                                  {classes.map((cl) => {
+                                    const qui = prises.get(`${j}:${c.debut}:${cl.id}`);
+                                    return (
+                                      <option key={cl.id} value={cl.id} disabled={!!qui}>
+                                        {cl.nom}
+                                        {qui ? ` (prise : ${qui})` : ""}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
+                <Badge ton={saisies.length > r.heuresEnseignant ? "rouge" : saisies.length ? "vert" : "gris"}>
+                  {saisies.length} h par semaine{saisies.length > r.heuresEnseignant ? ` : plus que les ${r.heuresEnseignant} h d’un enseignant` : ""}
+                </Badge>
+                {[...parClasse].map(([id, n]) => {
+                  const prevu = heuresProgramme(id, prof.matiere ?? null);
+                  return (
+                    <Badge key={id} ton={n === prevu ? "vert" : n > prevu ? "rouge" : "jaune"}>
+                      {nomClasse(id)} : {n} h sur {prevu} h au programme
+                    </Badge>
+                  );
+                })}
+                {!!saisies.length && (
+                  <button type="button" className="ml-auto font-medium text-rouge-700 underline" onClick={() => setGrille({})}>
+                    Vider ses plages (retour à la répartition automatique)
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+          {!saisies.length && (
+            <details className="mt-4 rounded-xl bg-zinc-50 p-3 ring-1 ring-zinc-200">
+              <summary className="cursor-pointer text-[13px] font-medium">Sans plages : ses jours et heures de disponibilité (répartition automatique et Présence)</summary>
+              <p className="my-2 text-[12px] text-zinc-500">Le système lui donne des heures dans sa matière, seulement ces jours-là, entre ces heures ; vides : toute la journée.</p>
+              <Tableau>
+                <tbody>
+                  {[1, 2, 3, 4, 5, 6].map((j) => {
+                    const l = lignes[j];
+                    if (!l) return null;
+                    const maj = (v: Partial<typeof l>) => setLignes((x) => ({ ...x, [j]: { ...x[j], ...v } }));
+                    return (
+                      <tr key={j} className={l.travaille ? "" : "text-zinc-400"}>
+                        <td>
+                          <label className="flex items-center gap-2 font-medium">
+                            <input type="checkbox" className="size-4 accent-marque-600" checked={l.travaille} onChange={(e) => maj({ travaille: e.target.checked })} />
+                            {NOMS_JOURS[j]}
+                            {!r.jours.includes(j) && <span className="text-[11px] font-normal text-or-700">(pas un jour de cours)</span>}
+                          </label>
+                        </td>
+                        <td>
+                          <Saisie type="time" className="w-28" disabled={!l.travaille} value={l.debut} onChange={(e) => maj({ debut: e.target.value })} aria-label={`${NOMS_JOURS[j]} : arrivée`} />
+                        </td>
+                        <td>
+                          <Saisie type="time" className="w-28" disabled={!l.travaille} value={l.fin} onChange={(e) => maj({ fin: e.target.value })} aria-label={`${NOMS_JOURS[j]} : départ`} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </Tableau>
+            </details>
+          )}
           {erreur && (
             <div className="mt-3">
               <Alerte>{erreur}</Alerte>
@@ -612,8 +805,8 @@ function ModaleJoursEnseignants({
           )}
           <div className="mt-5 flex justify-end gap-2">
             <Bouton onClick={() => setChoisi(null)}>Retour à la liste</Bouton>
-            <Bouton variante="principal" chargement={envoi} onClick={enregistrer}>
-              Enregistrer
+            <Bouton variante="principal" chargement={envoi} disabled={!prof.matiere && !!saisies.length} onClick={enregistrer}>
+              Enregistrer et regénérer l’emploi du temps
             </Bouton>
           </div>
         </>

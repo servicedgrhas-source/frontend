@@ -235,6 +235,8 @@ export interface NoteResume {
   statut: StatutNote;
   libelle: string;
   total: number;
+  /** Enrôlement : retenus sans département retenu (pas encore dans la note). */
+  enAttente?: number;
   commentaire: string | null;
   creePar: string | null;
   soumisePar: string | null;

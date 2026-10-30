@@ -84,7 +84,14 @@ export default function TableauRecensement() {
                 ))}
               </ul>
             )}
-            <p className="mt-3 text-[11px] text-zinc-400">Âges, téléphone partagé et règles de cohérence se règlent dans « Configuration ».</p>
+            <p className="mt-3 text-[11px] text-zinc-500">
+              Le chiffre à gauche est le nombre d’agents concernés ; « Voir » ouvre leur liste, avec « Corriger » sur chaque fiche. Les seuils de ces contrôles (âge minimum, âge de la retraite, nombre de
+              fiches pour un même téléphone) et les règles de cohérence se modifient dans{" "}
+              <Link href="/personnel/configuration" className="font-medium text-marque-700 hover:underline">
+                Personnel › Configuration
+              </Link>
+              .
+            </p>
           </Carte>
 
           <div className="grid gap-6 xl:grid-cols-2">
@@ -113,17 +120,21 @@ export default function TableauRecensement() {
           </div>
 
           {t.parDepartement.length > 1 && (
-            <Carte titre="Avancement par département">
+            <Carte titre="Fiches complètes par département">
+              <p className="-mt-2 mb-3 text-[12px] text-zinc-500">
+                Pour chaque département : combien de fiches sont complètes (toutes les rubriques obligatoires remplies et toutes les pièces exigées déposées) sur le nombre de fiches du
+                département. La barre verte montre la part complète. Cliquez sur un département pour voir ses agents.
+              </p>
               <ul className="space-y-2.5">
                 {t.parDepartement.map((d) => (
                   <li key={String(d.departementId)}>
-                    <Link href={`/personnel/agents?departement=${d.departementId ?? ""}`} className="grid grid-cols-[160px_1fr_120px] items-center gap-3 text-[13px] hover:text-marque-700">
+                    <Link href={`/personnel/agents?departement=${d.departementId ?? ""}`} className="grid grid-cols-[160px_1fr_190px] items-center gap-3 text-[13px] hover:text-marque-700">
                       <span>{refs.departements.find((x) => x.id === d.departementId)?.nom ?? "Non renseigné"}</span>
                       <div className="h-2 overflow-hidden rounded-full bg-zinc-200">
                         <div className="h-full rounded-full bg-marque-500" style={{ width: `${d.n ? Math.round((d.complets / d.n) * 100) : 0}%` }} />
                       </div>
                       <span className="text-right text-[12px] text-zinc-500 tabular-nums">
-                        {nf.format(d.complets)} / {nf.format(d.n)} complètes
+                        {nf.format(d.complets)} complètes sur {nf.format(d.n)} ({d.n ? Math.round((d.complets / d.n) * 100) : 0} %)
                       </span>
                     </Link>
                   </li>

@@ -12,6 +12,8 @@ import type { StatutNote } from "@/lib/types";
 /** Tout ce qui concerne un dossier, renvoyé par « /dossiers/:id ». */
 export interface Dossier {
   id: string;
+  /** Sa fiche dans la Base du personnel, si on la retrouve (même nom et même date de naissance). */
+  ficheId?: number | null;
   etape: string;
   etapes: { titre: string; fait: boolean; detail: string | null }[];
   /** Notes signées hors du système où figure la personne (fichier de contrôle des affectations). */
@@ -228,6 +230,8 @@ export function FicheDossier({ id, fermer }: { id: string; fermer: () => void })
           )}
 
           <div className="flex flex-wrap justify-end gap-2 border-t border-zinc-100 pt-4">
+            {/* Toutes ses informations d'un coup : sa fiche, ou la Base du personnel cherchée à son nom */}
+            <Lien href={d.ficheId ? `/personnel/agents/${d.ficheId}` : `/personnel/agents?recherche=${encodeURIComponent(d.identite.nomComplet)}`}>Voir sa fiche</Lien>
             {d.note && (
               <Lien href={`/note/${d.note.id}`}>Ouvrir la note de service</Lien>
             )}

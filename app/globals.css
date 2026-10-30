@@ -119,6 +119,8 @@ input[type="radio"] {
   border: 1px solid #000;
   padding: 2px 4px;
   vertical-align: middle;
+  /* Un mot trop long pour sa case passe à la ligne au lieu de déborder sur la case voisine */
+  overflow-wrap: anywhere;
 }
 
 .feuille-note table.ampliations {

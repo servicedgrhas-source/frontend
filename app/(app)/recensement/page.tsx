@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { ETAT_AJOUT, libelleStatut, type Manques, peutControlerAjout, peutRecenser, Taux, useConfigRecensement } from "@/components/recensement/commun";
+import { ApercuFiche } from "@/components/recensement/apercu-fiche";
+import { ControleModifications } from "@/components/recensement/controle-modifications";
 import { ImportFichier } from "@/components/recensement/import-fichier";
 import { useSession } from "@/components/session";
 import { Alerte, Badge, Bouton, Carte, Chargement, EnTete, Saisie, Segments, Tableau, Vide } from "@/components/ui";
@@ -63,6 +65,8 @@ function Recensement() {
   const [cherche, setCherche] = useState(params.get("recherche") ?? "");
   const ongletInitial = ONGLETS.some((o) => o.valeur === params.get("onglet")) ? (params.get("onglet") as Onglet) : profil.role === "DG" ? "decider" : "controler";
   const [onglet, setOnglet] = useState<Onglet>(ongletInitial);
+  // Fiche ouverte dans une fenêtre depuis les onglets (DG, 30/10/2026)
+  const [apercu, setApercu] = useState<number | null>(null);
 
   // Recherche lancée un court instant après la frappe
   useEffect(() => {
@@ -147,7 +151,8 @@ function Recensement() {
                       </div>
                     </div>
                     <Taux taux={l.taux} complet={l.complet} />
-                    <Link href={`/personnel/agents/${l.id}`}>
+                    {/* Ouverte d'ici : ce qui est changé part au contrôle (DG, 30/10/2026) */}
+                    <Link href={`/personnel/agents/${l.id}?recensement=1`}>
                       <Bouton variante={l.complet ? "secondaire" : "principal"}>
                         {l.complet ? "Voir la fiche" : "Compléter la fiche"} <ArrowRight />
                       </Bouton>
@@ -212,7 +217,9 @@ function Recensement() {
                 {courante.donnees.lignes.map((l) => (
                   <tr key={l.id}>
                     <td>
-                      <div className="font-medium">{l.nomComplet}</div>
+                      <button type="button" onClick={() => setApercu(l.id)} className="text-left font-medium text-marque-700 hover:underline" title="Voir toutes ses informations">
+                        {l.nomComplet}
+                      </button>
                       <div className="text-[11px] text-zinc-400">
                         {l.numeroFiche} · {libelleStatut(c, l.statut)} · né(e) le {dateFr(l.dateNaissance)}
                       </div>
@@ -257,6 +264,15 @@ function Recensement() {
           )}
         </div>
       </Carte>
+      <ControleModifications />
+      {apercu !== null && (
+        <ApercuFiche
+          id={apercu}
+          c={c}
+          fermer={() => setApercu(null)}
+          action={onglet === "controler" && peutControlerAjout(profil.role) ? "Contrôler la fiche" : onglet === "decider" && profil.role === "DG" ? "Décider" : undefined}
+        />
+      )}
     </div>
   );
 }

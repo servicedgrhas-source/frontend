@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useMemo } from "react";
 import { EnteteOfficielle, SignatureOfficielle, editeLe } from "@/components/impression-officielle";
 import { PagesA4, StyleImpressionA4, type Bloc, type Tableau } from "@/components/pages-a4";
-import { dateFr, type DossierCarriere, GENRES } from "@/components/recensement/carriere";
+import { dateFr, type DossierCarriere, echelonEnClair, GENRES } from "@/components/recensement/carriere";
 import { Alerte, Bouton, Chargement } from "@/components/ui";
 import { lireSession, useApi } from "@/lib/api";
 
@@ -135,7 +135,6 @@ function construire(d: DossierCarriere) {
           {ligne("Né(e)", naissance || "—")}
           {d.agent.nationalite && ligne("Nationalité", d.agent.nationalite)}
           {ligne("Matricule solde", d.agent.matricule ?? "—")}
-          {ligne("N° de fiche", d.agent.numeroFiche ?? "—")}
         </div>
       ),
     },
@@ -162,7 +161,9 @@ function construire(d: DossierCarriere) {
             !!d.situation.attendues?.length &&
             ligne(
               av.nature === "AVANCEMENT" ? "Avancements attendus" : "Promotions attendues",
-              d.situation.attendues.map((x) => `${dateFr(x.date)}${x.echelon ? ` (${x.echelle ? `${x.echelle}, ` : ""}${ordinal(x.echelon)} échelon)` : ""}`).join(" ; "),
+              d.situation.attendues
+                .map((x) => `${dateFr(x.date)}${x.echelon ? ` (${x.echelle ? `${x.echelle}, ` : ""}${x.echelonLibelle ? echelonEnClair(x.echelonLibelle, d.situation.echelle?.libelleHorsClasse) : `${ordinal(x.echelon)} échelon`})` : ""}`)
+                .join(" ; "),
             )}
           {ligne("Fonction", val("FONCTION"))}
           {ligne("Lieu de service", val("LIEU_SERVICE"))}

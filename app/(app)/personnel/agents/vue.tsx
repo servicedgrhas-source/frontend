@@ -1,13 +1,14 @@
 "use client";
 
-import { Download, FileUp, Plus, Printer } from "lucide-react";
+import { ArrowRight, Download, FileUp, Plus, Printer, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Pagination } from "@/components/pagination";
+import { ouCorriger, type AnomalieFiche } from "@/components/recensement/anomalies";
 import { libelleStatut, peutRecenser, Taux, useConfigRecensement, type Manques } from "@/components/recensement/commun";
 import { useSession } from "@/components/session";
-import { Alerte, Bouton, Carte, Chargement, EnTete, Liste, Saisie, Tableau, Vide } from "@/components/ui";
+import { Alerte, Bouton, Carte, Chargement, EnTete, Liste, Saisie, Tableau, Vide, cx } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
 
 interface Ligne {
@@ -27,6 +28,8 @@ interface Ligne {
   complet: boolean;
   manques: Manques;
   contentieux: string | null;
+  /** Fiches présentant des anomalies : ses problèmes (mode « anomalies »). */
+  anomalies?: AnomalieFiche[];
 }
 
 const dateFr = (d: string | null) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : "—");
@@ -45,9 +48,12 @@ export function VueAgents() {
     complet: params.get("complet") ?? "",
     manque: params.get("manque") ?? "",
     controle: params.get("controle") ?? "",
+    anomalies: params.get("anomalies") ?? "",
     page: Number(params.get("page") ?? 1),
   };
-  const liste = useApi<{ total: number; page: number; parPage: number; lignes: Ligne[] }>(`/recensement/agents${qs(f)}`);
+  const liste = useApi<{ total: number; page: number; parPage: number; lignes: Ligne[]; parAnomalie?: { code: string; libelle: string; n: number }[] }>(`/recensement/agents${qs(f)}`);
+  // Mode « fiches présentant des anomalies » : tous les problèmes, ou un seul (filtre « controle »)
+  const enAnomalies = !!f.anomalies || !!f.controle;
   const tableau = useApi<{ controles: { code: string; libelle: string; n: number }[] }>("/recensement/tableau");
   const c = config.donnees?.configuration;
   if (!peutRecenser(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS, aux DDEPPSA et aux chefs d’établissement.</Alerte>;
@@ -69,6 +75,9 @@ export function VueAgents() {
         }
         actions={
           <>
+            <Bouton variante={enAnomalies ? "sombre" : "secondaire"} onClick={() => aller(enAnomalies ? { anomalies: "", controle: "" } : { anomalies: "1", controle: "" })} title="Les fiches qui ont un problème (doublon, matricule commun, valeur fausse, incohérence…), et où le corriger">
+              <TriangleAlert /> {enAnomalies ? "Toutes les fiches" : "Afficher les fiches présentant des anomalies"}
+            </Bouton>
             <Bouton onClick={() => api.telecharger(`/recensement/export${qs(f)}`, "Base du personnel.xlsx")}>
               <Download /> Exporter en Excel
             </Bouton>
@@ -114,7 +123,27 @@ export function VueAgents() {
             ]}
           />
         </form>
-        {(filtreManque || filtreControle) && (
+        {enAnomalies && liste.donnees?.parAnomalie && (
+          <div className="mt-4 rounded-2xl bg-or-50 p-3 ring-1 ring-or-200">
+            <div className="mb-2 text-[13px] font-semibold text-or-800">Fiches présentant des anomalies : choisissez un problème, puis « Corriger » sur chaque fiche</div>
+            <div className="flex flex-wrap gap-1.5">
+              <button type="button" onClick={() => aller({ anomalies: "1", controle: "" })} className={cx("rounded-full px-3 py-1 text-[12px] ring-1", !f.controle ? "bg-nuit text-white ring-nuit" : "bg-white ring-zinc-200 hover:bg-zinc-50")}>
+                Tous les problèmes
+              </button>
+              {liste.donnees.parAnomalie.map((x) => (
+                <button
+                  key={x.code}
+                  type="button"
+                  onClick={() => aller({ anomalies: "1", controle: x.code })}
+                  className={cx("rounded-full px-3 py-1 text-left text-[12px] ring-1", f.controle === x.code ? "bg-or-500 text-white ring-or-500" : "bg-white ring-zinc-200 hover:bg-zinc-50")}
+                >
+                  {x.libelle} · <strong>{x.n.toLocaleString("fr-FR")}</strong>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {!enAnomalies && (filtreManque || filtreControle) && (
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
             <span className="text-zinc-500">Filtre :</span>
             <span className="rounded-full bg-or-100 px-3 py-1 font-medium text-or-700">{filtreManque ? `${f.manque.startsWith("piece:") ? "pièce manquante" : "rubrique vide"} : ${filtreManque}` : filtreControle}</span>
@@ -154,7 +183,7 @@ export function VueAgents() {
                   <th>Lieu de naissance</th>
                   <th>Lieu de service</th>
                   <th>Département</th>
-                  <th>Fiche</th>
+                  <th>{enAnomalies ? "Problèmes et où corriger" : "Fiche"}</th>
                 </tr>
               </thead>
               <tbody>
@@ -180,9 +209,43 @@ export function VueAgents() {
                     <td className="max-w-40 truncate text-[12px]">{l.lieuNaissance ?? "—"}</td>
                     <td className="max-w-64 truncate text-[12px]">{l.structureNom ?? l.lieuService ?? "—"}</td>
                     <td className="text-[12px]">{nomDep(l.departementId)}</td>
-                    <td title={!l.complet ? `${(l.manques.champs ?? []).length} rubrique(s) et ${(l.manques.pieces ?? []).length} pièce(s) à fournir` : undefined}>
-                      <Taux taux={l.taux} complet={l.complet} />
-                    </td>
+                    {enAnomalies ? (
+                      <td className="min-w-72">
+                        <ul className="space-y-1.5">
+                          {(l.anomalies ?? []).map((x) => {
+                            const o = c ? ouCorriger(x.code, c, { manques: l.manques, nomComplet: l.nomComplet }) : null;
+                            return (
+                              <li key={x.code} className="text-[12px]">
+                                <div className="flex items-start gap-1.5">
+                                  <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-or-600" />
+                                  <span className="min-w-0 flex-1">{x.libelle}</span>
+                                  <Link href={o?.lien && !o.cible ? o.lien : `/personnel/agents/${l.id}?corriger=${encodeURIComponent(x.code)}`} className="inline-flex shrink-0 items-center gap-0.5 font-semibold text-marque-700 hover:underline">
+                                    Corriger <ArrowRight className="size-3" />
+                                  </Link>
+                                </div>
+                                {!!x.avec.length && (
+                                  <div className="ml-5 text-[11px] text-zinc-500">
+                                    avec{" "}
+                                    {x.avec.map((y, i) => (
+                                      <span key={y.id}>
+                                        {i > 0 && ", "}
+                                        <Link href={`/personnel/agents/${y.id}`} className="underline">
+                                          {y.nomComplet} ({y.numeroFiche})
+                                        </Link>
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </td>
+                    ) : (
+                      <td title={!l.complet ? `${(l.manques.champs ?? []).length} rubrique(s) et ${(l.manques.pieces ?? []).length} pièce(s) à fournir` : undefined}>
+                        <Taux taux={l.taux} complet={l.complet} />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

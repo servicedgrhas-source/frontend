@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  CalendarDays,
   CheckCircle2,
   ChevronRight,
   FileSpreadsheet,
@@ -12,7 +13,7 @@ import {
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { Ton } from "@/lib/libelles";
 
@@ -297,6 +298,120 @@ export function Saisie(props: React.ComponentProps<"input">) {
         }
       : props.onClick;
   return <input {...props} onClick={calendrier} className={cx(styleSaisie, props.className)} />;
+}
+
+const versJjMmAaaa = (iso: string | null | undefined) => (/^\d{4}-\d{2}-\d{2}$/.test(iso ?? "") ? iso!.split("-").reverse().join("/") : "");
+
+/** « 31/12/2025 », « 31-12-2025 », « 31.12.25 », « 31122025 » → « 2025-12-31 » (null : pas une vraie date). */
+export function lireDateClavier(texte: string): string | null {
+  const t = texte.trim();
+  const m = /^(\d{1,2})[\s/.-]+(\d{1,2})[\s/.-]+(\d{2}|\d{4})$/.exec(t) ?? /^(\d{2})(\d{2})(\d{4})$/.exec(t);
+  if (!m) return null;
+  const j = Number(m[1]);
+  const mois = Number(m[2]);
+  const a = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+  const d = new Date(Date.UTC(a, mois - 1, j));
+  if (d.getUTCFullYear() !== a || d.getUTCMonth() !== mois - 1 || d.getUTCDate() !== j || a < 1900 || a > 2100) return null;
+  return `${a}-${String(mois).padStart(2, "0")}-${String(j).padStart(2, "0")}`;
+}
+
+/**
+ * Date tapée au clavier (« 31/12/2025 », ou « 31122025 ») ou choisie au calendrier (le bouton à
+ * droite) : DG, 28/10/2026, chercher le mois et l'année dans le calendrier était trop long.
+ * `onChange` reçoit « AAAA-MM-JJ » (ou "" si le champ est vidé), à la sortie du champ ou sur Entrée.
+ */
+export function SaisieDate({
+  value,
+  onChange,
+  className,
+  disabled,
+  autoFocus,
+  "aria-label": libelle,
+}: {
+  value: string;
+  onChange: (iso: string) => void;
+  className?: string;
+  disabled?: boolean;
+  autoFocus?: boolean;
+  "aria-label"?: string;
+}) {
+  const [texte, setTexte] = useState(versJjMmAaaa(value));
+  const [precedente, setPrecedente] = useState(value);
+  const [fausse, setFausse] = useState(false);
+  // La valeur change de l'extérieur (enregistrement, autre ligne) : le texte suit
+  if (precedente !== value) {
+    setPrecedente(value);
+    setTexte(versJjMmAaaa(value));
+    setFausse(false);
+  }
+  const calendrier = useRef<HTMLInputElement>(null);
+  const valider = () => {
+    if (!texte.trim()) {
+      setFausse(false);
+      if (value) onChange("");
+      return;
+    }
+    const iso = lireDateClavier(texte);
+    if (!iso) return setFausse(true);
+    setFausse(false);
+    setTexte(versJjMmAaaa(iso));
+    if (iso !== value) onChange(iso);
+  };
+  return (
+    <span className={cx("relative inline-flex w-full items-center", className)}>
+      <input
+        type="text"
+        inputMode="numeric"
+        placeholder="jj/mm/aaaa"
+        value={texte}
+        disabled={disabled}
+        autoFocus={autoFocus}
+        aria-label={libelle}
+        aria-invalid={fausse || undefined}
+        title={fausse ? "Date à écrire ainsi : 31/12/2025" : undefined}
+        onChange={(e) => setTexte(e.target.value)}
+        onBlur={valider}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            valider();
+          }
+        }}
+        className={cx(styleSaisie, "w-full pr-10 tabular-nums", fausse && "ring-2 ring-rouge-400")}
+      />
+      <button
+        type="button"
+        disabled={disabled}
+        aria-label="Choisir dans le calendrier"
+        title="Choisir dans le calendrier"
+        onClick={() => {
+          try {
+            calendrier.current?.showPicker?.();
+          } catch {
+            calendrier.current?.focus();
+          }
+        }}
+        className="absolute right-1.5 inline-flex size-7 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-200/70 hover:text-encre disabled:opacity-40"
+      >
+        <CalendarDays className="size-4" />
+      </button>
+      {/* Le calendrier du navigateur, invisible : il ne sert qu'au bouton */}
+      <input
+        ref={calendrier}
+        type="date"
+        tabIndex={-1}
+        aria-hidden
+        value={/^\d{4}-\d{2}-\d{2}$/.test(value) ? value : ""}
+        onChange={(e) => {
+          setTexte(versJjMmAaaa(e.target.value));
+          setFausse(false);
+          if (e.target.value !== value) onChange(e.target.value);
+        }}
+        className="pointer-events-none absolute right-0 bottom-0 size-px opacity-0"
+      />
+      {fausse && <span className="absolute top-full left-0 mt-0.5 text-[11px] text-rouge-600">Date à écrire ainsi : 31/12/2025</span>}
+    </span>
+  );
 }
 
 export function Zone(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {

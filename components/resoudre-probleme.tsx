@@ -5,7 +5,7 @@ import { ArrowRight, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { useSession } from "./session";
-import { Alerte, Bouton, Champ, cx, Liste, Modale, Saisie } from "./ui";
+import { Alerte, Bouton, Champ, cx, Liste, Modale, Saisie, SaisieDate } from "./ui";
 import { api } from "@/lib/api";
 import type { Affectation, Derive } from "@/lib/types";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
@@ -221,7 +221,7 @@ export function ResoudreProbleme({
                     libelle={`Date de signature du lot « ${libelleLot(lot)} »`}
                     aide={`Écrite sur le texte. Elle vaut pour tous les ${decret ? "décrets" : "arrêtés"} du lot : toutes les personnes concernées seront réglées en une fois.`}
                   >
-                    <Saisie autoFocus={enAvant} type="date" className="max-w-56" value={v.signature} onChange={maj("signature")} />
+                    <SaisieDate autoFocus={enAvant} className="max-w-56" value={v.signature} onChange={(x) => setV({ ...v, signature: x })} aria-label="Date de signature du lot" />
                   </Champ>
                 ) : (
                   <p className="text-[13px] text-zinc-600">Le texte de cette personne n’est rattaché à aucun lot : enregistrez-le dans « Réception des textes ».</p>

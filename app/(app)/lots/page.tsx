@@ -4,7 +4,7 @@ import { ArrowRight, CheckCircle2, Inbox, Layers } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { useSession } from "@/components/session";
-import { Aide, Alerte, Annonce, Badge, Bouton, Champ, Chargement, EnTete, Pastille, Progression, Saisie } from "@/components/ui";
+import { Aide, Alerte, Annonce, Badge, Bouton, Champ, Chargement, EnTete, Pastille, Progression, SaisieDate } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { dateCourte, dateLongue, peut, STATUT_NOTE, TYPE_LOT } from "@/lib/libelles";
 import type { Lot } from "@/lib/types";
@@ -31,15 +31,17 @@ export default function Lots() {
   }
 
   const aCompleter = donnees?.filter((l) => !l[champSignature(l)]).length ?? 0;
-  // Regroupement par paquet, le plus récent en haut
-  const paquets = new Map<string, { libelle: string; date: string | null; lots: Lot[] }>();
+  // Regroupement par paquet : le dernier importé en haut, mis en évidence (DG, 28/10/2026 : un paquet
+  // importé aujourd'hui avec une date ancienne se perdait plus bas), puis les autres par date
+  const paquets = new Map<string, { numero: number; libelle: string; date: string | null; lots: Lot[] }>();
   for (const l of donnees ?? []) {
     const cle = l.paquet ? String(l.paquet.numero) : "aucun";
-    const p = paquets.get(cle) ?? { libelle: l.paquet?.libelle ?? "Sans paquet", date: l.paquet?.dateReception ?? null, lots: [] };
+    const p = paquets.get(cle) ?? { numero: l.paquet?.numero ?? 0, libelle: l.paquet?.libelle ?? "Sans paquet", date: l.paquet?.dateReception ?? null, lots: [] };
     p.lots.push(l);
     paquets.set(cle, p);
   }
-  const ordre = [...paquets.values()].sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+  const dernier = Math.max(0, ...[...paquets.values()].map((p) => p.numero));
+  const ordre = [...paquets.values()].sort((a, b) => Number(b.numero === dernier) - Number(a.numero === dernier) || (b.date ?? "").localeCompare(a.date ?? ""));
 
   return (
     <div className="space-y-6">
@@ -73,9 +75,10 @@ export default function Lots() {
         <Chargement />
       ) : (
         ordre.map((p) => (
-          <section key={p.libelle} className="space-y-3">
+          <section key={p.libelle} className={p.numero === dernier && dernier > 0 ? "space-y-3 rounded-3xl bg-marque-50/60 p-4 ring-1 ring-marque-200" : "space-y-3"}>
             <h2 className="flex flex-wrap items-baseline gap-x-3 text-[15px] font-semibold text-encre">
               {p.libelle}
+              {p.numero === dernier && dernier > 0 && <Badge ton="vert">Dernier paquet importé</Badge>}
               <span className="text-[12px] font-normal text-zinc-400">
                 {nf.format(p.lots.reduce((n, l) => n + l.arretes + l.decrets, 0))} texte(s) · {p.lots.length} lot(s)
               </span>
@@ -145,12 +148,8 @@ function CarteLot({ l, modifiable, modifier }: { l: Lot; modifiable: boolean; mo
       <div className="mt-5 border-t border-zinc-100 pt-4">
         <Champ libelle={`Date de signature des ${l.typeTexte ? TYPE_LOT[l.typeTexte].pluriel.toLowerCase() : "textes"} de ce lot`} aide={dateLongue(l[champ]) ?? "à renseigner"}>
           {modifiable ? (
-            <Saisie
-              type="date"
-              defaultValue={l[champ] ?? ""}
-              className={!l[champ] ? "ring-2 ring-or-400" : ""}
-              onBlur={(e) => e.target.value !== (l[champ] ?? "") && modifier(l, champ, e.target.value)}
-            />
+            // Au clavier (« 31/12/2025 ») ou au calendrier : DG, 28/10/2026
+            <SaisieDate value={l[champ] ?? ""} className={!l[champ] ? "rounded-xl ring-2 ring-or-400" : ""} onChange={(v) => modifier(l, champ, v)} aria-label="Date de signature" />
           ) : (
             <span className="text-[13px]">{dateCourte(l[champ])}</span>
           )}

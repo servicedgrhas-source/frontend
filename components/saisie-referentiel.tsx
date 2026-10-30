@@ -6,7 +6,26 @@ import { cx } from "@/components/ui";
 import { API_URL } from "@/lib/api";
 
 /** Listes de choix (Administration › Référentiels et organigramme). */
-export type ListeReference = "ETABLISSEMENT" | "INSPECTION" | "STRUCTURE" | "LOCALITE" | "MATIERE" | "TYPE_MATIERE" | "POSTE" | "NIVEAU" | "CYCLE" | "TYPE_BATIMENT" | "TYPE_SALLE";
+export type ListeReference =
+  | "ETABLISSEMENT"
+  | "INSPECTION"
+  | "STRUCTURE"
+  | "LOCALITE"
+  | "MATIERE"
+  | "TYPE_MATIERE"
+  | "POSTE"
+  | "NIVEAU"
+  | "CYCLE"
+  | "TYPE_BATIMENT"
+  | "TYPE_SALLE"
+  // Suggestions de la fiche du personnel (DG, 30/10/2026)
+  | "GRADE"
+  | "CATEGORIE"
+  | "ECHELLE"
+  | "ECHELON"
+  | "LIEU_NAISSANCE"
+  | "NATIONALITE"
+  | "SPECIALITE";
 
 interface OptionChoix {
   valeur: string;
@@ -26,7 +45,17 @@ const NOMS: Record<ListeReference, string> = {
   CYCLE: "un cycle",
   TYPE_BATIMENT: "un type de bâtiment",
   TYPE_SALLE: "un type de salle",
+  GRADE: "un grade",
+  CATEGORIE: "une catégorie",
+  ECHELLE: "une échelle",
+  ECHELON: "un échelon",
+  LIEU_NAISSANCE: "une ville ou un district",
+  NATIONALITE: "une nationalité",
+  SPECIALITE: "une spécialité ou une série",
 };
+
+/** Ce qui s'affiche sous un champ dont la valeur n'est pas dans la liste (par défaut). */
+const HORS_LISTE = "Hors liste : gardé tel quel.";
 
 const cle = (t: string) =>
   t
@@ -49,6 +78,7 @@ export function SaisieReferentiel({
   placeholder,
   desactive,
   className,
+  avertissement = HORS_LISTE,
 }: {
   liste: ListeReference;
   valeur: string;
@@ -58,6 +88,8 @@ export function SaisieReferentiel({
   placeholder?: string;
   desactive?: boolean;
   className?: string;
+  /** Phrase (en jaune) sous une valeur tapée à la main, absente de la liste ; `null` : rien. Jamais bloquant. */
+  avertissement?: string | null;
 }) {
   const [ouvert, setOuvert] = useState(false);
   const [options, setOptions] = useState<OptionChoix[]>([]);
@@ -76,7 +108,7 @@ export function SaisieReferentiel({
         if (!vivant) return;
         setOptions(l);
         setActif(0);
-        if (valeur.trim()) setConnue(l.some((o) => cle(o.valeur) === cle(valeur)));
+        if (valeur.trim()) setConnue(l.some((o) => cle(o.valeur) === cle(valeur) || cle(o.libelle) === cle(valeur)));
         else setConnue(null);
       } catch {
         if (vivant) setOptions([]);
@@ -153,7 +185,7 @@ export function SaisieReferentiel({
           {!options.length && <li className="px-3 py-2 text-[12px] text-zinc-500">Rien dans la liste : vous pouvez garder ce que vous avez tapé.</li>}
         </ul>
       )}
-      {connue === false && valeur.trim() && !ouvert && <div className="mt-1 text-[11px] text-or-700">Hors liste : gardé tel quel.</div>}
+      {connue === false && valeur.trim() && !ouvert && avertissement && <div className="mt-1 rounded-lg bg-or-50 px-2 py-1 text-[11px] text-or-700">{avertissement}</div>}
     </div>
   );
 }

@@ -112,16 +112,16 @@ export function ImpressionEvaluation() {
             </div>
             <div className="grid grid-cols-2 gap-10 text-center">
               <div>
-                <div className="font-bold">L’agent évalué</div>
+                <div>L’agent évalué</div>
                 <div className="text-[9pt]">(lu et pris connaissance)</div>
                 <div className="h-20" />
-                <div className="font-bold underline">{a.nomComplet}</div>
+                <div className="font-bold">{a.nomComplet}</div>
               </div>
               <div>
-                <div className="font-bold">Le chef immédiat</div>
+                <div>Le chef immédiat</div>
                 <div className="text-[9pt]">(l’évaluateur)</div>
                 <div className="h-20" />
-                <div className="font-bold underline">{e.evaluateur ?? ""}</div>
+                <div className="font-bold">{e.evaluateur ?? ""}</div>
               </div>
             </div>
           </div>

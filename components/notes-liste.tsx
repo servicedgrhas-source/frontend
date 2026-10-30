@@ -192,7 +192,10 @@ export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "E
                   </td>
                   <td className="text-right tabular-nums">
                     {n.total}
-                    {n.total === 0 && ["BROUILLON", "SOUMISE"].includes(n.statut) && <div className="text-[11px] font-medium text-or-700">vide : à supprimer</div>}
+                    {!!n.enAttente && ["BROUILLON", "SOUMISE"].includes(n.statut) && (
+                      <div className="text-[11px] font-medium text-or-700">+ {n.enAttente} retenu(s) sans département retenu : à placer</div>
+                    )}
+                    {n.total === 0 && !n.enAttente && ["BROUILLON", "SOUMISE"].includes(n.statut) && <div className="text-[11px] font-medium text-or-700">vide : à supprimer</div>}
                   </td>
                   <td>
                     <span className="inline-flex items-center gap-1">

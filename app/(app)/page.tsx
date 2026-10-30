@@ -344,19 +344,18 @@ function Encart({ titre, texte, href, action, alerte }: { titre: string; texte: 
 function Histogramme({ lots }: { lots: TableauBord["lots"] }) {
   const [survol, setSurvol] = useState<number | null>(null);
   const max = Math.max(1, ...lots.map((l) => l.agents));
-  // « jj/mm » ; avec l'année (« jj/mm/aa ») si les paquets montrés couvrent plusieurs années
+  // « jj/mm » ; l'année en dessous (« 2026 ») si les paquets montrés couvrent plusieurs années :
+  // sur une seule ligne, douze dates « jj/mm/aa » ne tiennent pas et poussent les barres hors du cadre
   const annees = new Set(lots.map((l) => l.dateReception?.slice(0, 4)));
-  const etiquette = (d: string | null) => {
-    const c = dateCourte(d);
-    return annees.size > 1 && c.length >= 10 ? `${c.slice(0, 6)}${c.slice(8, 10)}` : c.slice(0, 5);
-  };
+  const surDeuxLignes = annees.size > 1;
+  const basEtiquettes = surDeuxLignes ? "2.25rem" : "1.5rem";
   const graduations = [0, 0.5, 1].map((f) => Math.round(f * max));
 
   return (
     <div className="relative">
-      <div className="flex h-44 gap-3 pl-9">
+      <div className="flex h-44 gap-1.5 pl-9 sm:gap-3">
         {/* graduations */}
-        <div className="pointer-events-none absolute inset-y-0 left-0 right-0 bottom-6 flex flex-col-reverse justify-between">
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-col-reverse justify-between" style={{ bottom: basEtiquettes }}>
           {graduations.map((g) => (
             <div key={g} className="flex items-center gap-2">
               <span className="w-7 text-right text-[10px] tabular-nums text-zinc-300">{nf.format(g)}</span>
@@ -370,7 +369,7 @@ function Histogramme({ lots }: { lots: TableauBord["lots"] }) {
           return (
             <div
               key={l.numero}
-              className="relative flex flex-1 flex-col items-center justify-end"
+              className="relative flex min-w-0 flex-1 flex-col items-center justify-end"
               onMouseEnter={() => setSurvol(l.numero)}
               onMouseLeave={() => setSurvol(null)}
             >
@@ -380,7 +379,7 @@ function Histogramme({ lots }: { lots: TableauBord["lots"] }) {
                   <div className="text-white/70">{nf.format(l.agents)} textes · {nf.format(l.affectes)} affectés</div>
                 </div>
               )}
-              <div className="relative flex h-[calc(100%-1.5rem)] w-full max-w-9 items-end">
+              <div className="relative flex w-full max-w-9 items-end" style={{ height: `calc(100% - ${basEtiquettes})` }}>
                 <div
                   className={`relative w-full overflow-hidden rounded-t-[4px] transition-colors ${survol === l.numero ? "bg-marque-300" : "bg-marque-200"}`}
                   style={{ height: `${Math.max(h, 1.5)}%` }}
@@ -388,7 +387,10 @@ function Histogramme({ lots }: { lots: TableauBord["lots"] }) {
                   <div className="absolute inset-x-0 bottom-0 bg-marque-500" style={{ height: `${affH}%` }} />
                 </div>
               </div>
-              <span className={`mt-2 text-[11px] ${survol === l.numero ? "font-medium text-encre" : "text-zinc-400"}`}>{etiquette(l.dateReception)}</span>
+              <span className={`mt-2 text-center text-[11px] leading-tight tabular-nums ${survol === l.numero ? "font-medium text-encre" : "text-zinc-400"}`}>
+                {dateCourte(l.dateReception).slice(0, 5)}
+                {surDeuxLignes && <span className="block text-[10px]">{l.dateReception?.slice(0, 4)}</span>}
+              </span>
             </div>
           );
         })}

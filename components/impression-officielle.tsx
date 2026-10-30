@@ -69,9 +69,9 @@ export function SignatureOfficielle({ titre, nom, lieu }: { titre: string; nom?:
         <div>
           Fait à {lieu || "Brazzaville"}, le {new Date().toLocaleDateString("fr-FR")}
         </div>
-        <div className="mt-[1.5em] font-bold">{titre}</div>
+        <div className="mt-[1.5em]">{titre}</div>
         <div className="h-[6.5em]" />
-        <div className="font-bold underline">{nom ?? ""}</div>
+        <div className="font-bold">{nom ?? ""}</div>
       </div>
     </div>
   );

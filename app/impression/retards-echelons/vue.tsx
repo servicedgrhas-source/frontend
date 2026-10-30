@@ -22,10 +22,12 @@ interface Retards {
     departement: string | null;
     structure: string | null;
     echelon: number | null;
+    echelonLibelle: string;
     depuis: string;
     origine: "DERNIER" | "ENTREE";
     dus: number;
     echelonTheorique: number | null;
+    echelonTheoriqueLibelle: string;
     dateManquante: boolean;
   }[];
   signature: { titre: string; nom: string | null; lieu: string };
@@ -55,7 +57,7 @@ export function ImpressionRetards() {
         className: "text-[7.5pt]",
         colonnes: (
           <colgroup>
-            {[4, 21, 9, 8, 8, 11, 17, 6, 8, 4, 4].map((w, i) => (
+            {[4, 22, 9, 8, 8, 11, 18, 6, 8, 6].map((w, i) => (
               <col key={i} style={{ width: `${w}%` }} />
             ))}
           </colgroup>
@@ -71,7 +73,6 @@ export function ImpressionRetards() {
             <th>Structure</th>
             <th>Échelon actuel</th>
             <th>Dernière promotion</th>
-            <th>Éch. dus</th>
             <th>Éch. attendu</th>
           </tr>
         ),
@@ -85,7 +86,7 @@ export function ImpressionRetards() {
         contenu: (
           <EnteteOfficielle
             titre={`ÉCHELONS EN RETARD AU ${dateFr(d.reference)}`}
-            sousTitre={`${nf.format(d.total)} agent(s), ${nf.format(d.echelonsDus)} échelon(s) dus${d.dateManquante ? ` ; ${nf.format(d.dateManquante)} agent(s) sans date de dernière promotion` : ""}`}
+            sousTitre={`${nf.format(d.total)} agent(s), ${nf.format(d.echelonsDus)} échelon(s) de retard${d.dateManquante ? ` ; ${nf.format(d.dateManquante)} agent(s) sans date de dernière promotion` : ""}`}
             sousNumero={editeLe()}
           />
         ),
@@ -98,16 +99,15 @@ export function ImpressionRetards() {
           contenu: (
             <tr data-ligne={`l${i}`}>
               <td className="text-center tabular-nums">{i + 1}</td>
-              <td>{l.nomComplet}</td>
-              <td>{l.matricule ?? "—"}</td>
-              <td>{l.statut === "CONTRACTUEL" ? "Contractuel" : "Fonctionnaire"}</td>
-              <td>{[l.categorie === "HORS_CATEGORIE" ? "Hors cat." : l.categorie, l.echelle && `éch. ${l.echelle}`].filter(Boolean).join(" · ") || "—"}</td>
-              <td>{l.departement ?? "—"}</td>
-              <td>{l.structure ?? "—"}</td>
-              <td className="text-center tabular-nums">{l.echelon ?? "—"}</td>
+              <td className="text-center">{l.nomComplet}</td>
+              <td className="text-center">{l.matricule ?? "—"}</td>
+              <td className="text-center">{l.statut === "CONTRACTUEL" ? "Contractuel" : "Fonctionnaire"}</td>
+              <td className="text-center">{[l.categorie === "HORS_CATEGORIE" ? "Hors cat." : l.categorie, l.echelle && `éch. ${l.echelle}`].filter(Boolean).join(" · ") || "—"}</td>
+              <td className="text-center">{l.departement ?? "—"}</td>
+              <td className="text-center">{l.structure ?? "—"}</td>
+              <td className="text-center tabular-nums">{l.echelonLibelle || "—"}</td>
               <td className="text-center">{l.dateManquante ? "à renseigner" : `${dateFr(l.depuis)}${l.origine === "ENTREE" ? " (entrée)" : ""}`}</td>
-              <td className="text-center font-bold tabular-nums">{l.dateManquante ? "—" : l.dus}</td>
-              <td className="text-center tabular-nums">{l.dateManquante ? "—" : (l.echelonTheorique ?? "—")}</td>
+              <td className="text-center font-bold tabular-nums">{l.dateManquante ? "—" : l.echelonTheoriqueLibelle || "—"}</td>
             </tr>
           ),
         }),
@@ -136,7 +136,7 @@ export function ImpressionRetards() {
         <Alerte>{r.erreur}</Alerte>
       </div>
     );
-  if (!contenu || !r.donnees) return <Chargement texte="Calcul des échelons dus…" />;
+  if (!contenu || !r.donnees) return <Chargement texte="Calcul de l’échelon attendu…" />;
   return (
     <div className="min-h-screen bg-zinc-200 py-6 print:bg-white print:py-0">
       <StyleImpressionA4 paysage />

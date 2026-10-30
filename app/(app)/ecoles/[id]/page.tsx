@@ -62,6 +62,8 @@ interface Fiche {
     matiere: string | null;
     enseignant: boolean;
     enPoste: boolean;
+    /** « Disponibilité » de la fiche : TEMPS_PLEIN, TEMPS_PARTIEL ; null : non renseigné. */
+    tempsTravail?: string | null;
   }[];
   /** Matières du cycle (collège, lycée), pour choisir celle d'un enseignant. */
   matieres: { code: string; libelle: string }[];
@@ -87,6 +89,8 @@ function FicheEcole() {
   const [message, setMessage] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [confirmation, demander] = useConfirmation();
+  // Personnel : tous, ou seulement temps plein / temps partiel / non renseigné (DG, 30/10/2026)
+  const [temps, setTemps] = useState<"" | "TEMPS_PLEIN" | "TEMPS_PARTIEL" | "AUCUN">("");
 
   if (f.erreur) return <Alerte>{f.erreur}</Alerte>;
   if (!f.donnees) return <Chargement />;
@@ -330,6 +334,21 @@ function FicheEcole() {
             Les fiches du personnel rattachées à cette école (choisie dans la fiche, ou reconnue d’après le lieu de service écrit). Le proviseur, le directeur, l’économe… ne comptent pas comme
             enseignants ; un agent détaché, en disponibilité ou retraité n’est pas en poste.
           </p>
+          {!!d.agents.length && (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="text-[12px] text-zinc-500">Temps de travail :</span>
+              <Segments
+                valeur={temps}
+                changer={setTemps}
+                options={[
+                  { valeur: "", libelle: `Tous (${d.agents.length})` },
+                  { valeur: "TEMPS_PLEIN", libelle: `Temps plein (${d.agents.filter((a) => a.tempsTravail === "TEMPS_PLEIN").length})` },
+                  { valeur: "TEMPS_PARTIEL", libelle: `Temps partiel (${d.agents.filter((a) => a.tempsTravail === "TEMPS_PARTIEL").length})` },
+                  { valeur: "AUCUN", libelle: `Non renseigné (${d.agents.filter((a) => !a.tempsTravail).length})` },
+                ]}
+              />
+            </div>
+          )}
           {!d.agents.length ? (
             <Vide>Aucun agent rattaché.</Vide>
           ) : (
@@ -340,11 +359,17 @@ function FicheEcole() {
                   <th>Qualification</th>
                   <th>Fonction dans l’école</th>
                   <th>Spécialité</th>
+                  <th>Temps de travail</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
-                {d.agents.map((a) => (
+                {d.agents
+                  .filter((a) => !temps || (temps === "AUCUN" ? !a.tempsTravail : a.tempsTravail === temps))
+                  // Tous : les enseignants à temps plein d'abord, puis à temps partiel, puis non renseignés
+                  .map((a, i) => ({ a, i, rang: (a.enseignant ? 0 : 3) + (a.tempsTravail === "TEMPS_PLEIN" ? 0 : a.tempsTravail === "TEMPS_PARTIEL" ? 1 : 2) }))
+                  .sort((x, y) => x.rang - y.rang || x.i - y.i)
+                  .map(({ a }) => (
                   <tr key={a.id} className={a.enPoste ? "" : "text-zinc-400"}>
                     <td>
                       <Link href={`/personnel/agents/${a.id}`} className="font-medium text-marque-700 hover:underline">
@@ -381,6 +406,15 @@ function FicheEcole() {
                         </>
                       ) : (
                         (a.specialite ?? "—")
+                      )}
+                    </td>
+                    <td className="text-[12px]">
+                      {a.tempsTravail === "TEMPS_PLEIN" ? (
+                        <Badge ton="vert">Temps plein</Badge>
+                      ) : a.tempsTravail === "TEMPS_PARTIEL" ? (
+                        <Badge ton="jaune">Temps partiel</Badge>
+                      ) : (
+                        <span className="text-zinc-400">à renseigner (« Disponibilité » de la fiche)</span>
                       )}
                     </td>
                     <td className="space-x-1 text-right">

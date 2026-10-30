@@ -141,7 +141,7 @@ export function ImpressionEtatPaiement() {
                 {/* Le titre sans gras, au moins deux lignes pour signer, le nom en gras (DG, 27/10/2026) */}
                 <div className="mt-[1em]">{e.signature.titre}</div>
                 <div className="h-[5em]" />
-                <div className="font-bold underline">{e.signature.nom}</div>
+                <div className="font-bold">{e.signature.nom}</div>
               </div>
             </div>
           </div>

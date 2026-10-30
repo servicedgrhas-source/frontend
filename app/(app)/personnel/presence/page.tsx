@@ -3,6 +3,8 @@
 import { CalendarClock, ChevronLeft, ChevronRight, Clock, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { AnalysePresence } from "@/components/presence/analyse-presence";
+import { PointageJour, SOURCE_HORAIRE } from "@/components/presence/pointage-jour";
 import { ChoixStructure, type StructureCourte } from "@/components/recensement/commun";
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, Chiffre, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide } from "@/components/ui";
@@ -20,6 +22,9 @@ interface Semaine {
     nomComplet: string;
     fonction: string | null;
     horaire: Record<string, { debut: string | null; fin: string | null }> | null;
+    /** Heures attendues chaque jour : emploi du temps, sinon horaire saisi, sinon heures par défaut. */
+    prevu: Record<string, { debut: string | null; fin: string | null }>;
+    source: "EDT" | "HORAIRE" | "DEFAUT";
     attendus: boolean[];
     saisies: Record<string, { statut: string; motif: string | null; arrivee: string | null; depart: string | null; retard: number | null }>;
     bilan: Bilan;
@@ -90,22 +95,24 @@ const decaler = (d: string, n: number) => {
 export default function Presence() {
   const { profil } = useSession();
   const chef = profil.role === "STRUCTURE";
-  const [vue, setVue] = useState<"pointage" | "rapport">("pointage");
+  const [vue, setVue] = useState<"jour" | "pointage" | "analyse" | "rapport">("jour");
   return (
     <div className="space-y-5">
       <EnTete
         titre="Présence du personnel"
-        sousTitre="Chaque agent a ses jours et heures de travail. Le chef de structure pointe depuis son téléphone ou son ordinateur, chaque jour ou en fin de semaine, puis valide la semaine. Une semaine non validée se voit dans le rapport."
+        sousTitre="Chaque agent a ses heures prévues : son emploi du temps pour un enseignant, sinon ses jours et heures de travail. Le chef de structure note les arrivées et les départs chaque jour (ou pointe en fin de semaine), puis valide la semaine. Retards, départs avant l’heure, cours manqués et absences se lisent dans « Retards et absences »."
       />
       <Segments
         valeur={vue}
         changer={setVue}
         options={[
+          { valeur: "jour", libelle: "Pointage du jour" },
           { valeur: "pointage", libelle: "Pointage de la semaine" },
+          { valeur: "analyse", libelle: "Retards et absences" },
           { valeur: "rapport", libelle: chef ? "Bilan de ma structure" : "Rapport" },
         ]}
       />
-      {vue === "pointage" ? <Pointage /> : <RapportPresence />}
+      {vue === "jour" ? <PointageJour /> : vue === "pointage" ? <Pointage /> : vue === "analyse" ? <AnalysePresence /> : <RapportPresence />}
     </div>
   );
 }
@@ -263,7 +270,9 @@ function Pointage() {
                             </BoutonIcone>
                           )}
                         </div>
-                        <div className="text-[11px] text-zinc-400">{a.fonction ?? ""}</div>
+                        <div className="text-[11px] text-zinc-400">
+                          {[a.fonction, `heures : ${SOURCE_HORAIRE[a.source]}`].filter(Boolean).join(" · ")}
+                        </div>
                       </td>
                       {s.donnees!.dates.map((d, i) => {
                         const v = valeur(a, d);
@@ -400,7 +409,7 @@ function HeuresSemaine({
     Object.fromEntries(venus.map((d) => [d, { arrivee: agent.saisies[d]?.arrivee ?? "", depart: agent.saisies[d]?.depart ?? "" }])),
   );
   const [erreur, setErreur] = useState<string | null>(null);
-  const prevu = (d: string) => agent.horaire?.[String(semaine.dates.indexOf(d) + 1)];
+  const prevu = (d: string) => agent.prevu?.[String(semaine.dates.indexOf(d) + 1)];
   return (
     <Modale titre={`Heures de la semaine — ${agent.nomComplet}`} ouverte fermer={fermer}>
       <p className="mb-3 text-[12px] text-zinc-500">
@@ -475,8 +484,8 @@ function Horaire({ agent, structureId, jours, fermer, apres }: { agent: Semaine[
   return (
     <Modale titre={`Jours et heures de travail — ${agent.nomComplet}`} ouverte fermer={fermer}>
       <p className="mb-3 text-[12px] text-zinc-500">
-        Cochez les jours où l’agent est attendu et ses heures (un professeur peut ne venir que trois jours ; l’administration du lundi au vendredi, parfois le samedi). Sans horaire saisi, il est
-        attendu du lundi au vendredi.
+        Cochez les jours où l’agent est attendu et ses heures (l’administration du lundi au vendredi, parfois le samedi). Pour un enseignant qui a des cours dans l’emploi du temps, ce sont ses cours
+        qui comptent : du début de son premier cours à la fin de son dernier. Sans emploi du temps ni horaire saisi, il est attendu aux heures par défaut, du lundi au vendredi.
       </p>
       <div className="space-y-2">
         {jours.map((j, i) => {

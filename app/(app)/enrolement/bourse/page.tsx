@@ -42,6 +42,23 @@ interface Detail {
   controles: Record<string, { libelle: string; gravite: "BLOQUANT" | "SIGNALE" }>;
 }
 
+/** Une personne d'une paire « payés deux fois » ; `paye` : montant de cet état (null : pas payée sur cette liste ce mois-ci). */
+interface PersonneDeuxFois {
+  id: string;
+  nomComplet: string;
+  liste: string;
+  etablissement: string | null;
+  departement: string | null;
+  categorie: string | null;
+  paye: number | null;
+}
+interface DeuxFois {
+  personnes: number;
+  paires: { code: string; controle: string; a: PersonneDeuxFois; b: PersonneDeuxFois | null }[];
+}
+/** Filtre des contrôles qui réunit « Inscrit deux fois » et « Payé aussi sur l'autre liste ». */
+const DEUX_FOIS = "DEUX_FOIS";
+
 const moisCourant = () => new Date().toISOString().slice(0, 7);
 
 /** Bourse mensuelle : préparée depuis le registre, contrôlée, validée par le DG, puis éditée en Excel. */
@@ -70,6 +87,8 @@ export default function BourseMensuelle() {
   const [sortie, setSortie] = useState(false);
   const id = choisi ?? etats.donnees?.[0]?.id ?? null;
   const detail = useApi<Detail>(id ? `/enrolement/bourse/${id}${qs({ recherche, departement, page, taille: 50 })}` : null);
+  // « Payés deux fois » (DG, 28/10/2026) : inscrits deux fois ou payés sur les deux listes, une ligne par paire
+  const deuxFois = useApi<DeuxFois>(id && code === DEUX_FOIS ? `/enrolement/bourse/${id}/payes-deux-fois` : null);
   if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
 
   const c = config.donnees?.configuration;
@@ -84,6 +103,8 @@ export default function BourseMensuelle() {
     anomalies.reduce<Record<string, number>>((t, a) => ({ ...t, [a.code]: (t[a.code] ?? 0) + 1 }), {}),
   ).sort(([a], [b]) => (detail.donnees?.controles[a]?.gravite === "BLOQUANT" ? -1 : 1) - (detail.donnees?.controles[b]?.gravite === "BLOQUANT" ? -1 : 1));
   const visibles = anomalies.filter((a) => !code || a.code === code);
+  // Une paire par cas (le doublon est signalé des deux côtés) : le nombre affiché sur le filtre
+  const casDeuxFois = new Set(anomalies.filter((a) => a.code === "DOUBLON" || a.code === "AUTRE_LISTE").map((a) => `${a.code}|${[a.volontaireId, a.autreId ?? ""].sort().join("|")}`)).size;
   const sortieGroupee = code === "RECRUTE_FP" && gerer && e?.statut === "BROUILLON";
   const recrutes = sortieGroupee ? visibles.slice(0, 300) : [];
   const motifFP = c?.motifsSortie.find((x) => x.code === "RECRUTE_FP");
@@ -266,6 +287,18 @@ export default function BourseMensuelle() {
                       className={`rounded-full px-3 py-1 text-[12px] ring-1 ${!code ? "bg-nuit text-white ring-nuit" : "ring-zinc-200"}`}>
                       Tous
                     </button>
+                    {casDeuxFois > 0 && (
+                      <button
+                        type="button"
+                        title="Inscrits deux fois sur la liste, ou payés aussi sur l’autre liste : une ligne par cas, à vérifier puis à retirer de la prochaine bourse"
+                        onClick={() => {
+                          setCode(DEUX_FOIS);
+                          setCoches(new Set());
+                        }}
+                        className={`rounded-full px-3 py-1 text-[12px] font-semibold ring-1 ${code === DEUX_FOIS ? "bg-rouge-600 text-white ring-rouge-600" : "text-rouge-700 ring-rouge-200"}`}>
+                        Payés deux fois · {nf.format(casDeuxFois)} cas
+                      </button>
+                    )}
                     {parCode.map(([k, n]) => (
                       <button
                         key={k}
@@ -289,6 +322,16 @@ export default function BourseMensuelle() {
                       </Bouton>
                     </div>
                   )}
+                  {code === DEUX_FOIS ? (
+                    <TableauDeuxFois
+                      r={deuxFois.donnees}
+                      erreur={deuxFois.erreur}
+                      regler={gerer && e?.statut === "BROUILLON" ? (x) => setFiche({ id: x.id }) : null}
+                      ouvrir={(x) => setFiche({ id: x.id })}
+                      exporter={() => api.telecharger(`/enrolement/bourse/${id}/payes-deux-fois/excel`, `Payés deux fois - ${e ? moisFr(e.mois) : ""}.xlsx`).catch((x: Error) => setErreur(x.message))}
+                    />
+                  ) : (
+                  <>
                   <Tableau>
                     <thead>
                       <tr>
@@ -339,6 +382,8 @@ export default function BourseMensuelle() {
                     </tbody>
                   </Tableau>
                   {visibles.length > 300 && <p className="mt-3 text-[12px] text-zinc-400">300 premiers sur {nf.format(visibles.length)} : choisissez un contrôle pour voir les autres.</p>}
+                  </>
+                  )}
                 </>
               )}
             </Carte>
@@ -537,5 +582,73 @@ export default function BourseMensuelle() {
       </Modale>
       {confirmation}
     </div>
+  );
+}
+
+/**
+ * Payés deux fois (DG, 28/10/2026 : « il faut les identifier, les lister ») : une ligne par cas, les
+ * deux fiches côte à côte, pour vérifier puis retirer la personne de la prochaine bourse.
+ */
+function TableauDeuxFois({
+  r,
+  erreur,
+  regler,
+  ouvrir,
+  exporter,
+}: {
+  r: DeuxFois | null;
+  erreur: string | null;
+  regler: ((p: PersonneDeuxFois) => void) | null;
+  ouvrir: (p: PersonneDeuxFois) => void;
+  exporter: () => void;
+}) {
+  if (erreur) return <Alerte>{erreur}</Alerte>;
+  if (!r) return <Chargement />;
+  const cote = (p: PersonneDeuxFois | null) =>
+    p ? (
+      <div className="text-[12px]">
+        <button type="button" className="text-left font-medium underline decoration-zinc-300 decoration-dotted underline-offset-2 hover:text-marque-700" onClick={() => (regler ?? ouvrir)(p)}>
+          {p.nomComplet}
+        </button>
+        <div className="text-[11px] text-zinc-500">{[p.liste, p.etablissement, p.departement, p.categorie].filter(Boolean).join(" · ")}</div>
+        <div className={`text-[11px] ${p.paye === null ? "text-zinc-400" : "font-medium"}`}>{p.paye === null ? "pas payé sur cette liste ce mois-ci" : `payé ${fcfa(p.paye)}`}</div>
+      </div>
+    ) : (
+      <span className="text-zinc-400">—</span>
+    );
+  return (
+    <>
+      <div className="mb-3 flex flex-wrap items-center gap-3 rounded-2xl bg-rouge-50 p-3 text-[13px] ring-1 ring-rouge-100">
+        <span className="text-zinc-700">
+          <strong>{nf.format(r.paires.length)} cas</strong>, {nf.format(r.personnes)} personne(s). Vérifiez chaque cas (même nom, même date de naissance) ; gardez la bonne fiche et sortez l’autre du registre
+          (motif « Doublon ») : elle ne sera plus payée à la prochaine bourse.
+        </span>
+        <Bouton onClick={exporter}>
+          <Download /> Liste Excel
+        </Bouton>
+      </div>
+      <Tableau>
+        <thead>
+          <tr>
+            <th>N°</th>
+            <th>Contrôle</th>
+            <th>Personne</th>
+            <th>Même personne probable</th>
+          </tr>
+        </thead>
+        <tbody>
+          {r.paires.map((x, i) => (
+            <tr key={`${x.code}-${x.a.id}-${x.b?.id ?? ""}`}>
+              <td className="tabular-nums text-zinc-500">{i + 1}</td>
+              <td>
+                <Badge ton="rouge">{x.controle}</Badge>
+              </td>
+              <td>{cote(x.a)}</td>
+              <td>{cote(x.b)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </Tableau>
+    </>
   );
 }

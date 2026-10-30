@@ -127,7 +127,7 @@ export function ImpressionFicheMutation() {
               <div>
                 Fait à {lieu}, le {date}
               </div>
-              <div className="mt-3 font-bold">{p("DG_TITRE", "Le Directeur général,")}</div>
+              <div className="mt-3">{p("DG_TITRE", "Le Directeur général,")}</div>
               <div className="mt-16 font-bold">{signataire}</div>
             </div>
           </div>

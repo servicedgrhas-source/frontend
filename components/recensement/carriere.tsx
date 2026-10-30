@@ -3,7 +3,7 @@
 import { Award, Briefcase, Star, CircleDot, FileText, MapPin, Paperclip, Pencil, Printer, Trash2, TrendingUp, Upload, UserRound } from "lucide-react";
 import { useRef, useState } from "react";
 import { type ChampFiche, type ConfigRecensement, SaisieRubrique } from "@/components/recensement/commun";
-import { Alerte, Badge, BoutonIcone, Bouton, Carte, Champ, Chargement, Liste, Modale, Saisie, Zone, useConfirmation } from "@/components/ui";
+import { Alerte, Badge, BoutonIcone, Bouton, Carte, Champ, Chargement, Liste, Modale, Saisie, SaisieDate, Zone, useConfirmation } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import type { Ton } from "@/lib/libelles";
 
@@ -79,10 +79,14 @@ export interface DossierCarriere {
       libelle: string;
       dureeEchelonMois: number | null;
       nombreEchelons: number | null;
+      echelonsHorsClasse?: number;
+      libelleHorsClasse?: string;
     } | null;
     prochainEchelon: string | null;
-    /** Promotions (ou avancements) attendues depuis la dernière, avec l'échelon attendu. */
-    attendues?: { date: string; echelon: number | null; echelle?: string | null }[];
+    /** L'échelon de la prochaine promotion : « 5 », ou « HC 1 » après le dernier (16e). */
+    echelonSuivant?: string | null;
+    /** Promotions (ou avancements) attendues depuis la dernière, avec l'échelon attendu (« 5 », « HC 2 »). */
+    attendues?: { date: string; echelon: number | null; echelonLibelle?: string; echelle?: string | null }[];
     dernierEchelon: boolean;
     /** Échelon au-delà du 1er sans date de dernière promotion : promotions attendues impossibles à calculer. */
     dateManquante?: boolean;
@@ -301,6 +305,12 @@ export function CarteCarriere({
   );
 }
 
+/** « 5 » → « 5e échelon » ; « HC 2 » → « 2e échelon hors classe » (après le 16e, DG 29/10/2026). */
+export function echelonEnClair(k: string, horsClasse = "Hors classe") {
+  const n = k.startsWith("HC ") ? k.slice(3) : k;
+  return `${n === "1" ? "1er" : `${n}e`} échelon${k.startsWith("HC ") ? ` ${horsClasse.toLowerCase()}` : ""}`;
+}
+
 /** Situation actuelle, en tête du dossier. */
 export function Situation({ d }: { d: DossierCarriere }) {
   const v = d.situation.valeurs;
@@ -324,11 +334,14 @@ export function Situation({ d }: { d: DossierCarriere }) {
               à renseigner : l’agent est au {val("ECHELON")}e échelon, il a donc eu des promotions ; leur date manque
             </span>
           ) : d.situation.dernierEchelon ? (
-            <span className="block text-[11px] text-zinc-500">dernier échelon de l’échelle</span>
+            <span className="block text-[11px] text-zinc-500">
+              dernier échelon{d.situation.echelle?.echelonsHorsClasse ? ` (${(d.situation.echelle.libelleHorsClasse ?? "hors classe").toLowerCase()} HC ${d.situation.echelle.echelonsHorsClasse})` : " de l’échelle"}
+            </span>
           ) : d.situation.prochainEchelon ? (
             <span className={`block text-[11px] ${du ? "font-semibold text-or-700" : "text-zinc-500"}`}>
               {du ? (mot === "avancement" ? "avancement dû depuis le " : "promotion due depuis le ") : mot === "avancement" ? "prochain avancement le " : "prochaine promotion le "}
               {dateFr(d.situation.prochainEchelon)}
+              {d.situation.echelonSuivant && ` (${echelonEnClair(d.situation.echelonSuivant, d.situation.echelle?.libelleHorsClasse)})`}
             </span>
           ) : null}
         </>
@@ -521,7 +534,7 @@ function Edition({
           />
         </Champ>
         <Champ libelle="Date d’effet *" aide="Un événement plus ancien que le dernier ne change pas la fiche : il complète l’historique.">
-          <Saisie type="date" value={s.dateEffet ?? ""} onChange={(e) => maj({ dateEffet: e.target.value })} />
+          <SaisieDate aria-label="Date d’effet" value={s.dateEffet ?? ""} onChange={(v) => maj({ dateEffet: v })} />
         </Champ>
         <Champ libelle="Acte">
           <Liste
@@ -539,7 +552,7 @@ function Edition({
             <Saisie value={s.acteNumero ?? ""} onChange={(e) => maj({ acteNumero: e.target.value })} placeholder="Ex. 1234/MEPPSA" />
           </Champ>
           <Champ libelle="Date de l’acte">
-            <Saisie type="date" value={s.acteDate ?? ""} onChange={(e) => maj({ acteDate: e.target.value })} />
+            <SaisieDate aria-label="Date de l’acte" value={s.acteDate ?? ""} onChange={(v) => maj({ acteDate: v })} />
           </Champ>
         </div>
       </div>

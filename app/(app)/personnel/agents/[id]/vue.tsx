@@ -21,10 +21,11 @@ import {
   Taux,
   useConfigRecensement,
 } from "@/components/recensement/commun";
+import { ProblemesFiche } from "@/components/recensement/anomalies";
 import { CarteCarriere } from "@/components/recensement/carriere";
 import { CarteEvaluations } from "@/components/recensement/evaluation";
 import { useSession } from "@/components/session";
-import { Alerte, Annonce, Badge, BoutonIcone, Bouton, Carte, Champ, Chargement, EnTete, Liste, Modale, Saisie, Segments, Zone, useConfirmation } from "@/components/ui";
+import { Alerte, Annonce, Badge, BoutonIcone, Bouton, Carte, Champ, Chargement, EnTete, Liste, Modale, Saisie, SaisieDate, Segments, Zone, useConfirmation } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { peut } from "@/lib/libelles";
 
@@ -90,6 +91,8 @@ export function VueFiche() {
   const precedente = params.get("cree");
   // Ajout depuis la page Recensement : agent absent de la base, qui part au contrôle puis au DG
   const ajout = nouveau && params.get("recensement") === "1";
+  // Fiche complétée depuis la page Recensement : ses modifications partent au contrôle
+  const viaRecensement = !nouveau && params.get("recensement") === "1";
 
   const c = config.donnees?.configuration;
   if (!peutRecenser(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS, aux DDEPPSA et aux chefs d’établissement.</Alerte>;
@@ -100,8 +103,10 @@ export function VueFiche() {
       c={c}
       precedente={nouveau ? precedente : null}
       ajout={ajout}
+      viaRecensement={viaRecensement}
       nomPropose={nouveau ? (params.get("nom") ?? "") : ""}
       structurePropose={nouveau ? (params.get("structure") ?? "") : ""}
+      corriger={nouveau ? null : params.get("corriger")}
       key={nouveau ? `nouveau-${params.get("t") ?? ""}` : `${fiche.donnees!.agent.id}-${fiche.donnees!.agent.modifieLe}`}
       fiche={nouveau ? null : fiche.donnees}
       structures={structures.donnees}
@@ -120,8 +125,10 @@ function Formulaire({
   c,
   precedente,
   ajout = false,
+  viaRecensement = false,
   nomPropose = "",
   structurePropose = "",
+  corriger = null,
   fiche,
   structures,
   recharger,
@@ -131,9 +138,13 @@ function Formulaire({
   c: ConfigRecensement;
   precedente?: string | null;
   ajout?: boolean;
+  /** Ouverte depuis le Recensement : les modifications partent au contrôle (DG, 30/10/2026). */
+  viaRecensement?: boolean;
   nomPropose?: string;
   /** Nouvelle fiche ouverte depuis une structure (Structures administratives › « Enregistrer un agent ici »). */
   structurePropose?: string;
+  /** Ouverte depuis « Corriger » (Base du personnel › anomalies) : le problème à corriger. */
+  corriger?: string | null;
   fiche: Fiche | null;
   structures: StructureCourte[];
   recharger: () => void;
@@ -189,11 +200,11 @@ function Formulaire({
     setEnvoi(true);
     try {
       const donnees = Object.fromEntries(champs.map((ch) => [ch.code, nettoyer(ch, d[ch.code]) ?? null]));
-      const corps = { statut, structureId: structureId ? Number(structureId) : null, donnees, forcer, ...(a ? {} : { contentieux: horsBase }) };
+      const corps = { statut, structureId: structureId ? Number(structureId) : null, donnees, forcer, ...(a ? { recensement: viaRecensement } : { contentieux: horsBase }) };
       if (a) {
         await api.put(`/recensement/agents/${a.id}`, corps);
         const echecs = await envoyerActes(a.id);
-        setMessage("Fiche enregistrée.");
+        setMessage(viaRecensement && !a.contentieux ? "Fiche enregistrée. Les modifications partent au bureau du contrôle." : "Fiche enregistrée.");
         if (echecs) setErreur(`Fiche enregistrée, mais ${echecs} acte(s) de naissance n’ont pas pu être envoyés : déposez-les de nouveau sur la ligne de l’enfant.`);
         setDoublon(null);
         recharger();
@@ -218,8 +229,8 @@ function Formulaire({
   return (
     <div className="space-y-6 pb-24">
       <div>
-        <Link href={ajout || a?.contentieux ? "/recensement" : "/personnel/agents"} className="inline-flex items-center gap-1 text-xs font-medium text-marque-700 hover:underline">
-          <ArrowLeft className="size-3.5" /> {ajout || a?.contentieux ? "Recensement" : "Base du personnel"}
+        <Link href={ajout || viaRecensement || a?.contentieux ? "/recensement" : "/personnel/agents"} className="inline-flex items-center gap-1 text-xs font-medium text-marque-700 hover:underline">
+          <ArrowLeft className="size-3.5" /> {ajout || viaRecensement || a?.contentieux ? "Recensement" : "Base du personnel"}
         </Link>
       </div>
       <EnTete
@@ -249,6 +260,12 @@ function Formulaire({
       />
       <Annonce fermer={() => setMessage(null)}>{message}</Annonce>
       {precedente && <Alerte ton="vert">Fiche de {precedente} enregistrée. Saisissez l’agent suivant.</Alerte>}
+      {viaRecensement && a && !a.contentieux && (
+        <Alerte ton="bleu">
+          <strong>Complément au recensement.</strong> Ce que vous changez est appliqué tout de suite et part au <strong>bureau du contrôle</strong>, avec l’ancienne et la nouvelle
+          valeur : il valide, ou rejette et la fiche reprend ses anciennes valeurs.
+        </Alerte>
+      )}
       {ajout && (
         <Alerte ton="bleu">
           <strong>Ajout d’un agent absent de la base.</strong> Remplissez ce que vous savez, puis enregistrez : la fiche part au <strong>bureau du contrôle</strong>, puis au{" "}
@@ -258,7 +275,13 @@ function Formulaire({
       )}
 
       {/* Agent ajouté au recensement : contrôle puis décision du DG, avant tout le reste */}
-      {a?.contentieux && fiche && <Contentieux fiche={fiche} recharger={recharger} />}
+      {a?.contentieux && fiche && (
+        <div id="bloc-contentieux" className="scroll-mt-24 transition-shadow">
+          <Contentieux fiche={fiche} recharger={recharger} />
+        </div>
+      )}
+      {/* Les problèmes de la fiche, chacun avec « Corriger » qui mène à l'endroit où il se règle */}
+      {a && <ProblemesFiche c={c} agent={a} corriger={corriger} />}
       {a && !a.complet && (
         <Alerte ton="jaune">
           <strong>À compléter :</strong>{" "}
@@ -383,19 +406,25 @@ function Formulaire({
       {a && <Parcours c={c} fiche={fiche!} recharger={recharger} />}
 
       {a && (
-        <CarteCarriere
-          c={c}
-          agentId={a.id}
-          peutModifier={peut.traiter(profil.role)}
-          departementId={refs.departements.find((x) => x.code === d.DEPARTEMENT)?.id ?? null}
-          attente={modifie ? "Enregistrez d’abord les modifications de la fiche." : null}
-          apres={recharger}
-        />
+        <div id="bloc-carriere" className="scroll-mt-24 transition-shadow">
+          <CarteCarriere
+            c={c}
+            agentId={a.id}
+            peutModifier={peut.traiter(profil.role)}
+            departementId={refs.departements.find((x) => x.code === d.DEPARTEMENT)?.id ?? null}
+            attente={modifie ? "Enregistrez d’abord les modifications de la fiche." : null}
+            apres={recharger}
+          />
+        </div>
       )}
 
       {a && <CarteEvaluations agentId={a.id} nom={a.nomComplet} />}
 
-      {a && <MemesPersonnes c={c} agent={a} recharger={recharger} />}
+      {a && (
+        <div id="bloc-memes" className="scroll-mt-24 transition-shadow">
+          <MemesPersonnes c={c} agent={a} recharger={recharger} />
+        </div>
+      )}
 
       {a && !!fiche!.historique.length && (
         <Carte titre="Historique">
@@ -897,7 +926,7 @@ function Parcours({ c, fiche, recharger }: { c: ConfigRecensement; fiche: Fiche;
             </p>
           )}
           <Champ libelle="Date d’effet" aide="Date du texte d’intégration (ou de la prise d’effet).">
-            <Saisie type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <SaisieDate aria-label="Date d’effet" value={date} onChange={setDate} />
           </Champ>
           <Champ libelle="Texte" aide={etat ? "Arrêté ou décret d’intégration : il remplace le texte de recrutement de la fiche." : "Note, contrat…"}>
             <Saisie value={texte} onChange={(e) => setTexte(e.target.value)} placeholder="Ex. Arrêté n° 1234 du 12/09/2026" />
