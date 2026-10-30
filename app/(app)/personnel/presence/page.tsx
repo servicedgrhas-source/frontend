@@ -7,7 +7,7 @@ import { AnalysePresence } from "@/components/presence/analyse-presence";
 import { PointageJour, SOURCE_HORAIRE } from "@/components/presence/pointage-jour";
 import { ChoixStructure, type StructureCourte } from "@/components/recensement/commun";
 import { useSession } from "@/components/session";
-import { Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, Chiffre, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide } from "@/components/ui";
+import { Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, Chiffre, EnTete, Liste, Modale, Saisie, SaisieDate, Segments, Tableau, Vide } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { CYCLE_PRESENCE, STATUTS_PRESENCE } from "@/lib/ecoles";
 
@@ -51,7 +51,12 @@ interface Rapport {
   du: string;
   au: string;
   semainesDues: string[];
+  /** Premier pointage du système : les semaines ne sont dues qu'à partir de là. */
+  lancement: string | null;
   taux: number | null;
+  journeesAttendues: number;
+  journeesPointees: number;
+  tauxPointage: number | null;
   sansPointage: number;
   structures: {
     id: number;
@@ -64,6 +69,8 @@ interface Rapport {
     justifies: number;
     absents: number;
     pointages: number;
+    journeesAttendues: number;
+    tauxPointage: number | null;
     taux: number | null;
     semainesNonValidees: string[];
   }[];
@@ -536,9 +543,13 @@ function Horaire({ agent, structureId, jours, fermer, apres }: { agent: Semaine[
   );
 }
 
+/** Aujourd'hui à Brazzaville (UTC+1), comme le serveur. */
+const AUJOURDHUI = new Date(Date.now() + 3600_000).toISOString().slice(0, 10);
+
 function RapportPresence() {
   const { profil, refs } = useSession();
-  const aujourdhui = new Date().toISOString().slice(0, 10);
+  const aujourdhui = AUJOURDHUI;
+  const chef = profil.role === "STRUCTURE";
   const [du, setDu] = useState(decaler(aujourdhui, -27));
   const [au, setAu] = useState(aujourdhui);
   const [departement, setDepartement] = useState("");
@@ -548,10 +559,10 @@ function RapportPresence() {
     <>
       <div className="flex flex-wrap items-end gap-3">
         <Champ libelle="Du">
-          <Saisie type="date" value={du} onChange={(e) => setDu(e.target.value)} />
+          <SaisieDate aria-label="Début de la période" value={du} onChange={(v) => v && setDu(v)} />
         </Champ>
         <Champ libelle="Au">
-          <Saisie type="date" value={au} onChange={(e) => setAu(e.target.value)} />
+          <SaisieDate aria-label="Fin de la période" value={au} onChange={(v) => v && setAu(v > aujourdhui ? aujourdhui : v)} />
         </Champ>
         {central && (
           <Champ libelle="Département">
@@ -564,20 +575,29 @@ function RapportPresence() {
         <Chargement />
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Chiffre libelle="Taux de présence" valeur={r.donnees.taux === null ? "—" : `${r.donnees.taux} %`} detail="présents et retards sur les journées pointées" />
-            <Chiffre libelle="Structures qui doivent pointer" valeur={r.donnees.structures.length} detail="celles qui ont des agents rattachés" />
+          {!r.donnees.lancement && <Alerte ton="bleu">Aucun pointage n’a encore été fait dans le système : rien n’est dû pour l’instant.</Alerte>}
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Chiffre
-              libelle="Chefs en retard de pointage"
-              valeur={r.donnees.sansPointage}
+              libelle="Taux de pointage"
+              ton={r.donnees.tauxPointage !== null && r.donnees.tauxPointage < 80 ? "rouge" : "vert"}
+              valeur={r.donnees.tauxPointage === null ? "—" : `${r.donnees.tauxPointage} %`}
+              detail={`${r.donnees.journeesPointees} journée(s) pointée(s) sur ${r.donnees.journeesAttendues} attendue(s)`}
+            />
+            <Chiffre libelle="Taux de présence" valeur={r.donnees.taux === null ? "—" : `${r.donnees.taux} %`} detail="présents (à l’heure ou en retard) sur les journées pointées" />
+            <Chiffre libelle={chef ? "Agents en poste" : "Structures qui doivent pointer"} valeur={chef ? r.donnees.structures.reduce((n, s) => n + s.agents, 0) : r.donnees.structures.length} detail={chef ? "ceux que l’on pointe" : "celles qui ont des agents en poste"} />
+            <Chiffre
+              libelle={chef ? "Semaines à valider" : "Structures en retard de pointage"}
+              valeur={chef ? r.donnees.structures.reduce((n, s) => n + s.semainesNonValidees.length, 0) : r.donnees.sansPointage}
               ton={r.donnees.sansPointage ? "rouge" : "vert"}
-              detail={`${r.donnees.semainesDues.length} semaine(s) terminée(s) dans la période`}
+              detail={`${r.donnees.semainesDues.length} semaine(s) terminée(s) à valider dans la période${r.donnees.lancement ? ` (présence suivie depuis le ${dateFr(r.donnees.lancement)})` : ""}`}
             />
           </div>
           <Carte titre="Par structure">
             <p className="-mt-2 mb-3 text-[12px] leading-relaxed text-zinc-500">
-              Chaque semaine, le chef de la structure pointe ses agents puis <strong>valide la semaine</strong> (onglet « Pointage de la semaine »). La dernière colonne donne les semaines terminées
-              de la période qu’il n’a pas encore validées (du lundi au samedi) : c’est le retard de pointage. Les chiffres de présence ne comptent que les journées pointées.
+              Chaque semaine, le chef de la structure pointe ses agents puis <strong>valide la semaine</strong> (onglet « Pointage de la semaine »). Agents : ceux en poste (les seuls que l’on
+              pointe). Journées attendues : les jours de travail de chaque agent (son emploi du temps, sinon son horaire, sinon du lundi au vendredi), depuis la mise en service de la présence.
+              Le pointage dit si le chef pointe vraiment ; la présence ne compte que les journées pointées. La dernière colonne donne les semaines terminées qu’il n’a pas encore validées. Les
+              retards en minutes, les départs avant l’heure et les cours manqués sont dans « Retards et absences ».
             </p>
             {!r.donnees.structures.length ? (
               <Vide>Aucune structure avec des agents rattachés dans votre périmètre.</Vide>
@@ -586,8 +606,8 @@ function RapportPresence() {
                 <thead>
                   <tr>
                     <th>Structure</th>
-                    <th className="text-right">Agents</th>
-                    <th className="text-right">Journées pointées</th>
+                    <th className="text-right">Agents en poste</th>
+                    <th className="text-right">Journées pointées / attendues</th>
                     <th className="text-right">Retards</th>
                     <th className="text-right">Absences justifiées</th>
                     <th className="text-right">Absences non justifiées</th>
@@ -599,11 +619,16 @@ function RapportPresence() {
                   {r.donnees.structures.slice(0, 300).map((s) => (
                     <tr key={s.id}>
                       <td>
-                        <div className="font-medium">{s.nom}</div>
+                        <Link href={`/personnel/presence?structure=${s.id}`} className="font-medium text-marque-700 hover:underline" title="Ouvrir son pointage">
+                          {s.nom}
+                        </Link>
                         <div className="text-[11px] text-zinc-400">{s.departement ?? ""}</div>
                       </td>
                       <td className="text-right tabular-nums">{s.agents}</td>
-                      <td className="text-right tabular-nums">{s.pointages}</td>
+                      <td className="text-right tabular-nums">
+                        {s.pointages} / {s.journeesAttendues}
+                        {s.tauxPointage !== null && <div className={`text-[11px] ${s.tauxPointage < 80 ? "font-semibold text-rouge-600" : "text-zinc-400"}`}>{s.tauxPointage} % pointé</div>}
+                      </td>
                       <td className="text-right tabular-nums">{s.retards}</td>
                       <td className="text-right tabular-nums">{s.justifies}</td>
                       <td className={`text-right tabular-nums ${s.absents ? "font-semibold text-rouge-600" : ""}`}>{s.absents}</td>

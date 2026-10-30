@@ -17,9 +17,15 @@ export interface Seance {
   agentId: number | null;
   agent: string | null;
   jour: number;
+  /** Ligne de la grille : le créneau où la séance commence. */
   creneau: number;
   /** Plage saisie par l'école (sinon placée par le système). */
   fixe?: boolean;
+  /** Heures propres d'une plage (07:00-08:00) quand elles diffèrent du créneau. */
+  debut?: string;
+  fin?: string;
+  /** Heures de cours que compte la séance (une plage de 07:30 à 09:20 : 2). */
+  heures?: number;
 }
 export interface EmploiDuTemps {
   jours: number[];
@@ -85,6 +91,21 @@ export function resumeJours(jours: JoursTravail | undefined) {
     .join(" · ");
 }
 
+const enMinutes = (h: string) => (/^\d{2}:\d{2}$/.test(h) ? Number(h.slice(0, 2)) * 60 + Number(h.slice(3)) : null);
+/** Deux plages d'un même jour se chevauchent-elles (07:00-08:00 et 07:30-08:30 : oui) ? */
+export const seChevauchent = (a: { debut: string; fin: string }, b: { debut: string; fin: string }) => !!a.debut && !!a.fin && !!b.debut && !!b.fin && a.debut < b.fin && b.debut < a.fin;
+/** Durée d'une heure de cours de l'école (la plus courante de ses créneaux, 55 min). */
+export function dureeHeure(creneaux: Creneau[]) {
+  const d = creneaux.map((c) => (enMinutes(c.fin) ?? 0) - (enMinutes(c.debut) ?? 0)).filter((x) => x > 0).sort((a, b) => a - b);
+  return d.length ? d[Math.floor(d.length / 2)] : 55;
+}
+/** Heures de cours que compte une plage : sa durée en heures de cours de l'école, au moins 1 (comme le serveur). */
+export const heuresPlage = (p: { debut: string; fin: string }, creneaux: Creneau[]) => {
+  const d = enMinutes(p.debut);
+  const f = enMinutes(p.fin);
+  return d === null || f === null || f <= d ? 0 : Math.max(1, Math.round((f - d) / dureeHeure(creneaux)));
+};
+
 /** Couleur stable par matière : on reconnaît d'un coup d'œil le français, les maths… */
 const TEINTES = ["bg-sky-50 text-sky-900", "bg-amber-50 text-amber-900", "bg-emerald-50 text-emerald-900", "bg-rose-50 text-rose-900", "bg-violet-50 text-violet-900", "bg-lime-50 text-lime-900", "bg-orange-50 text-orange-900", "bg-cyan-50 text-cyan-900", "bg-fuchsia-50 text-fuchsia-900", "bg-teal-50 text-teal-900"];
 const teinte = (m: string) => TEINTES[[...m].reduce((s, c) => s + c.charCodeAt(0), 0) % TEINTES.length];
@@ -108,6 +129,13 @@ export function GrilleEdt({
   joursTravail?: JoursTravail;
 }) {
   const parCase = new Map(seances.map((s) => [`${s.jour}:${s.creneau}`, s]));
+  // Une plage longue (07:30-09:20) couvre aussi les créneaux suivants : « suite »
+  const suites = new Map<string, Seance>();
+  for (const s of seances)
+    if (s.debut && s.fin)
+      e.creneaux.forEach((c, i) => {
+        if (i !== s.creneau && seChevauchent(s as { debut: string; fin: string }, c) && !parCase.has(`${s.jour}:${i}`)) suites.set(`${s.jour}:${i}`, s);
+      });
   // Pause entre le matin et l'après-midi : une ligne de séparation
   const coupure = e.creneaux.findIndex((c) => c.debut >= "13:00");
   return (
@@ -132,11 +160,12 @@ export function GrilleEdt({
             </td>
             {e.jours.map((j) => {
               const s = parCase.get(`${j}:${i}`);
-              const absent = vue === "enseignant" && joursTravail !== undefined && !s && !estDisponible(joursTravail, j, c);
+              const suite = !s ? suites.get(`${j}:${i}`) : undefined;
+              const absent = vue === "enseignant" && joursTravail !== undefined && !s && !suite && !estDisponible(joursTravail, j, c);
               return (
                 <td
                   key={j}
-                  className={cx("border border-zinc-300 px-1 py-1 align-top", s && !impression && teinte(s.matiere), absent && "bg-zinc-200/70 text-center align-middle text-zinc-400")}
+                  className={cx("border border-zinc-300 px-1 py-1 align-top", (s ?? suite) && !impression && teinte((s ?? suite)!.matiere), absent && "bg-zinc-200/70 text-center align-middle text-zinc-400")}
                   title={absent ? "Pas de travail à cette heure (jours et heures de l’enseignant)" : undefined}
                 >
                   {absent && <span className={impression ? "text-[7pt]" : "text-[10px]"}>—</span>}
@@ -145,6 +174,17 @@ export function GrilleEdt({
                       {s.fixe && !impression && <span className="absolute -top-0.5 right-0 size-1.5 rounded-full bg-marque-600" aria-label="Plage saisie par l’école" />}
                       <div className="font-semibold">{s.matiereLibelle}</div>
                       <div className={cx(impression ? "" : "text-[11px]", !s.agent && vue === "classe" && "font-medium text-rouge-600")}>{vue === "classe" ? (s.agent ?? "à pourvoir") : s.classe}</div>
+                      {/* Plage à ses propres heures : on les écrit */}
+                      {s.debut && s.fin && (
+                        <div className={cx("font-semibold tabular-nums", impression ? "text-[7pt]" : "text-[10px] text-marque-800")}>
+                          {s.debut}–{s.fin}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {suite && (
+                    <div className={cx("leading-tight text-zinc-500 italic", impression ? "text-[7pt]" : "text-[10px]")}>
+                      suite : {suite.matiereLibelle} ({suite.debut}–{suite.fin})
                     </div>
                   )}
                 </td>
@@ -154,6 +194,85 @@ export function GrilleEdt({
         ))}
       </tbody>
     </table>
+  );
+}
+
+/** « 0730 », « 7:30 », « 7h30 » → « 07:30 » (vide : pas encore écrit). */
+const lireHeure = (t: string) => {
+  const m = /^(\d{1,2})\s*[:hH.]?\s*(\d{2})$/.exec(t.trim());
+  return m && Number(m[1]) < 24 && Number(m[2]) < 60 ? `${m[1].padStart(2, "0")}:${m[2]}` : t.trim();
+};
+
+/** Heure tapée au clavier dans une case étroite (« 07:30 ») : plus lisible que le champ heure du navigateur. */
+function HeureCourte({ libelle, valeur, changer }: { libelle: string; valeur: string; changer: (v: string) => void }) {
+  const [texte, setTexte] = useState(valeur);
+  const [avant, setAvant] = useState(valeur);
+  if (avant !== valeur) {
+    setAvant(valeur);
+    setTexte(valeur);
+  }
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      aria-label={libelle}
+      placeholder="hh:mm"
+      maxLength={5}
+      value={texte}
+      onChange={(e) => setTexte(e.target.value.replace(/[^\dhH:.]/g, ""))}
+      onBlur={() => {
+        const v = lireHeure(texte);
+        setTexte(v);
+        if (v !== valeur) changer(v);
+      }}
+      onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+      className="w-full min-w-0 rounded bg-white/80 px-1 py-0.5 text-center text-[11px] tabular-nums outline-none focus:ring-1 focus:ring-marque-300"
+    />
+  );
+}
+
+/** Un cours de l'enseignant dans la fenêtre des plages : sa classe, ses heures (modifiables), et ce qui ne va pas. */
+function CasePlage({
+  p,
+  classes,
+  occupant,
+  probleme,
+  maj,
+  retirer,
+}: {
+  p: { classeId: number; jour: number; debut: string; fin: string };
+  classes: { id: number; nom: string }[];
+  occupant: (classeId: number, p: { jour: number; debut: string; fin: string }) => { nom: string; debut: string; fin: string } | undefined;
+  probleme: string | null;
+  maj: (v: Partial<{ classeId: number; debut: string; fin: string }>) => void;
+  retirer: () => void;
+}) {
+  return (
+    <div className={cx("mb-0.5 rounded-md p-0.5", probleme && "bg-rouge-100/60 ring-1 ring-rouge-300")}>
+      <select
+        aria-label={`${NOMS_JOURS[p.jour]} : classe`}
+        value={p.classeId || ""}
+        onChange={(e) => (Number(e.target.value) ? maj({ classeId: Number(e.target.value) }) : retirer())}
+        className={cx("w-full rounded-md bg-transparent px-1 py-1 text-[12px] outline-none focus:ring-2 focus:ring-marque-300", p.classeId ? "font-semibold text-marque-800" : "text-zinc-400")}
+      >
+        <option value="">— (retirer)</option>
+        {classes.map((cl) => {
+          const qui = p.debut && p.fin ? occupant(cl.id, p) : undefined;
+          return (
+            <option key={cl.id} value={cl.id} disabled={!!qui && cl.id !== p.classeId}>
+              {cl.nom}
+              {qui ? ` (prise : ${qui.nom} ${qui.debut}–${qui.fin})` : ""}
+            </option>
+          );
+        })}
+      </select>
+      <div className="flex items-center gap-0.5 px-0.5">
+        <HeureCourte libelle="Début du cours" valeur={p.debut} changer={(v) => maj({ debut: v })} />
+        <span className="text-[10px] text-zinc-400">–</span>
+        <HeureCourte libelle="Fin du cours" valeur={p.fin} changer={(v) => maj({ fin: v })} />
+      </div>
+      {probleme && <div className="px-0.5 text-[10px] leading-tight font-medium text-rouge-700">{probleme}</div>}
+    </div>
   );
 }
 
@@ -525,7 +644,7 @@ function PrisEnCompte({ d }: { d: ReponseEdt }) {
         {ligne("Enseignants en poste", ens.length, sansMatiere.length ? <span className="text-rouge-600">{sansMatiere.length} sans matière reconnue : aucune heure</span> : "tous avec leur matière")}
         {ligne(
           "Plages horaires saisies",
-          avecPlages.length ? `${avecPlages.reduce((t, x) => t + (x.plages?.length ?? 0), 0)} h · ${avecPlages.length} enseignant(s)` : "aucune",
+          avecPlages.length ? `${avecPlages.reduce((t, x) => t + (x.plages ?? []).reduce((n, p) => n + heuresPlage(p, r.creneaux), 0), 0)} h · ${avecPlages.length} enseignant(s)` : "aucune",
           avecPlages.length ? "placées telles quelles" : "tout est réparti automatiquement",
         )}
         {ligne("Semaine de l’école", `${r.jours.length} jours · ${r.creneaux.length} créneaux`, `${r.heuresEnseignant} h au plus par enseignant · ${r.propres ? "réglages de l’école" : "réglages généraux"}`)}
@@ -559,8 +678,8 @@ function ModalePlagesEnseignants({
   apres: () => void;
 }) {
   const [choisi, setChoisi] = useState<number | null>(null);
-  /** La semaine de l'enseignant ouvert : « jour:début » → classe. */
-  const [grille, setGrille] = useState<Record<string, number>>({});
+  /** Les plages de l'enseignant ouvert, à leurs heures (celles d'un créneau, ou les siennes). */
+  const [liste, setListe] = useState<{ cle: number; classeId: number; jour: number; debut: string; fin: string }[]>([]);
   const [lignes, setLignes] = useState<Record<number, { travaille: boolean; debut: string; fin: string }>>({});
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
@@ -570,22 +689,19 @@ function ModalePlagesEnseignants({
     const c = classes.find((x) => x.id === classeId);
     return matiere && c ? Math.round(programme[c.niveau]?.find((p) => p.matiere === matiere)?.heures ?? 0) : 0;
   };
-  // Les classes déjà prises par un collègue, créneau par créneau : « jour:début:classe » → son nom
-  const prises = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const x of enseignants) if (x.id !== choisi) for (const p of x.plages ?? []) m.set(`${p.jour}:${p.debut}:${p.classeId}`, x.nom);
-    return m;
-  }, [enseignants, choisi]);
+  // Les plages des collègues (leurs heures) : une classe ne peut pas avoir deux cours qui se chevauchent
+  const collegues = useMemo(() => enseignants.filter((x) => x.id !== choisi).flatMap((x) => (x.plages ?? []).map((p) => ({ ...p, nom: x.nom }))), [enseignants, choisi]);
+  const occupant = (classeId: number, p: { jour: number; debut: string; fin: string }) => collegues.find((q) => q.classeId === classeId && q.jour === p.jour && seChevauchent(q, p));
   const resume = (x: (typeof enseignants)[number]) => {
     const parClasse = new Map<number, number>();
-    for (const p of x.plages ?? []) parClasse.set(p.classeId, (parClasse.get(p.classeId) ?? 0) + 1);
+    for (const p of x.plages ?? []) parClasse.set(p.classeId, (parClasse.get(p.classeId) ?? 0) + heuresPlage(p, r.creneaux));
     return [...parClasse].map(([id, n]) => `${nomClasse(id)} (${n} h)`).join(", ");
   };
   const ouvrir = (id: number) => {
     const x = enseignants.find((y) => y.id === id);
     setErreur(null);
     setChoisi(id);
-    setGrille(Object.fromEntries((x?.plages ?? []).map((p) => [`${p.jour}:${p.debut}`, p.classeId])));
+    setListe((x?.plages ?? []).map((p, i) => ({ cle: i + 1, ...p })));
     const vide = !x?.jours || !Object.keys(x.jours).length;
     setLignes(
       Object.fromEntries(
@@ -596,20 +712,36 @@ function ModalePlagesEnseignants({
       ),
     );
   };
-  const saisies = Object.entries(grille).filter(([, c]) => c);
+  // Ligne de la grille d'une plage : le créneau où elle commence ; sinon « autres heures »
+  const ligneDe = (debut: string) => r.creneaux.findIndex((c) => debut >= c.debut && debut < c.fin);
+  const saisies = liste.filter((p) => p.classeId);
+  const maj = (cle: number, v: Partial<(typeof liste)[number]>) => setListe((l) => l.map((p) => (p.cle === cle ? { ...p, ...v } : p)));
+  const retirer = (cle: number) => setListe((l) => l.filter((p) => p.cle !== cle));
+  const ajouter = (p: Omit<(typeof liste)[number], "cle">) => setListe((l) => [...l, { ...p, cle: Math.max(0, ...l.map((x) => x.cle)) + 1 }]);
+  /** Ce qui ne va pas dans une plage : heures, chevauchement avec ses autres cours, ou avec un collègue dans la classe. */
+  const probleme = (p: (typeof liste)[number]) => {
+    if (!p.debut || !p.fin) return "heures à écrire";
+    if (p.fin <= p.debut) return "la fin doit être après le début";
+    if (!p.classeId) return null;
+    const lui = saisies.find((q) => q.cle !== p.cle && q.jour === p.jour && seChevauchent(q, p));
+    if (lui) return `chevauche son cours de ${lui.debut} à ${lui.fin} (${nomClasse(lui.classeId)})`;
+    const autre = occupant(p.classeId, p);
+    if (autre) return `${nomClasse(p.classeId)} : déjà cours avec ${autre.nom} de ${autre.debut} à ${autre.fin}`;
+    return null;
+  };
+  const problemes = saisies.filter((p) => probleme(p));
   // Heures saisies pour lui, par classe, face au programme de sa matière
   const parClasse = new Map<number, number>();
-  for (const [, c] of saisies) parClasse.set(c, (parClasse.get(c) ?? 0) + 1);
+  for (const p of saisies) parClasse.set(p.classeId, (parClasse.get(p.classeId) ?? 0) + heuresPlage(p, r.creneaux));
+  const total = [...parClasse.values()].reduce((a, b) => a + b, 0);
 
   async function enregistrer() {
     if (!prof) return;
     setErreur(null);
     setEnvoi(true);
     try {
-      const plages = saisies.map(([k, classeId]) => {
-        const [jour, debut] = k.split(/:(.+)/);
-        return { classeId, jour: Number(jour), debut, fin: r.creneaux.find((c) => c.debut === debut)?.fin ?? "" };
-      });
+      if (problemes.length) throw new Error(`Corrigez d’abord ce qui est en rouge : ${problemes.map((p) => `${NOMS_JOURS[p.jour]} ${p.debut}-${p.fin} (${probleme(p)})`).join(" ; ")}.`);
+      const plages = saisies.map((p) => ({ classeId: p.classeId, jour: p.jour, debut: p.debut, fin: p.fin }));
       // Sans plages : ses jours et heures de disponibilité (répartition automatique, Présence)
       if (!plages.length) {
         const faux = [1, 2, 3, 4, 5, 6].find((j) => lignes[j].travaille && lignes[j].debut && lignes[j].fin && lignes[j].fin <= lignes[j].debut);
@@ -659,7 +791,7 @@ function ModalePlagesEnseignants({
                       <td className="text-[12px]">
                         {x.plages?.length ? (
                           <>
-                            <strong>{x.plages.length} h</strong> · {resume(x)}
+                            <strong>{x.plages.reduce((n, p) => n + heuresPlage(p, r.creneaux), 0)} h</strong> · {resume(x)}
                           </>
                         ) : (
                           <span className="text-zinc-400">aucune : réparti automatiquement ({resumeJours(x.jours)})</span>
@@ -689,8 +821,9 @@ function ModalePlagesEnseignants({
           ) : (
             <>
               <p className="mb-2 text-[13px] text-zinc-600">
-                Matière : <strong>{prof.matiereLibelle}</strong>. Dans chaque case, choisissez la classe où il fait cours (vide : pas de cours). Une classe déjà prise par un collègue à cette heure
-                est indiquée et ne peut pas être choisie.
+                Matière : <strong>{prof.matiereLibelle}</strong>. Dans chaque case, choisissez la classe où il fait cours (vide : pas de cours). Les heures sont celles du créneau : changez-les si son
+                cours commence ou finit à une autre heure (ex. 07:00–08:00). Un cours en dehors des créneaux se met dans « Autres heures ». Ce qui chevauche un autre de ses cours, ou le cours
+                d’un collègue dans la même classe, s’affiche en rouge.
               </p>
               {!classes.length ? (
                 <Vide>Aucune classe ouverte cette année : ouvrez d’abord les classes de l’école.</Vide>
@@ -708,7 +841,7 @@ function ModalePlagesEnseignants({
                       </tr>
                     </thead>
                     <tbody>
-                      {r.creneaux.map((c) => (
+                      {r.creneaux.map((c, i) => (
                         <tr key={c.debut}>
                           <td className="border border-zinc-300 px-1 py-1 text-center tabular-nums text-zinc-600">
                             {c.debut}
@@ -716,40 +849,70 @@ function ModalePlagesEnseignants({
                             {c.fin}
                           </td>
                           {r.jours.map((j) => {
-                            const k = `${j}:${c.debut}`;
-                            const v = grille[k] ?? 0;
+                            const ici = liste.filter((p) => p.jour === j && ligneDe(p.debut) === i);
                             return (
-                              <td key={j} className={cx("border border-zinc-300 p-0.5", v ? "bg-marque-50" : "")}>
-                                <select
-                                  aria-label={`${NOMS_JOURS[j]} ${c.debut}-${c.fin}`}
-                                  value={v || ""}
-                                  onChange={(e) => setGrille((g) => ({ ...g, [k]: Number(e.target.value) || 0 }))}
-                                  className={cx("w-full rounded-md bg-transparent px-1 py-1.5 text-[12px] outline-none focus:ring-2 focus:ring-marque-300", v ? "font-semibold text-marque-800" : "text-zinc-400")}
-                                >
-                                  <option value="">—</option>
-                                  {classes.map((cl) => {
-                                    const qui = prises.get(`${j}:${c.debut}:${cl.id}`);
+                              <td key={j} className={cx("border border-zinc-300 p-0.5 align-top", ici.some((p) => p.classeId) ? "bg-marque-50" : "")}>
+                                {ici.length ? (
+                                  ici.map((p) => <CasePlage key={p.cle} p={p} classes={classes} occupant={occupant} probleme={probleme(p)} maj={(v) => maj(p.cle, v)} retirer={() => retirer(p.cle)} />)
+                                ) : saisies.some((p) => p.jour === j && seChevauchent(p, c)) ? (
+                                  // Un cours long commencé plus tôt occupe aussi ce créneau
+                                  (() => {
+                                    const q = saisies.find((p) => p.jour === j && seChevauchent(p, c))!;
                                     return (
-                                      <option key={cl.id} value={cl.id} disabled={!!qui}>
-                                        {cl.nom}
-                                        {qui ? ` (prise : ${qui})` : ""}
-                                      </option>
+                                      <div className="px-1 py-1.5 text-[11px] text-marque-800 italic">
+                                        suite : {nomClasse(q.classeId)} ({q.debut}–{q.fin})
+                                      </div>
                                     );
-                                  })}
-                                </select>
+                                  })()
+                                ) : (
+                                  <select
+                                    aria-label={`${NOMS_JOURS[j]} ${c.debut}-${c.fin}`}
+                                    value=""
+                                    onChange={(e) => Number(e.target.value) && ajouter({ classeId: Number(e.target.value), jour: j, debut: c.debut, fin: c.fin })}
+                                    className="w-full rounded-md bg-transparent px-1 py-1.5 text-[12px] text-zinc-400 outline-none focus:ring-2 focus:ring-marque-300"
+                                  >
+                                    <option value="">—</option>
+                                    {classes.map((cl) => {
+                                      const qui = occupant(cl.id, { jour: j, debut: c.debut, fin: c.fin });
+                                      return (
+                                        <option key={cl.id} value={cl.id} disabled={!!qui}>
+                                          {cl.nom}
+                                          {qui ? ` (prise : ${qui.nom} ${qui.debut}–${qui.fin})` : ""}
+                                        </option>
+                                      );
+                                    })}
+                                  </select>
+                                )}
                               </td>
                             );
                           })}
                         </tr>
                       ))}
+                      {/* Cours en dehors des créneaux de l'école (avant le premier, à la pause, après le dernier) */}
+                      <tr>
+                        <td className="border border-zinc-300 px-1 py-1 text-center text-[11px] text-zinc-600">Autres heures</td>
+                        {r.jours.map((j) => (
+                          <td key={j} className="border border-zinc-300 p-0.5 align-top">
+                            {liste
+                              .filter((p) => p.jour === j && ligneDe(p.debut) < 0)
+                              .map((p) => (
+                                <CasePlage key={p.cle} p={p} classes={classes} occupant={occupant} probleme={probleme(p)} maj={(v) => maj(p.cle, v)} retirer={() => retirer(p.cle)} />
+                              ))}
+                            <button type="button" className="w-full rounded-md px-1 py-1 text-[11px] font-medium text-marque-700 hover:bg-marque-50" onClick={() => ajouter({ classeId: 0, jour: j, debut: "", fin: "" })}>
+                              + un cours
+                            </button>
+                          </td>
+                        ))}
+                      </tr>
                     </tbody>
                   </table>
                 </div>
               )}
               <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
-                <Badge ton={saisies.length > r.heuresEnseignant ? "rouge" : saisies.length ? "vert" : "gris"}>
-                  {saisies.length} h par semaine{saisies.length > r.heuresEnseignant ? ` : plus que les ${r.heuresEnseignant} h d’un enseignant` : ""}
+                <Badge ton={total > r.heuresEnseignant ? "rouge" : total ? "vert" : "gris"}>
+                  {total} h par semaine{total > r.heuresEnseignant ? ` : plus que les ${r.heuresEnseignant} h d’un enseignant` : ""}
                 </Badge>
+                {!!problemes.length && <Badge ton="rouge">{problemes.length} cours à corriger (en rouge)</Badge>}
                 {[...parClasse].map(([id, n]) => {
                   const prevu = heuresProgramme(id, prof.matiere ?? null);
                   return (
@@ -759,7 +922,7 @@ function ModalePlagesEnseignants({
                   );
                 })}
                 {!!saisies.length && (
-                  <button type="button" className="ml-auto font-medium text-rouge-700 underline" onClick={() => setGrille({})}>
+                  <button type="button" className="ml-auto font-medium text-rouge-700 underline" onClick={() => setListe([])}>
                     Vider ses plages (retour à la répartition automatique)
                   </button>
                 )}

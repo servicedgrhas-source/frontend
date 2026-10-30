@@ -59,6 +59,8 @@ export default function Evaluations() {
   const structures = useApi<StructureCourte[]>(chef ? null : "/recensement/structures");
   const [structure, setStructure] = useState("");
   const [etat, setEtat] = useState("");
+  // Barre de la répartition cliquée : la liste ne montre que cette appréciation
+  const [appreciation, setAppreciation] = useState("");
   const [q, setQ] = useState("");
   const [recherche, setRecherche] = useState("");
   const [page, setPage] = useState(1);
@@ -71,7 +73,7 @@ export default function Evaluations() {
     }, 300);
     return () => clearTimeout(t);
   }, [q]);
-  const c = useApi<Campagne>(`/evaluations?structure=${structure}&etat=${etat}&q=${encodeURIComponent(recherche)}&page=${page}&annee=${annee}`);
+  const c = useApi<Campagne>(`/evaluations?structure=${structure}&etat=${etat}&appreciation=${encodeURIComponent(appreciation)}&q=${encodeURIComponent(recherche)}&page=${page}&annee=${annee}`);
   // L'année en cours et les quatre précédentes (une évaluation par an)
   const anneeCourante = Number(new Date().getFullYear());
   const annees = [0, 1, 2, 3, 4].map((i) => String(anneeCourante - i));
@@ -173,8 +175,17 @@ export default function Evaluations() {
             <Carte titre="Répartition des appréciations">
               <div className="space-y-1.5">
                 {APPRECIATIONS.map((a, i) => (
-                  <div key={a} className="grid grid-cols-[6rem_1fr_5rem] items-center gap-3 text-[12px]">
-                    <span>{a}</span>
+                  <button
+                    type="button"
+                    key={a}
+                    title={appreciation === a ? "Voir tous les agents" : `Voir les agents « ${a} »`}
+                    onClick={() => {
+                      setAppreciation(appreciation === a ? "" : a);
+                      setPage(1);
+                    }}
+                    className={`grid w-full grid-cols-[6rem_1fr_5rem] items-center gap-3 rounded-lg px-1 py-0.5 text-left text-[12px] transition hover:bg-zinc-50 ${appreciation === a ? "bg-marque-50 ring-1 ring-marque-200" : ""}`}
+                  >
+                    <span className={appreciation === a ? "font-semibold" : ""}>{a}</span>
                     <div className="h-3 overflow-hidden rounded-full bg-zinc-100">
                       <div
                         className={`h-full rounded-full ${i < 2 ? "bg-rouge-500" : i === 4 ? "bg-sky-600" : "bg-marque-600"}`}
@@ -184,9 +195,13 @@ export default function Evaluations() {
                     <span className="text-right tabular-nums">
                       {repartition[i]} <span className="text-zinc-400">({part(repartition[i], s.evalues)})</span>
                     </span>
-                  </div>
+                  </button>
                 ))}
               </div>
+              <p className="mt-2 text-[11px] text-zinc-500">
+                Appréciation d’après la compétence globale : 2,5 (la moyenne) à 3,5 « bon », 4 et 4,5 « très bon », 5 « excellent », 2 « faible », moins de 2 « très faible ». Cliquez sur une barre pour
+                voir ses agents{appreciation ? ` (filtre : « ${appreciation} », cliquez de nouveau pour l’enlever)` : ""}.
+              </p>
             </Carte>
           )}
           <Carte titre="Agents">
