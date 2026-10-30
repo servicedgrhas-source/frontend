@@ -47,6 +47,42 @@ export function NoteImprimable({ note }: { note: NoteDetail }) {
   );
 }
 
+/** « Jean Paul MOUKOKO » → « J.P.M. » : le visa (paraphe) en attendant le spécimen de chacun (réunion du 29/10/2026). */
+const initiales = (nom: string) =>
+  nom
+    .split(/[\s-]+/)
+    .filter(Boolean)
+    .map((m) => `${m[0].toUpperCase()}.`)
+    .join("");
+
+/** Visas du chef de bureau, du chef de service et du directeur (avis « conforme »), en bas à gauche de la note. */
+function Visas({ note }: { note: NoteDetail }) {
+  const visas = (["BUREAU", "SERVICE", "DIRECTION"] as const).map((n) => ({ n, a: (note.conformite ?? []).find((x) => x.niveau === n && x.conforme) }));
+  const lib = { BUREAU: "Bureau", SERVICE: "Service", DIRECTION: "Direction" };
+  return (
+    <div className="row-span-2 self-start">
+      {visas.some((v) => v.a) && (
+        <>
+          <div className="text-[8pt] font-bold underline">Visas</div>
+          <table className="mt-0.5 text-[8pt]">
+            <tbody>
+              {visas.map(({ n, a }) => (
+                <tr key={n}>
+                  <td className="pr-2">{lib[n]}</td>
+                  <td className="min-w-14 pr-2 text-[11pt] italic" style={{ fontFamily: "'Brush Script MT', 'Segoe Script', cursive" }} title={a ? `${a.par}, le ${new Date(a.le).toLocaleDateString("fr-FR")}` : undefined}>
+                    {a ? initiales(a.par) : ""}
+                  </td>
+                  <td className="text-[7pt] text-zinc-600">{a ? new Date(a.le).toLocaleDateString("fr-FR") : "…………"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </div>
+  );
+}
+
 function construire(note: NoteDetail) {
   const c = note.contenu;
   const e = note.entete;
@@ -229,9 +265,9 @@ function construire(note: NoteDetail) {
         // « Fait à », le titre et le nom alignés sur la même verticale ;
         // « Ampliations : » sur la même ligne que le nom du signataire
         <div className="grid grid-cols-[1fr_44%] gap-x-8 pt-6">
-          <div />
+          {/* Visas du bureau, du service et de la direction, à gauche du « Fait à » et du titre */}
+          <Visas note={note} />
           <div>Fait à {e.lieu}, le {dateLongue(note.dateSignature) ?? " ".repeat(24)}</div>
-          <div />
           <div className="mt-2">{e.signataireTitre}</div>
           {/* Plus d'espace pour la signature (demande du DG, 19/10/2026) */}
           <div className="mt-24 self-end text-[10pt] font-bold underline">Ampliations :</div>

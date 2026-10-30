@@ -3,6 +3,7 @@
 import { BookOpen, Check, CheckSquare, FileSpreadsheet, FileText, Lock, Pencil, Plus, RotateCcw, Trash2, Upload, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { SaisieReferentiel } from "@/components/saisie-referentiel";
 import { useSession } from "@/components/session";
 import { Aide, Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, Chiffre, EnTete, Liste, Modale, Saisie, Tableau, Vide, Zone, cx, useConfirmation } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
@@ -62,9 +63,12 @@ interface Candidat {
   nomComplet: string;
   statut: string;
   matricule: string | null;
+  departementId: number | null;
   departement: string | null;
   structure: string | null;
   fonction: string | null;
+  /** Ce qu'il fait dans sa structure d'après sa fiche (secrétaire, économe…). */
+  fonctionStructure?: string | null;
   grade: string | null;
   echelon: string | null;
   specialite: string | null;
@@ -561,6 +565,78 @@ export default function Nominations() {
   );
 }
 
+/** Motifs les plus écrits (réunion du 29/10/2026) : un clic, puis on complète si besoin. */
+const MOTIFS_COURANTS = ["Nécessité de service", "Bon travail rendu", "Compétence", "Suivi médical", "Rapprochement familial", "Peut mieux faire", "Fin de mission"];
+
+function MotifsCourants({ ajouter }: { ajouter: (m: string) => void }) {
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {MOTIFS_COURANTS.map((m) => (
+        <button key={m} type="button" onClick={() => ajouter(m)} className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-700 hover:bg-marque-50 hover:text-marque-800">
+          + {m}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Circonscription : celles déjà écrites dans le département (au primaire, il y en a beaucoup), ou une autre tapée. */
+function SaisieCirconscription({ valeur, changer, departementId, annee }: { valeur: string; changer: (v: string) => void; departementId: string; annee: string }) {
+  const l = useApi<string[]>(`/nominations/circonscriptions${qs({ departement: departementId || undefined, annee })}`);
+  const id = `circo-${departementId || "tous"}`;
+  return (
+    <>
+      <Saisie list={id} value={valeur} onChange={(e) => changer(e.target.value)} placeholder={l.donnees?.length ? `Choisir parmi ${l.donnees.length} (ou taper)` : "Ex. Madingou"} />
+      <datalist id={id}>
+        {(l.donnees ?? []).map((c) => (
+          <option key={c} value={c} />
+        ))}
+      </datalist>
+    </>
+  );
+}
+
+/**
+ * Permutation (réunion du 29/10/2026) : il échange son poste avec un autre cadre de la même
+ * fonction. On choisit cet autre cadre ; chacun prend le poste de l'autre, les deux lignes changent.
+ */
+function ChoixPermutation({ annee, categorie, sauf, partenaire, changer }: { annee: string; categorie: string; sauf?: number; partenaire: Nomination | null; changer: (n: Nomination | null) => void }) {
+  const [q, setQ] = useState("");
+  const r = useApi<Reponse>(categorie && q.trim().length >= 2 && !partenaire ? `/nominations${qs({ annee, categorie, recherche: q.trim(), statut: "PROPOSEE" })}` : null);
+  if (partenaire)
+    return (
+      <div className="flex items-start justify-between gap-3 rounded-xl bg-marque-50 p-3 ring-1 ring-marque-200">
+        <div className="text-[12px]">
+          Permute avec <strong>{partenaire.nomComplet}</strong> ({partenaire.categorieLibelle}) : il prend son poste, <strong>{partenaire.ancienPoste ?? "—"}</strong>
+          {partenaire.departement ? ` (${partenaire.departement})` : ""} ; l’autre prend le sien. Les deux lignes passent « à permuter ».
+        </div>
+        <Bouton variante="discret" onClick={() => changer(null)}>
+          Changer
+        </Bouton>
+      </div>
+    );
+  return (
+    <Champ libelle="Avec qui permute-t-il ? *" aide="Un cadre de la même fonction, encore en proposition cette année : tapez son nom.">
+      <Saisie value={q} onChange={(e) => setQ(e.target.value)} placeholder={categorie ? "Nom de l’autre cadre (2 lettres au moins)" : "Choisissez d’abord la fonction"} disabled={!categorie} />
+      {r.donnees && (
+        <ul className="mt-1 max-h-48 space-y-1 overflow-y-auto">
+          {!r.donnees.lignes.filter((x) => x.id !== sauf).length && <li className="text-[12px] text-zinc-500">Aucun cadre de cette fonction à ce nom, encore en proposition.</li>}
+          {r.donnees.lignes
+            .filter((x) => x.id !== sauf)
+            .slice(0, 20)
+            .map((x) => (
+              <li key={x.id}>
+                <button type="button" onClick={() => changer(x)} className="w-full rounded-lg px-2 py-1.5 text-left text-[12px] ring-1 ring-zinc-200 hover:bg-zinc-50">
+                  <strong>{x.nomComplet}</strong> · {x.ancienPoste ?? "poste ?"} · {x.departement ?? ""}
+                </button>
+              </li>
+            ))}
+        </ul>
+      )}
+    </Champ>
+  );
+}
+
 /** Le sens d'une observation, en une phrase (lexique de la DGRHAS). */
 function sensObs(o: Obs) {
   const mot = { RECONDUIT: "Reconduit(e)", PROMU: "Promu(e)", MUTE: "Muté(e)", PERMUTE: "Permuté(e)", RELEVE: "Relevé(e)" }[o];
@@ -598,6 +674,7 @@ function ModaleProposition({ n, d, fermer, apres }: { n: Nomination; d: Reponse;
     avisDdeppsa: n.avisDdeppsa ?? "",
   });
   const [erreur, setErreur] = useState<string | null>(null);
+  const [partenaire, setPartenaire] = useState<Nomination | null>(null);
   const besoinPoste = ["MUTE", "PROMU", "PERMUTE"].includes(v.observation);
   return (
     <Modale titre={`${n.nomComplet} — ${n.categorieLibelle}`} ouverte fermer={fermer} large>
@@ -616,13 +693,14 @@ function ModaleProposition({ n, d, fermer, apres }: { n: Nomination; d: Reponse;
             <Liste value={v.categorie} onChange={(e) => setV({ ...v, categorie: e.target.value })} options={d.categories.map((c) => ({ valeur: c.code, libelle: `${c.groupe} — ${c.libelle}` }))} />
           </Champ>
         )}
-        {v.observation !== "RELEVE" && (
+        {v.observation === "PERMUTE" && <ChoixPermutation annee={n.annee} categorie={v.categorie} sauf={n.id} partenaire={partenaire} changer={setPartenaire} />}
+        {v.observation !== "RELEVE" && !(v.observation === "PERMUTE" && partenaire) && (
           <div className="grid gap-3 sm:grid-cols-2">
             <Champ libelle={besoinPoste ? "Nouveau poste *" : "Poste"}>
               <Saisie value={v.nouveauPoste} onChange={(e) => setV({ ...v, nouveauPoste: e.target.value })} placeholder="École, collège, lycée, inspection…" />
             </Champ>
             <Champ libelle="Circonscription scolaire">
-              <Saisie value={v.circonscription} onChange={(e) => setV({ ...v, circonscription: e.target.value })} placeholder="Ex. Madingou" />
+              <SaisieCirconscription valeur={v.circonscription} changer={(x) => setV({ ...v, circonscription: x })} departementId={v.departementId} annee={n.annee} />
             </Champ>
             {!d.departement && (v.observation === "MUTE" || v.observation === "PERMUTE") && (
               <Champ libelle="Département du nouveau poste">
@@ -638,6 +716,7 @@ function ModaleProposition({ n, d, fermer, apres }: { n: Nomination; d: Reponse;
         )}
         <Champ libelle={v.observation === "RECONDUIT" ? "Motif (facultatif pour une reconduction)" : "Motif *"} aide="Pourquoi : « bon travail rendu », « nécessité de service », « compétence », « peut mieux faire »…">
           <Zone value={v.motif} onChange={(e) => setV({ ...v, motif: e.target.value })} />
+          <MotifsCourants ajouter={(m) => setV({ ...v, motif: v.motif ? `${v.motif.replace(/[ .]+$/, "")}, ${m.toLowerCase()}` : m })} />
         </Champ>
         <Champ libelle="Avis de la DDEPPSA (facultatif)">
           <Saisie value={v.avisDdeppsa} onChange={(e) => setV({ ...v, avisDdeppsa: e.target.value })} />
@@ -651,9 +730,11 @@ function ModaleProposition({ n, d, fermer, apres }: { n: Nomination; d: Reponse;
           onClick={async () => {
             setErreur(null);
             try {
+              if (v.observation === "PERMUTE" && !partenaire && !v.nouveauPoste) throw new Error("Choisissez l’autre cadre avec qui il permute.");
               await api.put(`/nominations/${n.id}`, {
                 ...v,
                 departementId: v.departementId ? Number(v.departementId) : n.departementId,
+                ...(v.observation === "PERMUTE" && partenaire ? { permuteAvec: partenaire.id } : {}),
               });
               apres();
             } catch (e) {
@@ -677,6 +758,7 @@ function ModaleAjout({ d, fermer, apres }: { d: Reponse; fermer: () => void; apr
   const [agent, setAgent] = useState<Candidat | null>(null);
   const [v, setV] = useState({ observation: "PROMU" as Obs, departementId: d.departement ? String(d.departement) : "", circonscription: "", nouveauPoste: "", ancienPoste: "", motif: "", vague: "" });
   const [erreur, setErreur] = useState<string | null>(null);
+  const [partenaire, setPartenaire] = useState<Nomination | null>(null);
   useEffect(() => {
     if (q.trim().length < 3) return;
     const t = setTimeout(() => {
@@ -695,7 +777,7 @@ function ModaleAjout({ d, fermer, apres }: { d: Reponse; fermer: () => void; apr
         </Champ>
         {!agent ? (
           <div>
-            <Champ libelle="L’agent, dans la base du personnel *" aide="Tapez son nom ou son matricule. On ne nomme qu’un agent sur le terrain : un enseignant du cycle, fonctionnaire ou contractuel.">
+            <Champ libelle="L’agent, dans la base du personnel *" aide="Tapez son nom ou son matricule. On nomme d’abord un agent sur le terrain, fonctionnaire ou contractuel ; un communautaire rarement, si la localité n’en a pas.">
               <Saisie value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nom ou matricule (3 lettres au moins)" />
             </Champ>
             {trouves && (
@@ -707,14 +789,17 @@ function ModaleAjout({ d, fermer, apres }: { d: Reponse; fermer: () => void; apr
                       type="button"
                       onClick={() => {
                         setAgent(a);
-                        setV({ ...v, ancienPoste: a.structure ?? "" });
+                        // Poste actuel : là où il travaille d'après sa fiche ; son département par défaut
+                        setV({ ...v, ancienPoste: a.structure ?? "", departementId: v.departementId || (a.departementId ? String(a.departementId) : "") });
                       }}
                       className="w-full rounded-xl px-3 py-2 text-left ring-1 ring-zinc-200 hover:bg-zinc-50"
                     >
                       <div className="font-medium">
                         {a.nomComplet} <span className="font-normal text-zinc-500">· {a.statut.toLowerCase()}{a.matricule ? ` · ${a.matricule}` : ""}</span>
                       </div>
-                      <div className="text-[11px] text-zinc-500">{[a.fonction, a.specialite, a.structure, a.departement, [a.grade, a.echelon].filter(Boolean).join(" ")].filter(Boolean).join(" · ")}</div>
+                      <div className="text-[11px] text-zinc-500">
+                        {[a.fonctionStructure ? `${a.fonctionStructure} (dans sa structure)` : null, a.fonction, a.specialite, a.structure, a.departement, [a.grade, a.echelon].filter(Boolean).join(" ")].filter(Boolean).join(" · ")}
+                      </div>
                       {a.remarques.map((x) => (
                         <div key={x} className="text-[11px] text-or-700">
                           ⚠ {x}
@@ -730,7 +815,11 @@ function ModaleAjout({ d, fermer, apres }: { d: Reponse; fermer: () => void; apr
           <div className="flex items-start justify-between gap-3 rounded-xl bg-zinc-50 p-3 ring-1 ring-zinc-200">
             <div>
               <div className="font-medium">{agent.nomComplet}</div>
-              <div className="text-[11px] text-zinc-500">{[agent.fonction, agent.specialite, agent.structure, agent.departement].filter(Boolean).join(" · ")}</div>
+              <div className="text-[11px] text-zinc-500">
+                {[agent.fonctionStructure ? `${agent.fonctionStructure} (dans sa structure)` : null, agent.fonction, agent.specialite, agent.structure, agent.departement, [agent.grade, agent.echelon].filter(Boolean).join(" ")]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </div>
               {agent.remarques.map((x) => (
                 <div key={x} className="text-[11px] text-or-700">
                   ⚠ {x}
@@ -747,21 +836,26 @@ function ModaleAjout({ d, fermer, apres }: { d: Reponse; fermer: () => void; apr
           <ChoixObservation valeur={v.observation} d={{ ...d, observations: d.observations.filter((o) => o.code !== "RELEVE" && o.code !== "RECONDUIT") }} changer={(o) => setV({ ...v, observation: o })} />
           <p className="mt-1.5 text-[12px] text-zinc-500">{sensObs(v.observation)}</p>
         </div>
+        {v.observation === "PERMUTE" && <ChoixPermutation annee={d.annee} categorie={categorie} partenaire={partenaire} changer={setPartenaire} />}
         <div className="grid gap-3 sm:grid-cols-2">
           {!d.departement && (
             <Champ libelle="Département *">
               <Liste value={v.departementId} onChange={(e) => setV({ ...v, departementId: e.target.value })} vide="— Choisir —" options={refs.departements.map((x) => ({ valeur: x.id, libelle: x.nom }))} />
             </Champ>
           )}
-          <Champ libelle="Circonscription scolaire">
-            <Saisie value={v.circonscription} onChange={(e) => setV({ ...v, circonscription: e.target.value })} placeholder="Ex. Madingou" />
-          </Champ>
-          <Champ libelle="Poste actuel">
+          {!(v.observation === "PERMUTE" && partenaire) && (
+            <Champ libelle="Circonscription scolaire" aide="Celles du département sont proposées ; une autre peut être tapée.">
+              <SaisieCirconscription valeur={v.circonscription} changer={(x) => setV({ ...v, circonscription: x })} departementId={v.departementId} annee={d.annee} />
+            </Champ>
+          )}
+          <Champ libelle="Poste actuel" aide="Là où il travaille d’après sa fiche (modifiable).">
             <Saisie value={v.ancienPoste} onChange={(e) => setV({ ...v, ancienPoste: e.target.value })} />
           </Champ>
-          <Champ libelle="Nouveau poste *">
-            <Saisie value={v.nouveauPoste} onChange={(e) => setV({ ...v, nouveauPoste: e.target.value })} placeholder="École, collège, lycée, inspection…" />
-          </Champ>
+          {!(v.observation === "PERMUTE" && partenaire) && (
+            <Champ libelle="Nouveau poste *" aide="Les écoles du département sont proposées ; un autre poste peut être tapé.">
+              <SaisieReferentiel liste="ETABLISSEMENT" valeur={v.nouveauPoste} changer={(x) => setV({ ...v, nouveauPoste: x })} departementId={v.departementId || null} placeholder="École, collège, lycée, inspection…" avertissement={null} />
+            </Champ>
+          )}
           {/(_DE|_SG)$/.test(categorie) && (
             <Champ libelle="Vague">
               <Liste value={v.vague} onChange={(e) => setV({ ...v, vague: e.target.value })} vide="—" options={["A", "B"].map((x) => ({ valeur: x, libelle: `Vague ${x}` }))} />
@@ -770,6 +864,7 @@ function ModaleAjout({ d, fermer, apres }: { d: Reponse; fermer: () => void; apr
         </div>
         <Champ libelle="Motif *">
           <Zone value={v.motif} onChange={(e) => setV({ ...v, motif: e.target.value })} placeholder="Ex. Compétent, a fait ses preuves comme surveillant général" />
+          <MotifsCourants ajouter={(m) => setV({ ...v, motif: v.motif ? `${v.motif.replace(/[ .]+$/, "")}, ${m.toLowerCase()}` : m })} />
         </Champ>
         {erreur && <Alerte>{erreur}</Alerte>}
       </div>
@@ -777,7 +872,7 @@ function ModaleAjout({ d, fermer, apres }: { d: Reponse; fermer: () => void; apr
         <Bouton onClick={fermer}>Annuler</Bouton>
         <Bouton
           variante="principal"
-          disabled={!agent || !categorie}
+          disabled={!agent || !categorie || (v.observation === "PERMUTE" && !partenaire)}
           title={!agent ? "Choisissez d’abord l’agent dans la base du personnel" : undefined}
           onClick={async () => {
             setErreur(null);
@@ -788,6 +883,7 @@ function ModaleAjout({ d, fermer, apres }: { d: Reponse; fermer: () => void; apr
                 agentId: agent?.id,
                 categorie,
                 departementId: v.departementId ? Number(v.departementId) : undefined,
+                ...(v.observation === "PERMUTE" && partenaire ? { permuteAvec: partenaire.id } : {}),
               });
               apres();
             } catch (e) {
