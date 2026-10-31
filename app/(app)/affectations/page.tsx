@@ -11,6 +11,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { ChoixGrade } from "@/components/choix-grade";
+import { BandeauSansLot } from "@/components/sans-lot";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { CorrectionAnomalies } from "@/components/correction-anomalies";
@@ -280,6 +281,8 @@ export default function Affectations() {
           )
         }
       />
+      {/* Personnes sans lot : absentes de toutes les listes ci-dessous (DG, 31/10/2026) */}
+      {peut.traiter(profil.role) && <BandeauSansLot apres={rafraichir} />}
       <Annonce ton={message?.ton} fermer={() => setMessage(null)}>
         {message?.texte}
       </Annonce>

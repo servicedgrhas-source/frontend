@@ -91,7 +91,10 @@ export default function Recrutement() {
   const anomaliesUrl = useParametreUrl("anomalies");
   const [recherche, setRecherche] = useState("");
   const [saisie, setSaisie] = useState("");
-  const [texte, setTexte] = useState("");
+  // « Voir dans la Base des recrutés » depuis le traitement des affectations : ?texte=attente
+  const texteUrl = useParametreUrl("texte");
+  const [texteChoisi, setTexte] = useState<string | null>(null);
+  const texte = texteChoisi ?? (texteUrl === "attente" || texteUrl === "recu" ? texteUrl : "");
   const [feuille, setFeuille] = useState("");
   const [anomaliesChoisi, setAnomalies] = useState<boolean | null>(null);
   const anomalies = anomaliesChoisi ?? anomaliesUrl === "1";
