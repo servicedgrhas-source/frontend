@@ -26,6 +26,7 @@ interface SansLot {
   meppsa: number;
   autres: number;
   illisibles: number;
+  avecTexte: number;
   personnes: PersonneSansLot[];
 }
 
@@ -87,10 +88,10 @@ export function BandeauSansLot({ apres }: { apres: () => void }) {
   return (
     <>
       <Alerte ton="jaune">
-        <strong>{d.total} personne(s) sans lot de publication</strong> (texte de la FP pas encore reçu, ou lot illisible dans le fichier) : elles
+        <strong>{d.total} personne(s) sans lot de publication</strong> (texte de la FP pas encore reçu, lot non indiqué ou illisible) : elles
         n’entrent dans aucune note.{" "}
         <span className="text-[12px]">
-          {[d.meppsa && `${d.meppsa} quota MEPPSA`, d.autres && `${d.autres} quota « Autres »`, d.illisibles && `${d.illisibles} lot(s) illisible(s)`]
+          {[d.avecTexte && `${d.avecTexte} avec leur n° de texte (lot à indiquer)`, d.meppsa && `${d.meppsa} quota MEPPSA`, d.autres && `${d.autres} quota « Autres »`, d.illisibles && `${d.illisibles} lot(s) illisible(s)`]
             .filter(Boolean)
             .join(" · ")}
           .

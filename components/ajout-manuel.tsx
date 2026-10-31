@@ -260,7 +260,7 @@ export function AjoutManuel({ apres }: { apres: (texte: string) => void }) {
           <Champ libelle="Date de signature">
             <SaisieDate value={v.dateSignatureTexte} onChange={(iso) => changer("dateSignatureTexte", iso)} aria-label="Date de signature" />
           </Champ>
-          <Champ libelle="Lot de publication" aide="Ex. VIII. Vide : en attente du texte">
+          <Champ libelle="Lot de publication" aide="Ex. VIII. Vide : sans lot, dans aucune note">
             <Saisie value={v.lot} onChange={(e) => changer("lot", e.target.value.toUpperCase())} placeholder="VIII" />
           </Champ>
         </div>
@@ -283,7 +283,12 @@ export function AjoutManuel({ apres }: { apres: (texte: string) => void }) {
                     {verif.existante ? "." : " — après le contrôle des oubliés (déjà affecté ou pas encore affecté)."}
                   </>
                 ) : (
-                  <>Sans lot de publication : en attente du texte de la FP, dans aucune note pour l’instant.</>
+                  <>
+                    Sans lot de publication : dans aucune note pour l’instant.{" "}
+                    {v.numeroTexte.trim()
+                      ? "Le texte est enregistré : rangez-la ensuite dans son lot (Traitement des affectations › « Les ranger dans un lot »)."
+                      : "En attente du texte de la FP."}
+                  </>
                 )}
               </li>
               {verif.existante && (

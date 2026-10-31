@@ -187,7 +187,7 @@ export default function Recrutement() {
         <div className="flex flex-wrap gap-2 text-sm">
           <Badge>{stats.donnees.total} recrutés</Badge>
           <Badge ton="vert">{stats.donnees.textesRecus} textes reçus (pointés)</Badge>
-          <Badge ton="jaune">{stats.donnees.enAttente} en attente du texte</Badge>
+          <Badge ton="jaune">{stats.donnees.enAttente} sans lot (texte non reçu ou lot inconnu)</Badge>
           <Badge ton="rouge">{stats.donnees.avecAnomalies} avec anomalies</Badge>
           <Badge ton="bleu">{stats.donnees.quotaAutres} quota « Autres »</Badge>
         </div>
@@ -232,7 +232,7 @@ export default function Recrutement() {
               vide="Tous"
               options={[
                 { valeur: "recu", libelle: "Reçu (pointé)" },
-                { valeur: "attente", libelle: "En attente" },
+                { valeur: "attente", libelle: "Sans lot (en attente)" },
               ]}
             />
           </Champ>
@@ -355,6 +355,16 @@ export default function Recrutement() {
                       {a.lotPublication ? (
                         <div className="flex items-center gap-2">
                           <Badge ton="vert">{libelleLot(a.lotPublication)}</Badge>
+                          <span className="text-zinc-600">
+                            {a.typeTexte === "DECRET" ? "Décret" : "Arrêté"} {a.reference ?? a.numeroTexte}
+                          </span>
+                        </div>
+                      ) : a.numeroTexte ? (
+                        // Texte connu, mais pas de lot de publication (DG, 31/10/2026) : ce n'est pas « en attente du texte »
+                        <div className="flex items-center gap-2">
+                          <Badge ton="jaune" titre="Texte enregistré, mais sans lot de publication : il n’entre dans aucune note. Rangez-le dans un lot : Traitement des affectations › « Les ranger dans un lot ».">
+                            Sans lot
+                          </Badge>
                           <span className="text-zinc-600">
                             {a.typeTexte === "DECRET" ? "Décret" : "Arrêté"} {a.reference ?? a.numeroTexte}
                           </span>

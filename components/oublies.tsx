@@ -149,7 +149,11 @@ export function ListeOublies({ apres }: { apres: (texte: string) => void }) {
             {o.departement ? ` · ${o.departement}` : ""}
           </div>
           <div className="text-[12px] text-zinc-500">
-            {o.lot ? `${o.lot} · ${o.typeTexte === "DECRET" ? "Décret" : "Arrêté"} ${o.texte ?? ""}` : "En attente du texte de la FP"}
+            {o.lot
+              ? `${o.lot} · ${o.typeTexte === "DECRET" ? "Décret" : "Arrêté"} ${o.texte ?? ""}`
+              : o.texte
+                ? `Sans lot · ${o.typeTexte === "DECRET" ? "Décret" : "Arrêté"} ${o.texte}`
+                : "En attente du texte de la FP"}
             {` · ajouté(e) le ${jour(o.ajouteLe)}${o.ajoutePar ? ` par ${o.ajoutePar}` : ""}`}
             {o.decidePar && o.etat !== "A_CONTROLER" ? ` · décidé par ${o.decidePar} le ${jour(o.decideLe)}` : ""}
           </div>
