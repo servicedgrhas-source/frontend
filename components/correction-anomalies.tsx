@@ -140,6 +140,14 @@ export function CorrectionAnomalies({ agent, fermer, apres }: { agent: Agent; fe
                           ? "Le même numéro de texte est écrit pour une autre personne. Sauf texte collectif, l’un des deux numéros est faux : la référence imprimée sur la note le serait aussi. Comparez avec les textes de la FP, corrigez le numéro, ou déclarez-la vérifiée."
                           : "Vérifiez ce point sur le dossier papier.")}
                   </p>
+                  {/* Numéro partagé : on peut le corriger ici (sinon, texte collectif : « vérifié ») */}
+                  {a.startsWith("N° de texte partagé") && (
+                    <div className="mt-3">
+                      <Champ libelle={`N° du texte de ${agent.nomComplet} (actuellement ${agent.numeroTexte ?? "—"})`} aide="Si le numéro est faux : recopiez le bon numéro écrit sur le texte de la FP. S’il est juste (texte collectif), laissez vide et cochez « vérifié ».">
+                        <Saisie className="max-w-56" value={v.numeroTexte} onChange={(e) => setV({ ...v, numeroTexte: e.target.value })} />
+                      </Champ>
+                    </div>
+                  )}
                   <label className="mt-3 flex items-center gap-2 text-[13px] font-medium">
                     <input type="checkbox" checked={verifiees.includes(a)} onChange={() => basculer(a)} />
                     J’ai vérifié : retirer cette anomalie
