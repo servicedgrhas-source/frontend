@@ -1,10 +1,10 @@
 "use client";
 
 import { CheckCircle2, ChevronDown, ChevronRight, Trash2, UserCheck, UserX } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSession } from "./session";
 import { Alerte, Badge, Bouton, Carte, Champ, Modale, Saisie } from "./ui";
-import { api, useApi } from "@/lib/api";
+import { api, TRAVAIL_MODIFIE, useApi } from "@/lib/api";
 import { peut } from "@/lib/libelles";
 
 interface Oublie {
@@ -35,6 +35,16 @@ const ETAT: Record<Oublie["etat"], { libelle: string; ton: "jaune" | "gris" | "v
 
 const jour = (d: string | null) => (d ? new Date(d).toLocaleDateString("fr-FR") : "");
 
+/** Bloc réduit ou étendu : retenu sur ce poste (rien de grave s'il est perdu). */
+const CLE_REDUIT = "dgrhas.oublies.reduit";
+function lireReduit() {
+  try {
+    return localStorage.getItem(CLE_REDUIT) === "1";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Liste des oubliés (DG, 31/10/2026) : les personnes ajoutées à la main dans la base des recrutés
  * attendent un contrôle avant d'entrer dans une note. Déjà affectée : hors des notes ; pas encore
@@ -43,6 +53,26 @@ const jour = (d: string | null) => (d ? new Date(d).toLocaleDateString("fr-FR") 
 export function ListeOublies({ apres }: { apres: (texte: string) => void }) {
   const { profil } = useSession();
   const liste = useApi<Oublie[]>("/recrutes/oublies");
+  const { recharger } = liste;
+  // Relue après chaque enregistrement sur les recrutés (ajout d'une personne, fiche corrigée,
+  // affectation retirée…) : le bloc se met à jour au fur et à mesure (DG, 31/10/2026)
+  useEffect(() => {
+    const apres = (e: Event) => {
+      const chemin = (e as CustomEvent<string>).detail ?? "";
+      if (/^\/(recrutes|agents|affectations|import)/.test(chemin)) recharger();
+    };
+    window.addEventListener(TRAVAIL_MODIFIE, apres);
+    return () => window.removeEventListener(TRAVAIL_MODIFIE, apres);
+  }, [recharger]);
+  const [reduit, setReduit] = useState(lireReduit);
+  const basculer = () => {
+    setReduit(!reduit);
+    try {
+      localStorage.setItem(CLE_REDUIT, reduit ? "0" : "1");
+    } catch {
+      // Stockage indisponible (navigation privée) : le choix vaut pour cette page
+    }
+  };
   const [voirDecides, setVoirDecides] = useState(false);
   const [deja, setDeja] = useState<Oublie | null>(null);
   const [precision, setPrecision] = useState("");
@@ -121,31 +151,49 @@ export function ListeOublies({ apres }: { apres: (texte: string) => void }) {
   };
 
   return (
-    <Carte titre={`Oubliés à contrôler (${aControler.length})`}>
-      <p className="mb-3 text-[13px] leading-relaxed text-zinc-600">
-        Les personnes ajoutées à la main (« Ajouter une personne ») n’entrent dans aucune note avant ce contrôle. <strong>Déjà affecté</strong> : elle
-        ne rentre pas dans les notes. <strong>Pas encore affecté</strong> : elle rentre dans les notes de son lot. <strong>Supprimer</strong> : ajoutée
-        par erreur.
-      </p>
-      {erreur && (
-        <div className="mb-3">
-          <Alerte>{erreur}</Alerte>
-        </div>
-      )}
-      {aControler.length ? (
-        <div className="space-y-2">{aControler.map(ligne)}</div>
-      ) : (
-        <p className="flex items-center gap-1.5 text-[13px] text-marque-700">
-          <CheckCircle2 className="size-4" /> Tout est contrôlé.
+    <Carte
+      titre={`Oubliés à contrôler (${aControler.length})`}
+      actions={
+        <Bouton variante="discret" onClick={basculer} aria-expanded={!reduit}>
+          {reduit ? <ChevronRight /> : <ChevronDown />} {reduit ? "Étendre" : "Réduire"}
+        </Bouton>
+      }
+    >
+      {reduit ? (
+        <p className="text-[13px] text-zinc-500">
+          {aControler.length
+            ? `${aControler.length} personne(s) ajoutée(s) à la main attendent le contrôle avant d’entrer dans une note.`
+            : "Tout est contrôlé."}{" "}
+          {decides.length > 0 && `${decides.length} déjà contrôlée(s).`}
         </p>
-      )}
-      {decides.length > 0 && (
-        <div className="mt-4">
-          <button type="button" className="flex items-center gap-1 text-[13px] font-medium text-zinc-600 hover:text-marque-700" onClick={() => setVoirDecides(!voirDecides)}>
-            {voirDecides ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />} Déjà contrôlés ({decides.length})
-          </button>
-          {voirDecides && <div className="mt-2 space-y-2">{decides.map(ligne)}</div>}
-        </div>
+      ) : (
+        <>
+          <p className="mb-3 text-[13px] leading-relaxed text-zinc-600">
+            Les personnes ajoutées à la main (« Ajouter une personne ») n’entrent dans aucune note avant ce contrôle. <strong>Déjà affecté</strong> : elle
+            ne rentre pas dans les notes. <strong>Pas encore affecté</strong> : elle rentre dans les notes de son lot. <strong>Supprimer</strong> : ajoutée
+            par erreur.
+          </p>
+          {erreur && (
+            <div className="mb-3">
+              <Alerte>{erreur}</Alerte>
+            </div>
+          )}
+          {aControler.length ? (
+            <div className="space-y-2">{aControler.map(ligne)}</div>
+          ) : (
+            <p className="flex items-center gap-1.5 text-[13px] text-marque-700">
+              <CheckCircle2 className="size-4" /> Tout est contrôlé.
+            </p>
+          )}
+          {decides.length > 0 && (
+            <div className="mt-4">
+              <button type="button" className="flex items-center gap-1 text-[13px] font-medium text-zinc-600 hover:text-marque-700" onClick={() => setVoirDecides(!voirDecides)}>
+                {voirDecides ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />} Déjà contrôlés ({decides.length})
+              </button>
+              {voirDecides && <div className="mt-2 space-y-2">{decides.map(ligne)}</div>}
+            </div>
+          )}
+        </>
       )}
 
       <Modale titre={`Déjà affecté – ${deja?.nomComplet ?? ""}`} ouverte={!!deja} fermer={() => setDeja(null)}>
