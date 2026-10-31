@@ -79,6 +79,7 @@ export function SaisieReferentiel({
   desactive,
   className,
   avertissement = HORS_LISTE,
+  enPlus = [],
 }: {
   liste: ListeReference;
   valeur: string;
@@ -90,6 +91,8 @@ export function SaisieReferentiel({
   className?: string;
   /** Phrase (en jaune) sous une valeur tapée à la main, absente de la liste ; `null` : rien. Jamais bloquant. */
   avertissement?: string | null;
+  /** Choix ajoutés en tête de la liste (ex. « Primaire », « Préscolaire » parmi les spécialités). */
+  enPlus?: string[];
 }) {
   const [ouvert, setOuvert] = useState(false);
   const [options, setOptions] = useState<OptionChoix[]>([]);
@@ -104,7 +107,14 @@ export function SaisieReferentiel({
     const t = setTimeout(async () => {
       try {
         const r = await fetch(`${API_URL}/referentiels/options?liste=${liste}&q=${encodeURIComponent(valeur)}&departement=${dep}&limite=40`);
-        const l = r.ok ? ((await r.json()) as OptionChoix[]) : [];
+        const lus = r.ok ? ((await r.json()) as OptionChoix[]) : [];
+        // Choix en plus, filtrés comme la liste (début de mot), sans doublon
+        const tape = cle(valeur);
+        const enTete = enPlus
+          .filter((x) => !tape || cle(x).split(" ").some((m) => m.startsWith(tape)) || cle(x).startsWith(tape))
+          .filter((x) => !lus.some((o) => cle(o.valeur) === cle(x)))
+          .map((x) => ({ valeur: x, libelle: x }));
+        const l = [...enTete, ...lus];
         if (!vivant) return;
         setOptions(l);
         setActif(0);
@@ -118,7 +128,9 @@ export function SaisieReferentiel({
       vivant = false;
       clearTimeout(t);
     };
-  }, [liste, valeur, dep]);
+    // enPlus : une liste fixe écrite dans la page (sa forme texte suffit à la comparer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liste, valeur, dep, enPlus.join("|")]);
 
   // Fermer en cliquant ailleurs
   useEffect(() => {

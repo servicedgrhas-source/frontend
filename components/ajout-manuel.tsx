@@ -4,6 +4,7 @@ import { libelleAnomalie } from "@/lib/libelles";
 import { CheckCircle2, Search, UserPlus } from "lucide-react";
 import { useState } from "react";
 import { ChoixGrade } from "./choix-grade";
+import { SaisieReferentiel } from "./saisie-referentiel";
 import { useSession } from "./session";
 import { Alerte, Bouton, Champ, Liste, Modale, Saisie, SaisieDate } from "./ui";
 import { api } from "@/lib/api";
@@ -52,6 +53,11 @@ const VIDE = {
   gradeCode: "",
 };
 
+/** Qualification proposée par défaut, modifiable (DG, 01/11/2026). */
+const QUALIFICATION_DEFAUT = "Enseignant actif";
+/** Spécialités du primaire et du préscolaire : le cycle lui-même. */
+const SPECIALITES_CYCLE = ["Primaire", "Préscolaire"];
+
 const dateCourte = (d: string | null) => (d ? d.split("-").reverse().join("/") : "date inconnue");
 
 /**
@@ -62,7 +68,7 @@ export function AjoutManuel({ apres }: { apres: (texte: string) => void }) {
   const { refs } = useSession();
   const [ouverte, setOuverte] = useState(false);
   const [groupe, setGroupe] = useState<"MEPPSA" | "AUTRES">("MEPPSA");
-  const [v, setV] = useState(VIDE);
+  const [v, setV] = useState({ ...VIDE, qualification: QUALIFICATION_DEFAUT });
   const [verif, setVerif] = useState<Verification | null>(null);
   // Doute tranché : id de la fiche « même personne », ou « autre » (nouvelle fiche)
   const [choix, setChoix] = useState<string | null>(null);
@@ -78,7 +84,7 @@ export function AjoutManuel({ apres }: { apres: (texte: string) => void }) {
   };
   const fermer = () => {
     setOuverte(false);
-    setV(VIDE);
+    setV({ ...VIDE, qualification: QUALIFICATION_DEFAUT });
     setVerif(null);
     setChoix(null);
     setErreur(null);
@@ -196,7 +202,8 @@ export function AjoutManuel({ apres }: { apres: (texte: string) => void }) {
             <SaisieDate value={v.dateNaissance} onChange={(iso) => changer("dateNaissance", iso)} aria-label="Date de naissance" />
           </Champ>
           <Champ libelle="Lieu de naissance">
-            <Saisie value={v.lieuNaissance} onChange={(e) => changer("lieuNaissance", e.target.value)} />
+            {/* Départements du Congo, villes et districts proposés ; tout autre lieu peut être tapé */}
+            <SaisieReferentiel liste="LIEU_NAISSANCE" valeur={v.lieuNaissance} changer={(x) => changer("lieuNaissance", x)} avertissement={null} placeholder="Ex. Brazzaville, Pool…" />
           </Champ>
           <Champ libelle="Diplôme *" aide="La règle du diplôme donne le cycle, le grade et la note">
             <Liste
@@ -204,6 +211,10 @@ export function AjoutManuel({ apres }: { apres: (texte: string) => void }) {
               onChange={(e) => {
                 changer("diplomeCode", e.target.value);
                 changer("gradeCode", "");
+                // Diplôme qui mène à l'administration : « Enseignant actif » ne convient plus (s'il n'a pas été changé)
+                const r = refs.regles.find((x) => x.code === e.target.value);
+                if (r?.cycle === "ADMINISTRATION" && v.qualification === QUALIFICATION_DEFAUT) changer("qualification", "");
+                else if (r && r.cycle !== "ADMINISTRATION" && !v.qualification) changer("qualification", QUALIFICATION_DEFAUT);
               }}
               vide="— Choisir —"
               options={diplomes.map((r) => ({ valeur: r.code, libelle: r.libelle }))}
@@ -219,9 +230,16 @@ export function AjoutManuel({ apres }: { apres: (texte: string) => void }) {
             <Liste value={v.cycle} onChange={(e) => changer("cycle", e.target.value)} vide="—" options={CYCLES.map((c) => ({ valeur: c, libelle: c }))} />
           </Champ>
           <Champ libelle="Spécialité">
-            <Saisie value={v.specialite} onChange={(e) => changer("specialite", e.target.value)} />
+            <SaisieReferentiel
+              liste="MATIERE"
+              valeur={v.specialite}
+              changer={(x) => changer("specialite", x)}
+              enPlus={SPECIALITES_CYCLE}
+              avertissement={null}
+              placeholder="Ex. Primaire, Mathématiques…"
+            />
           </Champ>
-          <Champ libelle="Qualification">
+          <Champ libelle="Qualification" aide="Proposée : Enseignant actif (modifiable)">
             <Saisie value={v.qualification} onChange={(e) => changer("qualification", e.target.value)} />
           </Champ>
           <Champ libelle="Source">

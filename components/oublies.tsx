@@ -73,6 +73,17 @@ export function ListeOublies({ apres, modifier }: { apres: (texte: string) => vo
     return () => window.removeEventListener(TRAVAIL_MODIFIE, apres);
   }, [recharger]);
   const [reduit, setReduit] = useState(lireReduit);
+  // Ouvert depuis le traitement des affectations (/recrutement#oublies) : bloc étendu, à l'écran
+  const pret = !!liste.donnees?.length;
+  useEffect(() => {
+    if (!pret || window.location.hash !== "#oublies") return;
+    const t = setTimeout(() => {
+      setReduit(false);
+      // Saut direct (à l'arrivée sur la page, pas d'animation)
+      document.getElementById("oublies")?.scrollIntoView({ block: "start" });
+    }, 150);
+    return () => clearTimeout(t);
+  }, [pret]);
   const basculer = () => {
     setReduit(!reduit);
     try {
@@ -190,100 +201,102 @@ export function ListeOublies({ apres, modifier }: { apres: (texte: string) => vo
   };
 
   return (
-    <Carte
-      titre={`Oubliés à contrôler (${aControler.length})`}
-      actions={
-        <Bouton variante="discret" onClick={basculer} aria-expanded={!reduit}>
-          {reduit ? <ChevronRight /> : <ChevronDown />} {reduit ? "Étendre" : "Réduire"}
-        </Bouton>
-      }
-    >
-      {reduit ? (
-        <p className="text-[13px] text-zinc-500">
-          {aControler.length
-            ? `${aControler.length} personne(s) ajoutée(s) à la main attendent le contrôle avant d’entrer dans une note.`
-            : "Tout est contrôlé."}{" "}
-          {decides.length > 0 && `${decides.length} déjà contrôlée(s).`}
-        </p>
-      ) : (
-        <>
-          <p className="mb-3 text-[13px] leading-relaxed text-zinc-600">
-            Les personnes ajoutées à la main (« Ajouter une personne ») n’entrent dans aucune note avant ce contrôle. <strong>Déjà affecté</strong> : elle
-            ne rentre pas dans les notes. <strong>Pas encore affecté</strong> : elle rentre dans les notes de son lot. <strong>Supprimer</strong> : ajoutée
-            par erreur.
+    <div id="oublies" className="scroll-mt-4">
+      <Carte
+        titre={`Oubliés à contrôler (${aControler.length})`}
+        actions={
+          <Bouton variante="discret" onClick={basculer} aria-expanded={!reduit}>
+            {reduit ? <ChevronRight /> : <ChevronDown />} {reduit ? "Étendre" : "Réduire"}
+          </Bouton>
+        }
+      >
+        {reduit ? (
+          <p className="text-[13px] text-zinc-500">
+            {aControler.length
+              ? `${aControler.length} personne(s) ajoutée(s) à la main attendent le contrôle avant d’entrer dans une note.`
+              : "Tout est contrôlé."}{" "}
+            {decides.length > 0 && `${decides.length} déjà contrôlée(s).`}
           </p>
-          {erreur && (
-            <div className="mb-3">
-              <Alerte>{erreur}</Alerte>
-            </div>
-          )}
-          <div className="mb-3 flex flex-wrap items-center gap-3">
-            <Saisie
-              className="max-w-md"
-              value={recherche}
-              onChange={(e) => setRecherche(e.target.value)}
-              placeholder="Rechercher : nom, n° de texte, diplôme, département, lot…"
-              aria-label="Rechercher dans la liste des oubliés"
-            />
-            {mots.length > 0 && (
-              <span className="text-[12px] text-zinc-500">
-                {aControlerVus.length + decidesVus.length} résultat(s) sur {toutes.length}
-                <button type="button" className="ml-2 text-marque-700 underline" onClick={() => setRecherche("")}>
-                  Effacer
-                </button>
-              </span>
-            )}
-          </div>
-          {aControlerVus.length ? (
-            <div className="space-y-2">{aControlerVus.map(ligne)}</div>
-          ) : mots.length ? (
-            <p className="text-[13px] text-zinc-500">Aucune personne à contrôler ne correspond à « {recherche} ».</p>
-          ) : (
-            <p className="flex items-center gap-1.5 text-[13px] text-marque-700">
-              <CheckCircle2 className="size-4" /> Tout est contrôlé.
+        ) : (
+          <>
+            <p className="mb-3 text-[13px] leading-relaxed text-zinc-600">
+              Les personnes ajoutées à la main (« Ajouter une personne ») n’entrent dans aucune note avant ce contrôle. <strong>Déjà affecté</strong> : elle
+              ne rentre pas dans les notes. <strong>Pas encore affecté</strong> : elle rentre dans les notes de son lot. <strong>Supprimer</strong> : ajoutée
+              par erreur.
             </p>
-          )}
-          {decidesVus.length > 0 && (
-            <div className="mt-4">
-              <button type="button" className="flex items-center gap-1 text-[13px] font-medium text-zinc-600 hover:text-marque-700" onClick={() => setVoirDecides(!voirDecides)}>
-                {voirDecides || mots.length ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />} Déjà contrôlés ({decidesVus.length}
-                {mots.length ? ` sur ${decides.length}` : ""})
-              </button>
-              {/* Une recherche ouvre aussi les personnes déjà contrôlées qui correspondent */}
-              {(voirDecides || mots.length > 0) && <div className="mt-2 space-y-2">{decidesVus.map(ligne)}</div>}
+            {erreur && (
+              <div className="mb-3">
+                <Alerte>{erreur}</Alerte>
+              </div>
+            )}
+            <div className="mb-3 flex flex-wrap items-center gap-3">
+              <Saisie
+                className="max-w-md"
+                value={recherche}
+                onChange={(e) => setRecherche(e.target.value)}
+                placeholder="Rechercher : nom, n° de texte, diplôme, département, lot…"
+                aria-label="Rechercher dans la liste des oubliés"
+              />
+              {mots.length > 0 && (
+                <span className="text-[12px] text-zinc-500">
+                  {aControlerVus.length + decidesVus.length} résultat(s) sur {toutes.length}
+                  <button type="button" className="ml-2 text-marque-700 underline" onClick={() => setRecherche("")}>
+                    Effacer
+                  </button>
+                </span>
+              )}
             </div>
-          )}
-        </>
-      )}
+            {aControlerVus.length ? (
+              <div className="space-y-2">{aControlerVus.map(ligne)}</div>
+            ) : mots.length ? (
+              <p className="text-[13px] text-zinc-500">Aucune personne à contrôler ne correspond à « {recherche} ».</p>
+            ) : (
+              <p className="flex items-center gap-1.5 text-[13px] text-marque-700">
+                <CheckCircle2 className="size-4" /> Tout est contrôlé.
+              </p>
+            )}
+            {decidesVus.length > 0 && (
+              <div className="mt-4">
+                <button type="button" className="flex items-center gap-1 text-[13px] font-medium text-zinc-600 hover:text-marque-700" onClick={() => setVoirDecides(!voirDecides)}>
+                  {voirDecides || mots.length ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />} Déjà contrôlés ({decidesVus.length}
+                  {mots.length ? ` sur ${decides.length}` : ""})
+                </button>
+                {/* Une recherche ouvre aussi les personnes déjà contrôlées qui correspondent */}
+                {(voirDecides || mots.length > 0) && <div className="mt-2 space-y-2">{decidesVus.map(ligne)}</div>}
+              </div>
+            )}
+          </>
+        )}
 
-      <Modale titre={`Déjà affecté – ${deja?.nomComplet ?? ""}`} ouverte={!!deja} fermer={() => setDeja(null)}>
-        <p className="text-[13px] leading-relaxed text-zinc-600">Cette personne ne rentrera dans aucune note de service. Vous pourrez revenir sur cette décision tant qu’elle n’est pas dans une note validée.</p>
-        <Champ libelle="Note où elle est déjà affectée (facultatif)" className="mt-3" aide="Ex. note n° 270 du 08/04/2026, note CBD…">
-          <Saisie value={precision} onChange={(e) => setPrecision(e.target.value)} />
-        </Champ>
-        <div className="mt-6 flex justify-end gap-2">
-          <Bouton onClick={() => setDeja(null)}>Annuler</Bouton>
-          <Bouton variante="principal" onClick={() => deja && decider(deja, "DEJA_AFFECTE", precision)}>
-            <UserX /> Déclarer déjà affecté
-          </Bouton>
-        </div>
-      </Modale>
+        <Modale titre={`Déjà affecté – ${deja?.nomComplet ?? ""}`} ouverte={!!deja} fermer={() => setDeja(null)}>
+          <p className="text-[13px] leading-relaxed text-zinc-600">Cette personne ne rentrera dans aucune note de service. Vous pourrez revenir sur cette décision tant qu’elle n’est pas dans une note validée.</p>
+          <Champ libelle="Note où elle est déjà affectée (facultatif)" className="mt-3" aide="Ex. note n° 270 du 08/04/2026, note CBD…">
+            <Saisie value={precision} onChange={(e) => setPrecision(e.target.value)} />
+          </Champ>
+          <div className="mt-6 flex justify-end gap-2">
+            <Bouton onClick={() => setDeja(null)}>Annuler</Bouton>
+            <Bouton variante="principal" onClick={() => deja && decider(deja, "DEJA_AFFECTE", precision)}>
+              <UserX /> Déclarer déjà affecté
+            </Bouton>
+          </div>
+        </Modale>
 
-      <Modale titre={`Supprimer ${supprimer?.nomComplet ?? ""} ?`} ouverte={!!supprimer} fermer={() => setSupprimer(null)}>
-        <p className="text-[13px] leading-relaxed text-zinc-600">
-          La fiche est <strong>supprimée définitivement</strong> de la base des recrutés (ajoutée par erreur, en double…). Cette action ne peut pas être annulée.
-        </p>
-        <div className="mt-6 flex justify-end gap-2">
-          <Bouton onClick={() => setSupprimer(null)}>Annuler</Bouton>
-          <Bouton
-            variante="danger"
-            onClick={() => supprimer && agir(() => api.delete(`/recrutes/oublies/${supprimer.id}`), `${supprimer.nomComplet} : fiche supprimée.`)}
-          >
-            <Trash2 /> Supprimer définitivement
-          </Bouton>
-        </div>
-      </Modale>
-      {ficheOuverte && <FicheDossier id={ficheOuverte} fermer={() => setFicheOuverte(null)} />}
-    </Carte>
+        <Modale titre={`Supprimer ${supprimer?.nomComplet ?? ""} ?`} ouverte={!!supprimer} fermer={() => setSupprimer(null)}>
+          <p className="text-[13px] leading-relaxed text-zinc-600">
+            La fiche est <strong>supprimée définitivement</strong> de la base des recrutés (ajoutée par erreur, en double…). Cette action ne peut pas être annulée.
+          </p>
+          <div className="mt-6 flex justify-end gap-2">
+            <Bouton onClick={() => setSupprimer(null)}>Annuler</Bouton>
+            <Bouton
+              variante="danger"
+              onClick={() => supprimer && agir(() => api.delete(`/recrutes/oublies/${supprimer.id}`), `${supprimer.nomComplet} : fiche supprimée.`)}
+            >
+              <Trash2 /> Supprimer définitivement
+            </Bouton>
+          </div>
+        </Modale>
+        {ficheOuverte && <FicheDossier id={ficheOuverte} fermer={() => setFicheOuverte(null)} />}
+      </Carte>
+    </div>
   );
 }

@@ -6,6 +6,7 @@ import { useSession } from "@/components/session";
 import { Alerte, Badge, Bouton, Carte, Chargement, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, Zone } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
 import { dateCourte, libelleLot, peut } from "@/lib/libelles";
+import { useParametreUrl } from "@/lib/url";
 import type { Recommandation } from "@/lib/types";
 
 const STATUTS = {
@@ -29,7 +30,10 @@ const plat = (t: string) =>
 export default function Recommandations() {
   const { profil, refs } = useSession();
   const [statut, setStatut] = useState("EN_ATTENTE");
-  const [operation, setOperation] = useState("");
+  // ?operation=AFFECTATION : ouvert depuis le traitement des affectations
+  const operationUrl = useParametreUrl("operation");
+  const [operationChoisie, setOperation] = useState<string | null>(null);
+  const operation = operationChoisie ?? (operationUrl && operationUrl in OPERATIONS ? operationUrl : "");
   const { donnees, erreur, recharger } = useApi<Recommandation[]>(`/recommandations${qs({ statut, operation })}`);
   const [decision, setDecision] = useState<{ r: Recommandation; d: "VALIDEE" | "REJETEE" } | null>(null);
   const [avis, setAvis] = useState<{ r: Recommandation; a: "FAVORABLE" | "DEFAVORABLE" } | null>(null);

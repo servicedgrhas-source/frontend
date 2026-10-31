@@ -390,12 +390,42 @@ export default function Affectations() {
           <ul className="space-y-1 text-[13px]">
             {Object.entries(resume.donnees.raisons)
               .sort((a, b) => b[1] - a[1])
-              .map(([k, n]) => (
-                <li key={k} className="flex items-center justify-between gap-3 rounded-xl bg-zinc-50 px-3 py-1.5">
-                  <span>{k}</span>
-                  <strong className="tabular-nums">{n}</strong>
-                </li>
-              ))}
+              .map(([k, n]) => {
+                // Chaque erreur mène là où elle se corrige (DG, 31/10/2026)
+                const ligne = (
+                  <>
+                    <span>{k}</span>
+                    <span className="flex items-center gap-3">
+                      <strong className="tabular-nums">{n}</strong>
+                      <span className="text-[12px] font-medium text-marque-700 group-hover:underline">
+                        {k.startsWith("Ajoutée à la main")
+                          ? "Ouvrir les oubliés →"
+                          : k.startsWith("Recommandation en attente")
+                            ? "Ouvrir les recommandations →"
+                            : "Voir ces personnes →"}
+                      </span>
+                    </span>
+                  </>
+                );
+                const classe = "group flex w-full items-center justify-between gap-3 rounded-xl bg-zinc-50 px-3 py-1.5 text-left hover:bg-marque-50";
+                return (
+                  <li key={k}>
+                    {k.startsWith("Ajoutée à la main") ? (
+                      <Link href="/recrutement#oublies" className={classe}>
+                        {ligne}
+                      </Link>
+                    ) : k.startsWith("Recommandation en attente") ? (
+                      <Link href="/recommandations?operation=AFFECTATION" className={classe}>
+                        {ligne}
+                      </Link>
+                    ) : (
+                      <button type="button" className={classe} onClick={() => voirACompleter()}>
+                        {ligne}
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
           </ul>
           {Object.keys(resume.donnees.raisons).some((k) => k.startsWith("Date de signature")) && (
             <div className="mt-4 rounded-2xl bg-or-100/60 px-4 py-3 text-[13px]">
@@ -922,7 +952,7 @@ function Completer({
           libelle="Spécialité"
           aide="Pour les notes DEMA et décrets (ex. Musique, Arts plastiques, Français…)"
         >
-          <SaisieReferentiel liste="MATIERE" valeur={f.specialite} changer={(v) => setF({ ...f, specialite: v })} />
+          <SaisieReferentiel liste="MATIERE" valeur={f.specialite} changer={(v) => setF({ ...f, specialite: v })} enPlus={["Primaire", "Préscolaire"]} />
         </Champ>
         <Champ libelle="Qualification" aide="Sur la fiche de la personne, pas sur la note">
           <Saisie value={qualification} onChange={(e) => setQualification(e.target.value)} />

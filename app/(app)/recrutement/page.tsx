@@ -867,10 +867,10 @@ function EditionAgent({ agent, fermer, apres }: { agent: Agent; fermer: () => vo
           <Saisie value={infos.nomComplet} onChange={(e) => setInfos({ ...infos, nomComplet: e.target.value })} />
         </Champ>
         <Champ libelle="Lieu de naissance">
-          <Saisie value={infos.lieuNaissance} onChange={(e) => setInfos({ ...infos, lieuNaissance: e.target.value })} />
+          <SaisieReferentiel liste="LIEU_NAISSANCE" valeur={infos.lieuNaissance} changer={(v) => setInfos({ ...infos, lieuNaissance: v })} avertissement={null} />
         </Champ>
         <Champ libelle="Spécialité" aide="Imprimée sur la note (collège, lycée : la matière enseignée)">
-          <SaisieReferentiel liste="MATIERE" valeur={infos.specialite} changer={(v) => setInfos({ ...infos, specialite: v })} />
+          <SaisieReferentiel liste="MATIERE" valeur={infos.specialite} changer={(v) => setInfos({ ...infos, specialite: v })} enPlus={["Primaire", "Préscolaire"]} />
         </Champ>
         <Champ libelle="Qualification" aide="Sur la fiche, pas sur la note">
           <Saisie value={infos.qualification} onChange={(e) => setInfos({ ...infos, qualification: e.target.value })} />
