@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, ChevronDown, ChevronRight, Trash2, UserCheck, UserX } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight, PencilLine, Trash2, UserCheck, UserX } from "lucide-react";
 import { useEffect, useState } from "react";
 import { FicheDossier } from "./fiche-dossier";
 import { useSession } from "./session";
@@ -58,7 +58,7 @@ function lireReduit() {
  * attendent un contrôle avant d'entrer dans une note. Déjà affectée : hors des notes ; pas encore
  * affectée : dans les notes de son lot ; supprimée : ajoutée par erreur.
  */
-export function ListeOublies({ apres }: { apres: (texte: string) => void }) {
+export function ListeOublies({ apres, modifier }: { apres: (texte: string) => void; /** Ouvre « Corriger la fiche ». */ modifier?: (id: string) => void }) {
   const { profil } = useSession();
   const liste = useApi<Oublie[]>("/recrutes/oublies");
   const { recharger } = liste;
@@ -165,6 +165,11 @@ export function ListeOublies({ apres }: { apres: (texte: string) => void }) {
             <span className="text-[12px] text-zinc-400">Dans une note validée : décision figée</span>
           ) : (
             <div className="flex flex-wrap gap-1.5">
+              {modifier && (
+                <Bouton variante="discret" onClick={() => modifier(o.id)} title="Corriger la fiche : nom, date, diplôme, grade, texte, spécialité…">
+                  <PencilLine /> Modifier
+                </Bouton>
+              )}
               {o.etat !== "DEJA_AFFECTE" && (
                 <Bouton onClick={() => setDeja(o)}>
                   <UserX /> Déjà affecté

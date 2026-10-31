@@ -214,6 +214,15 @@ export default function Recrutement() {
             recharger();
             stats.recharger();
           }}
+          modifier={
+            peut.traiter(profil.role)
+              ? (id) =>
+                  api
+                    .get<Agent>(`/agents/${id}/fiche`)
+                    .then(setEdition)
+                    .catch((e: Error) => setMessage(e.message))
+              : undefined
+          }
         />
       )}
 
