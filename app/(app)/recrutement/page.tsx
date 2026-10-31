@@ -86,7 +86,7 @@ interface Doute {
 }
 
 export default function Recrutement() {
-  const { profil } = useSession();
+  const { profil, refs } = useSession();
   const anomaliesUrl = useParametreUrl("anomalies");
   const [recherche, setRecherche] = useState("");
   const [saisie, setSaisie] = useState("");
@@ -256,7 +256,7 @@ export default function Recrutement() {
               <thead>
                 <tr>
                   <th>Agent</th>
-                  <th>Diplôme · département</th>
+                  <th>Diplôme · grade · département</th>
                   <th>Liste</th>
                   <th>Texte de la FP</th>
                   <th>Statut</th>
@@ -298,7 +298,29 @@ export default function Recrutement() {
                       </div>
                     </td>
                     <td>
-                      <div>{a.diplomeBrut ?? "—"}</div>
+                      {/* Diplôme retenu (règle) et grade, à jour après une correction (DG, 31/10/2026) ;
+                          l'écriture du fichier Excel rappelée quand elle diffère */}
+                      {(() => {
+                        const r = refs.regles.find((x) => x.code === a.diplomeCode);
+                        const g = a.gradeChoisi?.abreviation ?? r?.grade ?? null;
+                        const affiche = g && a.contractuel ? `${g.replace(/\.+$/, "")}.C.` : g;
+                        return (
+                          <>
+                            <div>
+                              {r?.libelle ?? <span className="text-rouge-600">{a.diplomeBrut ?? "—"} (non reconnu)</span>}
+                              {affiche && (
+                                <span className="ml-1.5 text-[12px] text-zinc-500">
+                                  · {affiche}
+                                  {a.gradeChoisi && <span title={`Grade choisi par ${a.gradeChoisi.par}`}> (choisi)</span>}
+                                </span>
+                              )}
+                            </div>
+                            {r && a.diplomeBrut && r.libelle.toLowerCase() !== a.diplomeBrut.toLowerCase() && (
+                              <div className="text-[11px] text-zinc-400">Dans le fichier : « {a.diplomeBrut} »</div>
+                            )}
+                          </>
+                        );
+                      })()}
                       <div className="text-[11px] text-zinc-400">
                         {a.departement?.nom ?? (a.feuille === "QUOTA_AUTRES" ? (
                           <span className="text-or-700" title="Quota « Autres » : le département se donne par la répartition (Pilotage → Répartition du quota « Autres »)">
