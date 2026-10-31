@@ -27,6 +27,8 @@ interface Rapport {
   misAJour: number;
   /** Lignes d'une personne déjà lue dans une autre feuille, réunies en une fiche. */
   fusionnees: number;
+  /** Doutes cochés « même personne » : fiches mises à jour au lieu d'en créer. */
+  memesConfirmees: number;
   /** Fiches déjà enregistrées dont le fichier a rempli des cases vides. */
   fichesCompletees: number;
   champsCompletes: Record<string, number>;
@@ -49,6 +51,34 @@ interface ApercuClasseur {
     dejaVues: number;
     sansLot: number;
     lots: { libelle: string; n: number }[];
+    /** Déjà dans la base : mises à jour (une case vide n'efface rien). */
+    retrouvees: number;
+    nouvelles: number;
+    /** Ressemblent à une fiche sans certitude : à trancher ici. */
+    doutes: number;
+  }[];
+  doutes: Doute[];
+}
+
+/** Ligne du fichier qui ressemble à une fiche existante, sans certitude. */
+interface Doute {
+  cle: string;
+  feuille: string;
+  ligne: number;
+  nomComplet: string;
+  dateNaissance: string | null;
+  diplome: string | null;
+  departement: string | null;
+  texte: string | null;
+  candidats: {
+    id: string;
+    nomComplet: string;
+    dateNaissance: string | null;
+    liste: string;
+    diplome: string | null;
+    departement: string | null;
+    texte: string | null;
+    lot: string | null;
   }[];
 }
 
@@ -435,18 +465,22 @@ function ImportBase({ groupe, apres }: { groupe: "MEPPSA" | "AUTRES"; apres: () 
   // Fichier lu, en attente du choix des feuilles et de la confirmation « ATTENTION »
   const [enAttente, setEnAttente] = useState<{ fichier: File; apercu: ApercuClasseur } | null>(null);
   const [feuilles, setFeuilles] = useState<string[]>([]);
+  // Doutes tranchés : « feuille|ligne » → fiche existante à mettre à jour (absent : nouvelle personne)
+  const [memes, setMemes] = useState<Record<string, string>>({});
   const autres = groupe === "AUTRES";
   const nomBloc = autres ? "Quota « Autres »" : "Quota MEPPSA";
 
   async function lire(f: File) {
     const fd = new FormData();
     fd.append("fichier", f);
+    fd.append("groupe", groupe);
     setEnvoi(true);
     setErreur(null);
     setRapport(null);
     try {
       const a = await api.post<ApercuClasseur>("/import/base/apercu", fd);
       setEnAttente({ fichier: f, apercu: a });
+      setMemes({});
       // Feuilles cochées d'office : celles qui ressemblent à ce bloc (« QA… », « Quota Autres » ; sinon MEPPSA)
       setFeuilles(a.feuilles.filter((x) => x.groupe === groupe).map((x) => x.nom));
     } catch (e) {
@@ -462,6 +496,7 @@ function ImportBase({ groupe, apres }: { groupe: "MEPPSA" | "AUTRES"; apres: () 
     fd.append("fichier", enAttente.fichier);
     fd.append("groupe", groupe);
     fd.append("feuilles", JSON.stringify(feuilles));
+    fd.append("memes", JSON.stringify(Object.fromEntries(Object.entries(memes).filter(([k]) => feuilles.includes(k.slice(0, k.lastIndexOf("|")))))));
     setEnAttente(null);
     setEnvoi(true);
     setErreur(null);
@@ -476,6 +511,8 @@ function ImportBase({ groupe, apres }: { groupe: "MEPPSA" | "AUTRES"; apres: () 
   }
 
   const choisies = enAttente?.apercu.feuilles.filter((f) => feuilles.includes(f.nom)) ?? [];
+  const doutes = (enAttente?.apercu.doutes ?? []).filter((d) => feuilles.includes(d.feuille));
+  const nbMemes = doutes.filter((d) => memes[d.cle]).length;
   const autreBloc = choisies.filter((f) => f.groupe !== groupe);
 
   return (
@@ -524,6 +561,11 @@ function ImportBase({ groupe, apres }: { groupe: "MEPPSA" | "AUTRES"; apres: () 
                         {f.dejaVues ? ` · ${f.dejaVues} déjà dans une feuille précédente (réunies)` : ""}
                       </span>
                       <span className="mt-1 flex flex-wrap gap-1">
+                        <Badge ton="vert">{f.retrouvees} déjà dans la base : mises à jour</Badge>
+                        <Badge ton="bleu">{f.nouvelles} nouvelle(s)</Badge>
+                        {f.doutes > 0 && <Badge ton="jaune">{f.doutes} doute(s) à trancher ci-dessous</Badge>}
+                      </span>
+                      <span className="mt-1 flex flex-wrap gap-1">
                         {f.lots.map((l) => (
                           <Badge key={l.libelle}>
                             {l.libelle} : {l.n}
@@ -542,6 +584,72 @@ function ImportBase({ groupe, apres }: { groupe: "MEPPSA" | "AUTRES"; apres: () 
                 {autreBloc.map((f) => `« ${f.nom} »`).join(", ")} semble{autreBloc.length > 1 ? "nt" : ""} appartenir à l’autre bloc. Importées ici, ces
                 personnes seront enregistrées au <strong>{nomBloc}</strong>.
               </Alerte>
+            )}
+            {doutes.length > 0 && (
+              <div className="space-y-2 rounded-2xl border border-or-400/60 bg-or-100/30 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <strong className="text-encre">
+                    {doutes.length} personne(s) ressemblent à une fiche déjà enregistrée
+                  </strong>
+                  <span className="text-[12px] text-zinc-500">
+                    (nom proche, ou même nom avec une autre date). Cochée : la fiche existante est mise à jour (rien n’est effacé, ce qui manque est
+                    ajouté). Non cochée : une nouvelle fiche est créée.
+                  </span>
+                  <div className="ml-auto flex gap-2">
+                    <Bouton variante="secondaire" onClick={() => setMemes(Object.fromEntries(doutes.map((d) => [d.cle, d.candidats[0].id])))}>
+                      Tout cocher : même personne
+                    </Bouton>
+                    <Bouton variante="discret" onClick={() => setMemes({})}>
+                      Tout décocher
+                    </Bouton>
+                  </div>
+                </div>
+                <div className="max-h-80 space-y-1.5 overflow-auto">
+                  {doutes.map((d) => (
+                    <div key={d.cle} className="rounded-xl bg-white px-3 py-2 text-[12px] ring-1 ring-zinc-200">
+                      <div className="text-encre">
+                        <strong>{d.nomComplet}</strong>
+                        <span className="text-zinc-500">
+                          {" "}
+                          · {d.dateNaissance ? `né(e) le ${dateCourte(d.dateNaissance)}` : "date inconnue"}
+                          {d.diplome ? ` · ${d.diplome}` : ""}
+                          {d.departement ? ` · ${d.departement}` : ""}
+                          {d.texte ? ` · texte ${d.texte}` : ""} · {d.feuille}, ligne {d.ligne}
+                        </span>
+                      </div>
+                      {d.candidats.map((c) => (
+                        <label key={c.id} className="mt-1 flex cursor-pointer items-start gap-2 pl-2">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5"
+                            checked={memes[d.cle] === c.id}
+                            onChange={(e) => {
+                              const n = { ...memes };
+                              if (e.target.checked) n[d.cle] = c.id;
+                              else delete n[d.cle];
+                              setMemes(n);
+                            }}
+                          />
+                          <span>
+                            Même personne que <strong>{c.nomComplet}</strong>
+                            <span className="text-zinc-500">
+                              {" "}
+                              · {c.dateNaissance ? `né(e) le ${dateCourte(c.dateNaissance)}` : "date inconnue"} · {c.liste}
+                              {c.diplome ? ` · ${c.diplome}` : ""}
+                              {c.departement ? ` · ${c.departement}` : ""}
+                              {c.lot ? ` · ${c.lot}` : ""}
+                              {c.texte ? ` · texte ${c.texte}` : ""}
+                            </span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[12px] text-zinc-600">
+                  {nbMemes} cochée(s) : mises à jour · {doutes.length - nbMemes} non cochée(s) : nouvelles fiches
+                </p>
+              </div>
             )}
             <ul className="list-disc space-y-1 pl-5">
               <li>
@@ -599,6 +707,11 @@ function ImportBase({ groupe, apres }: { groupe: "MEPPSA" | "AUTRES"; apres: () 
                   ))}
                 </tbody>
               </Tableau>
+            )}
+            {rapport.memesConfirmees > 0 && (
+              <p className="text-center text-[12px] text-zinc-600">
+                {rapport.memesConfirmees} ligne(s) reconnue(s) comme la même personne qu’une fiche existante : fiche mise à jour, aucun doublon créé.
+              </p>
             )}
             {rapport.fichesCompletees > 0 && (
               <p className="text-center text-[12px] text-zinc-600">
