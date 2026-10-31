@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, Coins, Shuffle, Undo2, Users, Wallet } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Coins, Lock, Shuffle, Undo2, Users, Wallet, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { BilanRepartition } from "@/components/bilan-repartition";
 import { PlanificationQuota } from "@/components/planification-quota";
@@ -10,6 +10,7 @@ import { api, qs, useApi } from "@/lib/api";
 import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 import { useParametreUrl } from "@/lib/url";
+import { ajuster, partsEgales, somme } from "@/lib/repartir";
 
 const nf = new Intl.NumberFormat("fr-FR");
 const f = (n: number | null | undefined) => (n === null || n === undefined ? "—" : nf.format(Math.round(n)));
@@ -304,6 +305,13 @@ function Repartition() {
     .map((n) => lots.donnees?.find((l) => l.numero === Number(n))?.libelle ?? `Lot ${n}`)
     .join(" + ");
   const [quotas, setQuotas] = useState<Record<string, string>>({});
+  // Chiffres saisis à la main : « fixés » ; les autres départements se recalculent (DG, 31/10/2026)
+  const [fixes, setFixes] = useState<Set<string>>(new Set());
+  const [auto, setAuto] = useState(true);
+  // Par département et par cycle : « Brazzaville : 30 primaire, 10 préscolaire »
+  const [parCycle, setParCycle] = useState(false);
+  const [cases, setCases] = useState<Record<string, string>>({});
+  const [casesFixees, setCasesFixees] = useState<Set<string>>(new Set());
   const [proposition, setProposition] = useState<Proposition | null>(null);
   const [confirmer, setConfirmer] = useState(false);
   const [voirListe, setVoirListe] = useState(false);
@@ -312,8 +320,14 @@ function Repartition() {
   const [message, setMessage] = useState<{ ton: "vert" | "rouge"; texte: string } | null>(null);
   const libType = useMemo(() => Object.fromEntries(refs.typesNote.map((t) => [t.code, t.libelle])), [refs.typesNote]);
 
-  const total = Object.values(quotas).reduce((s, v) => s + (Number(v) || 0), 0);
   const dispo = etat.donnees?.eligibles ?? 0;
+  const depIds = refs.departements.map((d) => String(d.id));
+  const cycles = etat.donnees?.parType ?? [];
+  const cle = (dep: string, type: string) => `${dep}|${type}`;
+  // Par cycle : le chiffre de chaque département est la somme de ses cycles
+  const quotasEffectifs = parCycle ? Object.fromEntries(depIds.map((d) => [d, String(somme(cases, cycles.map((c) => cle(d, c.type))))])) : quotas;
+  const total = somme(quotasEffectifs);
+  const depassements = parCycle ? cycles.filter((c) => somme(cases, depIds.map((d) => cle(d, c.type))) > c.n) : [];
 
   // Quotas de la dernière répartition proposés par défaut — seulement s'il reste des personnes à placer
   const precedents = etat.donnees?.quotasPrecedents;
@@ -334,10 +348,56 @@ function Repartition() {
   }, [precedents, dispo]);
 
   function equitable() {
-    const n = refs.departements.length;
-    const base = Math.floor(dispo / n);
-    let reste = dispo - base * n;
-    setQuotas(Object.fromEntries(refs.departements.map((d) => [String(d.id), String(base + (reste-- > 0 ? 1 : 0))])));
+    if (parCycle) {
+      // Chaque cycle partagé à parts égales entre les départements
+      setCases(Object.assign({}, ...cycles.map((c) => {
+        const parts = partsEgales(depIds, c.n);
+        return Object.fromEntries(depIds.map((d) => [cle(d, c.type), parts[d]]));
+      })));
+      setCasesFixees(new Set());
+    } else {
+      setQuotas(partsEgales(depIds, dispo));
+      setFixes(new Set());
+    }
+    setProposition(null);
+  }
+
+  /** Chiffre d'un département saisi : il est fixé, les départements libres se partagent le reste. */
+  function changerDepartement(dep: string, valeur: string) {
+    const v = valeur.replace(/\D/g, "");
+    const f = new Set(fixes);
+    if (v === "") f.delete(dep);
+    else f.add(dep);
+    const valeurs = { ...quotas, [dep]: v };
+    setFixes(f);
+    // Recalcul seulement s'il y a déjà une répartition (parts égales, chiffres repris) à ajuster
+    const repartiAilleurs = depIds.some((d) => d !== dep && !f.has(d) && (quotas[d] ?? "") !== "");
+    setQuotas(auto && repartiAilleurs ? ajuster(depIds, valeurs, f, dispo) : valeurs);
+    setProposition(null);
+  }
+
+  /** Case « département × cycle » saisie : fixée, les autres départements de ce cycle se partagent le reste. */
+  function changerCase(dep: string, type: string, valeur: string) {
+    const v = valeur.replace(/\D/g, "");
+    const k = cle(dep, type);
+    const f = new Set(casesFixees);
+    if (v === "") f.delete(k);
+    else f.add(k);
+    let valeurs = { ...cases, [k]: v };
+    const colonne = depIds.map((d) => cle(d, type));
+    const n = cycles.find((c) => c.type === type)?.n ?? 0;
+    if (auto && colonne.some((x) => cases[x] !== undefined && x !== k)) valeurs = ajuster(colonne, valeurs, f, n);
+    setCasesFixees(f);
+    setCases(valeurs);
+    setProposition(null);
+  }
+
+  /** Un chiffre fixé redevient libre : il reprend sa part. */
+  function liberer(dep: string) {
+    const f = new Set(fixes);
+    f.delete(dep);
+    setFixes(f);
+    setQuotas(ajuster(depIds, quotas, f, dispo));
     setProposition(null);
   }
 
@@ -346,7 +406,10 @@ function Repartition() {
     try {
       setProposition(
         await api.post<Proposition>("/pilotage/repartition/proposer", {
-          quotas: Object.fromEntries(Object.entries(quotas).map(([k, v]) => [k, Number(v) || 0])),
+          quotas: Object.fromEntries(Object.entries(quotasEffectifs).map(([k, v]) => [k, Number(v) || 0])),
+          ...(parCycle
+            ? { parCycle: Object.fromEntries(depIds.map((d) => [d, Object.fromEntries(cycles.map((c) => [c.type, Number(cases[cle(d, c.type)]) || 0]))])) }
+            : {}),
           texteRecu,
           ...(lotsChoisis ? { lots: lotsChoisis.split(",").map(Number) } : { lot: lot ? Number(lot) : undefined }),
         }),
@@ -361,13 +424,16 @@ function Repartition() {
     if (!proposition) return;
     try {
       const r = await api.post<{ id: string; personnes: number; ignorees: number }>("/pilotage/repartition/appliquer", {
-        quotas: Object.fromEntries(Object.entries(quotas).map(([k, v]) => [k, Number(v) || 0])),
+        quotas: Object.fromEntries(Object.entries(quotasEffectifs).map(([k, v]) => [k, Number(v) || 0]).filter(([, v]) => v)),
         lignes: proposition.lignes.map((l) => ({ agentId: l.agentId, departementId: l.departementId })),
       });
       setConfirmer(false);
       setProposition(null);
       // Les chiffres saisis ont servi : le formulaire repart à zéro
       setQuotas({});
+      setFixes(new Set());
+      setCases({});
+      setCasesFixees(new Set());
       setPrerempli(false);
       setMessage({ ton: "vert", texte: `Répartition validée : ${r.personnes} personne(s) ont reçu un département. Voici le bilan : qui peut entrer dans une note, et ce qui bloque encore les autres.` });
       setBilan(r.id);
@@ -449,33 +515,156 @@ function Repartition() {
             <Bouton onClick={equitable} disabled={!dispo}>
               Répartir à parts égales
             </Bouton>
-            <Bouton onClick={() => { setQuotas({}); setPrerempli(false); setProposition(null); }}>Tout effacer</Bouton>
+            <Bouton
+              onClick={() => {
+                setQuotas({});
+                setFixes(new Set());
+                setCases({});
+                setCasesFixees(new Set());
+                setPrerempli(false);
+                setProposition(null);
+              }}
+            >
+              Tout effacer
+            </Bouton>
           </>
         }
       >
-        <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-5">
-          {refs.departements.map((d) => (
-            <Champ key={d.id} libelle={d.nom}>
-              <Saisie
-                inputMode="numeric"
-                value={quotas[String(d.id)] ?? ""}
-                onChange={(e) => {
-                  setQuotas({ ...quotas, [String(d.id)]: e.target.value.replace(/\D/g, "") });
-                  setProposition(null);
-                }}
-                placeholder="0"
-              />
-            </Champ>
-          ))}
+        <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px]">
+          <Segments
+            valeur={parCycle ? "cycle" : "departement"}
+            changer={(v) => {
+              setParCycle(v === "cycle");
+              setProposition(null);
+            }}
+            options={[
+              { valeur: "departement", libelle: "Par département" },
+              { valeur: "cycle", libelle: "Par département et par cycle" },
+            ]}
+          />
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
+            Recalculer les autres automatiquement
+          </label>
+          {auto && (
+            <span className="flex items-center gap-1 text-[12px] text-zinc-500">
+              <Lock className="size-3.5" /> Un chiffre tapé est fixé ; le reste est partagé entre les autres. Cliquez sur ✕ pour le libérer.
+            </span>
+          )}
         </div>
+        {!parCycle ? (
+          <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-5">
+            {refs.departements.map((d) => {
+              const k = String(d.id);
+              const fixe = auto && fixes.has(k);
+              return (
+                <Champ key={d.id} libelle={d.nom}>
+                  <div className="relative">
+                    <Saisie
+                      inputMode="numeric"
+                      value={quotas[k] ?? ""}
+                      onChange={(e) => changerDepartement(k, e.target.value)}
+                      placeholder="0"
+                      className={fixe ? "pr-14 ring-2 ring-marque-400" : undefined}
+                    />
+                    {fixe && (
+                      <button
+                        type="button"
+                        title="Libérer : ce département reprend sa part"
+                        onClick={() => liberer(k)}
+                        className="absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-0.5 rounded-lg bg-marque-50 px-1.5 py-0.5 text-[11px] text-marque-700 hover:bg-marque-100"
+                      >
+                        <Lock className="size-3" />
+                        <X className="size-3" />
+                      </button>
+                    )}
+                  </div>
+                </Champ>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="text-left text-[12px] text-zinc-500">
+                  <th className="py-1.5 pr-3 font-medium">Département</th>
+                  {cycles.map((c) => (
+                    <th key={c.type} className="px-1.5 py-1.5 font-medium">
+                      {c.libelle}
+                    </th>
+                  ))}
+                  <th className="px-1.5 py-1.5 text-right font-medium">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {refs.departements.map((d) => {
+                  const dep = String(d.id);
+                  return (
+                    <tr key={d.id} className="border-t border-zinc-100">
+                      <td className="py-1 pr-3 font-medium whitespace-nowrap">{d.nom}</td>
+                      {cycles.map((c) => {
+                        const k = cle(dep, c.type);
+                        return (
+                          <td key={c.type} className="px-1.5 py-1">
+                            <Saisie
+                              inputMode="numeric"
+                              aria-label={`${d.nom} – ${c.libelle}`}
+                              value={cases[k] ?? ""}
+                              onChange={(e) => changerCase(dep, c.type, e.target.value)}
+                              placeholder="0"
+                              className={`h-9 min-w-16 ${auto && casesFixees.has(k) ? "ring-2 ring-marque-400" : ""}`}
+                            />
+                          </td>
+                        );
+                      })}
+                      <td className="px-1.5 py-1 text-right font-semibold tabular-nums">{quotasEffectifs[dep]}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-zinc-200 text-[12px]">
+                  <td className="py-1.5 pr-3 font-medium">Placés / à répartir</td>
+                  {cycles.map((c) => {
+                    const n = somme(cases, depIds.map((d) => cle(d, c.type)));
+                    return (
+                      <td key={c.type} className={`px-1.5 py-1.5 tabular-nums ${n > c.n ? "font-semibold text-rouge-600" : "text-zinc-500"}`}>
+                        {n} / {c.n}
+                      </td>
+                    );
+                  })}
+                  <td className="px-1.5 py-1.5 text-right font-semibold tabular-nums">
+                    {total} / {dispo}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+            {casesFixees.size > 0 && auto && (
+              <button
+                type="button"
+                className="mt-2 text-[12px] text-marque-700 underline"
+                onClick={() => {
+                  // Toutes les cases redeviennent libres : chaque cycle repartagé à parts égales
+                  setCasesFixees(new Set());
+                  equitable();
+                }}
+              >
+                Libérer toutes les cases (parts égales)
+              </button>
+            )}
+          </div>
+        )}
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <span className={`text-[13px] ${total > dispo ? "text-rouge-600" : "text-zinc-500"}`}>
-            {total > dispo
+          <span className={`text-[13px] ${total > dispo || depassements.length ? "text-rouge-600" : "text-zinc-500"}`}>
+            {depassements.length
+              ? `${depassements.map((c) => c.libelle).join(", ")} : plus de places que de personnes de ce cycle.`
+              : total > dispo
               ? `${total} place(s) demandée(s), mais seulement ${dispo} personne(s) sans département : diminuez les chiffres (ou « Répartir à parts égales »).`
               : `${total} place(s) demandée(s) sur ${dispo} personne(s) sans département${total < dispo && total > 0 ? ` · ${dispo - total} resteront sans département` : ""}`}
             {prerempli && total > 0 && <span className="block text-[12px] text-zinc-500">Chiffres repris de la dernière répartition : ajustez-les si besoin.</span>}
           </span>
-          <Bouton variante="principal" disabled={!total || total > dispo} onClick={proposer}>
+          <Bouton variante="principal" disabled={!total || total > dispo || depassements.length > 0} onClick={proposer}>
             <Shuffle /> {proposition ? "Refaire le tirage" : "Proposer une répartition"}
           </Bouton>
         </div>

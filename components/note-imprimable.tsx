@@ -3,7 +3,7 @@
 import { SpecimenVisa, type StyleVisa } from "@/components/visa-specimen";
 import { Fragment, useMemo } from "react";
 import { dateLongue } from "@/lib/libelles";
-import { plusLongMot } from "@/lib/largeur-texte";
+import { largeurTexte, plusLongMot } from "@/lib/largeur-texte";
 import type { NoteDetail } from "@/lib/types";
 import { PagesA4, type Bloc, type Tableau } from "./pages-a4";
 
@@ -94,8 +94,14 @@ function construire(note: NoteDetail, avecVisas: boolean) {
     c.sections.flatMap((s) => s.lignes.map((l) => String(l.specialite ?? ""))),
     10,
   );
+  // Grade : toujours sur une seule ligne (« Com. des SAF.C. », DG 31/10/2026)
+  const plusLongGrade = Math.max(0, ...c.sections.flatMap((s) => s.lignes.map((l) => largeurTexte(String(l.grade ?? ""), 10))));
   const largeur = (k: string) =>
-    k === "specialite" ? Math.min(36, Math.max(LARGEUR.specialite, Math.ceil(motSpecialite + 3))) : (LARGEUR[k] ?? 20);
+    k === "specialite"
+      ? Math.min(36, Math.max(LARGEUR.specialite, Math.ceil(motSpecialite + 3)))
+      : k === "grade"
+        ? Math.min(36, Math.max(LARGEUR.grade, Math.ceil(plusLongGrade + 3)))
+        : (LARGEUR[k] ?? 20);
   // Colonnes du tableau (dans l'ordre d'affichage), le nom prend la place restante
   const cles = c.classification
     ? ["n", "nom", ...(avecGrade ? ["grade"] : []), "cat", "ech", "echl", ...(refCol ? ["reference"] : []), ...autres.map((x) => x.cle)]
@@ -229,7 +235,7 @@ function construire(note: NoteDetail, avecVisas: boolean) {
             <td>{l.nom}</td>
             {c.classification ? (
               <>
-                {avecGrade && <td>{l.grade}</td>}
+                {avecGrade && <td className="whitespace-nowrap">{l.grade}</td>}
                 <td className="text-center">{l.cat}</td>
                 <td className="text-center">{l.ech}</td>
                 <td className="text-center">{l.echl}</td>
