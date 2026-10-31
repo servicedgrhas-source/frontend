@@ -59,12 +59,43 @@ export function Coquille({ children }: { children: ReactNode }) {
       .catch((e: Error) => setErreur(e.message));
   }, [router]);
 
+  const ouvertRefs = !!session;
   // Menu renommé dans Administration › Menu : tout l'écran prend les nouveaux noms
   useEffect(() => {
     const apres = () => setSession((s) => (s ? { ...s } : s));
     window.addEventListener(MENU_MODIFIE, apres);
     return () => window.removeEventListener(MENU_MODIFIE, apres);
   }, []);
+
+  // Diplômes, grades, départements : relus après un changement dans « Règles des diplômes et
+  // grades » et au retour sur l'onglet, sans recharger la page (DG, 31/10/2026 : un grade rattaché
+  // au BEPC n'apparaissait pas sur la fiche avant un rechargement)
+  useEffect(() => {
+    if (!ouvertRefs) return;
+    let derniere = Date.now();
+    const relire = () => {
+      derniere = Date.now();
+      api
+        .get<Referentiels>("/referentiels")
+        .then((refs) => setSession((s) => (s ? { ...s, refs } : s)))
+        .catch(() => undefined);
+    };
+    const apresEcriture = (e: Event) => {
+      const chemin = (e as CustomEvent<string>).detail ?? "";
+      if (/^\/(configuration|departements|referentiels)/.test(chemin)) relire();
+    };
+    const auRetour = () => {
+      if (document.visibilityState === "visible" && Date.now() - derniere > 30_000) relire();
+    };
+    window.addEventListener(TRAVAIL_MODIFIE, apresEcriture);
+    window.addEventListener("focus", auRetour);
+    document.addEventListener("visibilitychange", auRetour);
+    return () => {
+      window.removeEventListener(TRAVAIL_MODIFIE, apresEcriture);
+      window.removeEventListener("focus", auRetour);
+      document.removeEventListener("visibilitychange", auRetour);
+    };
+  }, [ouvertRefs]);
 
   // Une fois la session ouverte, une session expirée se rouvre dans une fenêtre (la page reste)
   useEffect(() => (session ? surSessionExpiree((m) => setExpiree(m)) : undefined), [session]);

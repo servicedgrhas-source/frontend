@@ -3,6 +3,7 @@
 import { SpecimenVisa, type StyleVisa } from "@/components/visa-specimen";
 import { Fragment, useMemo } from "react";
 import { dateLongue } from "@/lib/libelles";
+import { plusLongMot } from "@/lib/largeur-texte";
 import type { NoteDetail } from "@/lib/types";
 import { PagesA4, type Bloc, type Tableau } from "./pages-a4";
 
@@ -87,6 +88,14 @@ function construire(note: NoteDetail, avecVisas: boolean) {
   const repere = `${new Date().toLocaleDateString("fr-FR")}/${c.repere}`;
   const intro = c.introduction.split(note.anneeScolaire);
 
+  // Spécialité : assez large pour son plus long mot, jamais coupé au milieu (« Mathématiques »,
+  // DG 31/10/2026) ; « Histoire-Géographie » passe à la ligne après le trait d'union
+  const motSpecialite = plusLongMot(
+    c.sections.flatMap((s) => s.lignes.map((l) => String(l.specialite ?? ""))),
+    10,
+  );
+  const largeur = (k: string) =>
+    k === "specialite" ? Math.min(36, Math.max(LARGEUR.specialite, Math.ceil(motSpecialite + 3))) : (LARGEUR[k] ?? 20);
   // Colonnes du tableau (dans l'ordre d'affichage), le nom prend la place restante
   const cles = c.classification
     ? ["n", "nom", ...(avecGrade ? ["grade"] : []), "cat", "ech", "echl", ...(refCol ? ["reference"] : []), ...autres.map((x) => x.cle)]
@@ -94,7 +103,7 @@ function construire(note: NoteDetail, avecVisas: boolean) {
   const colonnes = (
     <colgroup>
       {cles.map((k) => (
-        <col key={k} style={k === "nom" ? undefined : { width: `${LARGEUR[k] ?? 20}mm` }} />
+        <col key={k} style={k === "nom" ? undefined : { width: `${largeur(k)}mm` }} />
       ))}
     </colgroup>
   );
@@ -249,7 +258,8 @@ function construire(note: NoteDetail, avecVisas: boolean) {
       type: "libre",
       garderAvecPrecedent: true,
       contenu: (
-        <div className="space-y-1 pt-4">
+        // Une ligne vide entre la fin du tableau et les mentions (DG, 31/10/2026)
+        <div className="space-y-1" style={{ paddingTop: "calc(1rem + 1lh)" }}>
           {c.mentions.map((m) => (
             <p key={m} className="text-justify">
               {m}
@@ -263,18 +273,19 @@ function construire(note: NoteDetail, avecVisas: boolean) {
       type: "libre",
       garderAvecPrecedent: true,
       contenu: (
-        // « Fait à », le titre et le nom alignés sur la même verticale ;
+        // « Fait à », le titre et le nom alignés sur la même verticale (3e colonne, aussi large que
+        // la plus longue des trois lignes), poussés de deux tabulations vers la droite (DG, 31/10/2026) :
+        // la 2e colonne (25 mm) rétrécit si une date longue ne tiendrait plus avant la marge.
         // « Ampliations : » sur la même ligne que le nom du signataire
-        <div className="grid grid-cols-[1fr_44%] gap-x-8 pt-6">
-          <div />
+        <div className="grid grid-cols-[calc(56%-2rem)_2rem_minmax(0,25mm)_max-content_minmax(0,1fr)] pt-6">
           {/* Sans date : « le » seul, la date est écrite à la main (DG, 31/10/2026) */}
-          <div>Fait à {e.lieu}, le{note.dateSignature ? ` ${dateLongue(note.dateSignature)}` : ""}</div>
-          <div />
-          <div className="mt-2">{e.signataireTitre}</div>
+          <div className="col-start-4 whitespace-nowrap">Fait à {e.lieu}, le{note.dateSignature ? ` ${dateLongue(note.dateSignature)}` : ""}</div>
+          {/* Un peu d'espace sous « Fait à » (DG, 31/10/2026) */}
+          <div className="col-start-4 mt-4 whitespace-nowrap">{e.signataireTitre}</div>
           {/* Plus d'espace pour la signature (DG, 19/10/2026), plus deux lignes (31/10/2026) */}
-          <div className="self-end text-[10pt] font-bold underline" style={{ marginTop: "calc(6rem + 3em)" }}>Ampliations :</div>
-          <div className="self-end font-bold" style={{ marginTop: "calc(6rem + 3em)" }}>{e.signataireNom}</div>
-          <table className="ampliations w-auto justify-self-start text-[9pt]">
+          <div className="col-start-1 self-end text-[10pt] font-bold underline" style={{ marginTop: "calc(6rem + 3em)" }}>Ampliations :</div>
+          <div className="col-start-4 self-end whitespace-nowrap font-bold" style={{ marginTop: "calc(6rem + 3em)" }}>{e.signataireNom}</div>
+          <table className="ampliations col-start-1 w-auto justify-self-start text-[9pt]">
             <tbody>
               {c.ampliations.map((a) => (
                 <tr key={a.libelle}>
@@ -284,7 +295,6 @@ function construire(note: NoteDetail, avecVisas: boolean) {
               ))}
             </tbody>
           </table>
-          <div />
         </div>
       ),
     },

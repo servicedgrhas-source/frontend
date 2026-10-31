@@ -670,7 +670,10 @@ function EditionGrade({ grade, regles, fermer, apres }: { grade: Grade | null; r
   });
   // Diplômes rattachés : ce grade devient possible pour eux, leur grade par défaut ne change pas
   const [rattaches, setRattaches] = useState<string[]>(grade?.diplomesAutres.map((d) => d.code) ?? []);
-  const proposables = regles.filter((r) => !grade || r.gradeCode !== grade.code);
+  // « Sans diplôme » en premier : les grades donnés aux personnes sans diplôme (DG, 31/10/2026)
+  const proposables = regles
+    .filter((r) => !grade || r.gradeCode !== grade.code)
+    .sort((a, b) => Number(b.code === "SANS_DIPLOME") - Number(a.code === "SANS_DIPLOME"));
   const [erreur, setErreur] = useState<string | null>(null);
   const nombres = (n: number) => Array.from({ length: n }, (_, i) => ({ valeur: String(i + 1), libelle: String(i + 1) }));
 
@@ -734,7 +737,7 @@ function EditionGrade({ grade, regles, fermer, apres }: { grade: Grade | null; r
                   checked={rattaches.includes(r.code)}
                   onChange={() => setRattaches((l) => (l.includes(r.code) ? l.filter((x) => x !== r.code) : [...l, r.code]))}
                 />
-                {r.libelle}
+                {r.code === "SANS_DIPLOME" ? <strong>Sans diplôme (va dans l’administration)</strong> : r.libelle}
               </label>
             ))}
           </div>

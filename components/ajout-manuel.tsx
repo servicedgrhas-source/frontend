@@ -3,6 +3,7 @@
 import { libelleAnomalie } from "@/lib/libelles";
 import { CheckCircle2, Search, UserPlus } from "lucide-react";
 import { useState } from "react";
+import { ChoixGrade } from "./choix-grade";
 import { useSession } from "./session";
 import { Alerte, Bouton, Champ, Liste, Modale, Saisie, SaisieDate } from "./ui";
 import { api } from "@/lib/api";
@@ -48,6 +49,7 @@ const VIDE = {
   quota: "",
   numeroOrdre: "",
   observation: "",
+  gradeCode: "",
 };
 
 const dateCourte = (d: string | null) => (d ? d.split("-").reverse().join("/") : "date inconnue");
@@ -104,6 +106,7 @@ export function AjoutManuel({ apres }: { apres: (texte: string) => void }) {
       quota: groupe === "MEPPSA" && v.quota ? Number(v.quota) : null,
       numeroOrdre: groupe === "MEPPSA" && v.numeroOrdre ? Number(v.numeroOrdre) : null,
       observation: t(v.observation),
+      gradeCode: v.gradeCode || null,
     };
   }
 
@@ -146,6 +149,7 @@ export function AjoutManuel({ apres }: { apres: (texte: string) => void }) {
   }
 
   const doutesATrancher = !!verif?.doutes.length && !choix;
+  const gradeChoisi = refs.grades?.find((g) => g.code === v.gradeCode);
 
   return (
     <>
@@ -194,8 +198,19 @@ export function AjoutManuel({ apres }: { apres: (texte: string) => void }) {
             <Saisie value={v.lieuNaissance} onChange={(e) => changer("lieuNaissance", e.target.value)} />
           </Champ>
           <Champ libelle="Diplôme *" aide="La règle du diplôme donne le cycle, le grade et la note">
-            <Liste value={v.diplomeCode} onChange={(e) => changer("diplomeCode", e.target.value)} vide="— Choisir —" options={diplomes.map((r) => ({ valeur: r.code, libelle: r.libelle }))} />
+            <Liste
+              value={v.diplomeCode}
+              onChange={(e) => {
+                changer("diplomeCode", e.target.value);
+                changer("gradeCode", "");
+              }}
+              vide="— Choisir —"
+              options={diplomes.map((r) => ({ valeur: r.code, libelle: r.libelle }))}
+            />
           </Champ>
+          {v.diplomeCode && (
+            <ChoixGrade diplomeCode={v.diplomeCode} valeur={v.gradeCode} changer={(c) => changer("gradeCode", c)} />
+          )}
           <Champ libelle="Département" aide={groupe === "AUTRES" ? "Vide : donné plus tard par la répartition" : undefined}>
             <Liste value={v.departement} onChange={(e) => changer("departement", e.target.value)} vide="—" options={refs.departements.map((d) => ({ valeur: d.nom, libelle: d.nom }))} />
           </Champ>
@@ -258,7 +273,7 @@ export function AjoutManuel({ apres }: { apres: (texte: string) => void }) {
             <ul className="list-disc space-y-1 pl-5 text-zinc-700">
               <li>
                 Diplôme : cycle <strong>{verif.cycle ?? "?"}</strong>
-                {verif.grade ? `, grade ${verif.grade}` : ""}.
+                {gradeChoisi ? `, grade ${gradeChoisi.abreviation} (choisi)` : verif.grade ? `, grade ${verif.grade}` : ", grade à choisir"}.
               </li>
               <li>
                 {verif.lot ? (

@@ -126,6 +126,8 @@ export interface Agent {
   dateReception: string | null;
   lotPublication: LotRepere | null;
   contractuelForce: boolean | null;
+  specialite?: string | null;
+  qualification?: string | null;
   /** Grade choisi à la demande (sinon le grade par défaut du diplôme). */
   gradeChoisi?: (GradeFP & { par: string; le: string }) | null;
   anomalies: string[];

@@ -152,7 +152,8 @@ async function requete<T>(
     .then((r) => {
       // Ce qui a été lu avant l'enregistrement sera relu à son prochain affichage
       perimerMemoire();
-      if (typeof window !== "undefined" && !chemin.startsWith("/auth/")) window.dispatchEvent(new Event(TRAVAIL_MODIFIE));
+      // Le chemin écrit accompagne l'événement (ex. « /configuration/… » : diplômes et grades relus)
+      if (typeof window !== "undefined" && !chemin.startsWith("/auth/")) window.dispatchEvent(new CustomEvent(TRAVAIL_MODIFIE, { detail: chemin }));
       return r;
     })
     .finally(() => ecritures.delete(p));

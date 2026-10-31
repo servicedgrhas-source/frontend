@@ -880,10 +880,17 @@ function Completer({
   });
   // Grade : par défaut celui du diplôme, un autre à la demande (DG, 31/10/2026)
   const [gradeCode, setGradeCode] = useState(aff.agent.gradeChoisi?.code ?? "");
+  // Qualification : sur la fiche de la personne (pas sur la note)
+  const [qualification, setQualification] = useState(aff.agent.qualification ?? "");
   const [erreur, setErreur] = useState<string | null>(null);
   async function ok() {
     try {
-      if (gradeCode !== (aff.agent.gradeChoisi?.code ?? "")) await api.patch(`/agents/${aff.agentId}`, { gradeCode: gradeCode || null });
+      // Grade, qualification et spécialité vont aussi sur la fiche de la personne
+      const fiche: Record<string, unknown> = {};
+      if (gradeCode !== (aff.agent.gradeChoisi?.code ?? "")) fiche.gradeCode = gradeCode || null;
+      if (qualification.trim() !== (aff.agent.qualification ?? "")) fiche.qualification = qualification.trim() || null;
+      if (f.specialite.trim() !== (aff.agent.specialite ?? "")) fiche.specialite = f.specialite.trim() || null;
+      if (Object.keys(fiche).length) await api.patch(`/agents/${aff.agentId}`, fiche);
       await api.patch(`/affectations/${aff.id}`, f);
       apres();
     } catch (e) {
@@ -913,6 +920,9 @@ function Completer({
           aide="Pour les notes DEMA et décrets (ex. Musique, Arts plastiques, Français…)"
         >
           <SaisieReferentiel liste="MATIERE" valeur={f.specialite} changer={(v) => setF({ ...f, specialite: v })} />
+        </Champ>
+        <Champ libelle="Qualification" aide="Sur la fiche de la personne, pas sur la note">
+          <Saisie value={qualification} onChange={(e) => setQualification(e.target.value)} />
         </Champ>
         <Champ
           libelle="Structure (personnel administratif)"

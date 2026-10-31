@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { CorrectionAnomalies, CorrectionCyclesGroupee } from "@/components/correction-anomalies";
 import { AjoutManuel } from "@/components/ajout-manuel";
 import { ChoixGrade } from "@/components/choix-grade";
+import { SaisieReferentiel } from "@/components/saisie-referentiel";
 import { FicheDossier } from "@/components/fiche-dossier";
 import { GuideImports } from "@/components/guide-imports";
 import { useSession } from "@/components/session";
@@ -766,6 +767,9 @@ function ImportBase({ groupe, apres }: { groupe: "MEPPSA" | "AUTRES"; apres: () 
 
 function EditionAgent({ agent, fermer, apres }: { agent: Agent; fermer: () => void; apres: () => void }) {
   const { refs } = useSession();
+  // Informations de la fiche (DG, 31/10/2026) : nom, lieu de naissance, spécialité, qualification…
+  const TEXTES = ["nomComplet", "lieuNaissance", "specialite", "qualification", "cycleBrut", "statut", "source", "observation"] as const;
+  const [infos, setInfos] = useState(Object.fromEntries(TEXTES.map((k) => [k, agent[k] ?? ""])) as Record<(typeof TEXTES)[number], string>);
   const [f, setF] = useState({
     dateNaissance: agent.dateNaissance ?? "",
     departementId: agent.departementId ? String(agent.departementId) : "",
@@ -787,6 +791,8 @@ function EditionAgent({ agent, fermer, apres }: { agent: Agent; fermer: () => vo
     const c = f.contractuel === "" ? null : f.contractuel === "1";
     if (c !== agent.contractuelForce) corps.contractuelForce = c;
     if (f.gradeCode !== (agent.gradeChoisi?.code ?? "")) corps.gradeCode = f.gradeCode || null;
+    for (const k of TEXTES) if (infos[k].trim() !== (agent[k] ?? "")) corps[k] = infos[k].trim() || null;
+    if (!Object.keys(corps).length) return fermer();
     try {
       await api.patch(`/agents/${agent.id}`, corps);
       apres();
@@ -796,9 +802,35 @@ function EditionAgent({ agent, fermer, apres }: { agent: Agent; fermer: () => vo
   }
 
   return (
-    <Modale titre={`Corriger la fiche – ${agent.nomComplet}`} ouverte fermer={fermer}>
+    <Modale titre={`Corriger la fiche – ${agent.nomComplet}`} ouverte fermer={fermer} large>
       <div className="grid grid-cols-2 gap-3">
         {erreur && <div className="col-span-2"><Alerte>{erreur}</Alerte></div>}
+        <Champ libelle="Noms et prénoms" className="col-span-2">
+          <Saisie value={infos.nomComplet} onChange={(e) => setInfos({ ...infos, nomComplet: e.target.value })} />
+        </Champ>
+        <Champ libelle="Lieu de naissance">
+          <Saisie value={infos.lieuNaissance} onChange={(e) => setInfos({ ...infos, lieuNaissance: e.target.value })} />
+        </Champ>
+        <Champ libelle="Spécialité" aide="Imprimée sur la note (collège, lycée : la matière enseignée)">
+          <SaisieReferentiel liste="MATIERE" valeur={infos.specialite} changer={(v) => setInfos({ ...infos, specialite: v })} />
+        </Champ>
+        <Champ libelle="Qualification" aide="Sur la fiche, pas sur la note">
+          <Saisie value={infos.qualification} onChange={(e) => setInfos({ ...infos, qualification: e.target.value })} />
+        </Champ>
+        <Champ libelle="Cycle (comme dans la base)" aide="La note suit la règle du diplôme ; un cycle différent est signalé">
+          <Liste
+            value={infos.cycleBrut}
+            onChange={(e) => setInfos({ ...infos, cycleBrut: e.target.value })}
+            vide="—"
+            options={["Préscolaire", "Primaire", "Collège", "Lycée", "Administration"].map((c) => ({ valeur: c, libelle: c }))}
+          />
+        </Champ>
+        <Champ libelle="Statut">
+          <Saisie value={infos.statut} onChange={(e) => setInfos({ ...infos, statut: e.target.value })} placeholder="Ex. Volontaire" />
+        </Champ>
+        <Champ libelle="Source">
+          <Saisie value={infos.source} onChange={(e) => setInfos({ ...infos, source: e.target.value })} />
+        </Champ>
         <Champ libelle="Date de naissance" aide={agent.dateNaissanceBrute ? `Dans le fichier : « ${agent.dateNaissanceBrute} »` : undefined}>
           <Saisie type="date" value={f.dateNaissance} onChange={(e) => setF({ ...f, dateNaissance: e.target.value })} />
         </Champ>
@@ -807,7 +839,7 @@ function EditionAgent({ agent, fermer, apres }: { agent: Agent; fermer: () => vo
         </Champ>
         <Champ libelle="Diplôme (règle appliquée)" aide={`Dans le fichier : « ${agent.diplomeBrut ?? "—"} »`}>
           {/* Autre diplôme : retour au grade par défaut du nouveau diplôme */}
-          <Liste value={f.diplomeCode} onChange={(e) => setF({ ...f, diplomeCode: e.target.value, gradeCode: "" })} vide="—" options={refs.regles.map((r) => ({ valeur: r.code, libelle: `${r.libelle} → ${r.grade ?? "?"}` }))} />
+          <Liste value={f.diplomeCode} onChange={(e) => setF({ ...f, diplomeCode: e.target.value, gradeCode: "" })} vide="—" options={refs.regles.map((r) => ({ valeur: r.code, libelle: `${r.libelle} → ${r.grade ?? (r.code === "SANS_DIPLOME" ? "grade à choisir" : "?")}` }))} />
         </Champ>
         <ChoixGrade diplomeCode={f.diplomeCode || null} valeur={f.gradeCode} changer={(gradeCode) => setF({ ...f, gradeCode })} />
         <Champ libelle="N° du texte">
@@ -826,6 +858,9 @@ function EditionAgent({ agent, fermer, apres }: { agent: Agent; fermer: () => vo
               { valeur: "0", libelle: "Fonctionnaire" },
             ]}
           />
+        </Champ>
+        <Champ libelle="Observation" className="col-span-2">
+          <Saisie value={infos.observation} onChange={(e) => setInfos({ ...infos, observation: e.target.value })} />
         </Champ>
       </div>
       <div className="mt-4 flex justify-end gap-2">
