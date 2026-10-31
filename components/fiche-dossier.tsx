@@ -26,6 +26,9 @@ export interface Dossier {
     lieuNaissance: string | null;
     diplome: string | null;
     cycle: string | null;
+    qualification?: string | null;
+    specialite?: string | null;
+    source?: string | null;
     grade: string | null;
     gradeLibelle: string | null;
     classification: string | null;
@@ -125,6 +128,9 @@ export function FicheDossier({ id, fermer }: { id: string; fermer: () => void })
             <Bloc titre="La personne">
               <Info l="Né(e) le" v={d.identite.dateNaissance ? dateCourte(d.identite.dateNaissance) : d.identite.dateNaissanceBrute ? `illisible (« ${d.identite.dateNaissanceBrute} »)` : null} />
               <Info l="Lieu de naissance" v={d.identite.lieuNaissance} />
+              <Info l="Qualification" v={d.identite.qualification ?? null} />
+              <Info l="Spécialité" v={d.identite.specialite ?? null} />
+              <Info l="Source" v={d.identite.source ?? null} />
               <Info l="Diplôme" v={d.identite.diplome} />
               <Info l="Grade" v={d.identite.grade ? `${d.identite.grade}${d.identite.gradeLibelle ? ` – ${d.identite.gradeLibelle}` : ""}` : null} />
               <Info l="Classification" v={d.identite.classification} />

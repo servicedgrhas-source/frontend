@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { ModaleDoublons } from "@/components/doublons";
 import { useSession } from "@/components/session";
 import { Alerte, Badge, Bouton, Champ, Chargement, Liste, Modale, Saisie, Zone } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
@@ -538,6 +539,8 @@ function PanneauProbleme({
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [pasLaMeme, setPasLaMeme] = useState(false);
+  // Comparer et supprimer définitivement la fiche en trop (jamais payée), comme partout ailleurs
+  const [comparaison, setComparaison] = useState(false);
   const dateSortie = probleme.mois ? `${probleme.mois}-01` : new Date().toISOString().slice(0, 10);
   const a = autre.donnees?.volontaire;
 
@@ -684,6 +687,11 @@ function PanneauProbleme({
               <Bouton disabled={envoi} onClick={() => setPasLaMeme(true)}>
                 Ce ne sont pas les mêmes personnes
               </Bouton>
+              {probleme.code === "DOUBLON" && (
+                <Bouton variante="discret" disabled={envoi} onClick={() => setComparaison(true)}>
+                  Supprimer définitivement la fiche en trop…
+                </Bouton>
+              )}
             </div>
           ) : (
             <>
@@ -696,7 +704,18 @@ function PanneauProbleme({
               </div>
             </>
           )}
-          <p className="text-[11px] text-zinc-500">La fiche sortie l’est au 1er du mois de la bourse, avec le motif « Doublon (inscrit deux fois) » : elle n’est plus payée. Elle reste dans l’historique.</p>
+          {comparaison && (
+            <ModaleDoublons
+              base="VOLONTAIRES"
+              id={v.id}
+              fermer={() => setComparaison(false)}
+              apres={(texte) => {
+                setComparaison(false);
+                fini(texte);
+              }}
+            />
+          )}
+          <p className="text-[11px] text-zinc-500">Une fiche jamais payée peut être supprimée définitivement (« Supprimer… ») ; une fiche déjà payée se sort du registre. La fiche sortie l’est au 1er du mois de la bourse, avec le motif « Doublon (inscrit deux fois) » : elle n’est plus payée. Elle reste dans l’historique.</p>
         </>
       )}
 

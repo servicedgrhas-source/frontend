@@ -24,6 +24,8 @@ import { useParametreUrl } from "@/lib/url";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
 import { ChoixLots, familleDe, GROUPES, type Famille } from "@/components/choix-lots";
 import { DeportPersonnel } from "@/components/deport-personnel";
+import { ModaleDoublons } from "@/components/doublons";
+import { FicheDossier } from "@/components/fiche-dossier";
 import type { GroupeQuota } from "@/lib/types";
 
 type Compte = {
@@ -40,6 +42,8 @@ type Resume = {
   raisons: Record<string, number>;
   aDeporter: number;
   aRepartir: number;
+  /** Primaire et préscolaire sans spécialité (la spécialité y est le cycle). */
+  sansSpecialite: number;
 };
 const TOUS_GROUPES: GroupeQuota[] = ["MEPPSA", "AUTRES_AVEC", "AUTRES_SANS"];
 
@@ -52,6 +56,9 @@ export default function Affectations() {
   const [familleChoisie, setFamille] = useState<Famille | null>(null);
   const [groupes, setGroupes] = useState<GroupeQuota[]>(TOUS_GROUPES);
   const [deport, setDeport] = useState(false);
+  // Fiche complète d'une personne (clic sur son nom), comparaison d'un doublon probable
+  const [fiche, setFiche] = useState<string | null>(null);
+  const [doublon, setDoublon] = useState<string | null>(null);
   // « ?typeNote=… » (lien depuis une note) : ce type de note seulement
   const typeUrl = useParametreUrl("typeNote");
   const [typeChoisi, setTypeNote] = useState<string | null>(null);
@@ -113,6 +120,19 @@ export default function Affectations() {
     try {
       await api.patch(`/lots/${l.id}`, { [champ]: valeur || null });
       setMessage({ ton: "vert", texte: `${l.libelle} : date de signature enregistrée. Les personnes qui n’attendaient qu’elle entrent dans les notes.` });
+      rafraichir();
+    } catch (e) {
+      setMessage({ ton: "rouge", texte: (e as Error).message });
+    }
+  }
+
+  async function completerSpecialites() {
+    try {
+      const r = await api.post<{ affectations: number }>("/affectations/specialites");
+      setMessage({
+        ton: "vert",
+        texte: `${r.affectations} personne(s) du primaire et du préscolaire ont reçu leur spécialité (« Primaire » ou « Préscolaire »). Une spécialité déjà écrite n’est pas changée.`,
+      });
       rafraichir();
     } catch (e) {
       setMessage({ ton: "rouge", texte: (e as Error).message });
@@ -303,6 +323,30 @@ export default function Affectations() {
             </button>
           )}
         </Alerte>
+      )}
+      {resume.donnees && resume.donnees.sansSpecialite > 0 && (
+        <Alerte ton="jaune">
+          <strong>{resume.donnees.sansSpecialite} personne(s) du primaire ou du préscolaire n’ont pas de spécialité.</strong> Au primaire et au préscolaire, la
+          spécialité est le cycle.{" "}
+          {peut.traiter(profil.role) && (
+            <button type="button" className="font-semibold underline" onClick={completerSpecialites}>
+              Leur donner « Primaire » ou « Préscolaire »
+            </button>
+          )}
+        </Alerte>
+      )}
+      {fiche && <FicheDossier id={fiche} fermer={() => setFiche(null)} />}
+      {doublon && (
+        <ModaleDoublons
+          base="RECRUTES"
+          id={doublon}
+          fermer={() => setDoublon(null)}
+          apres={(texte) => {
+            setDoublon(null);
+            setMessage({ ton: "vert", texte });
+            rafraichir();
+          }}
+        />
       )}
       {deport && (
         <DeportPersonnel
@@ -595,9 +639,14 @@ export default function Affectations() {
                             )}
                           </Pastille>
                           <div className="min-w-0">
-                            <div className="font-medium leading-snug">
+                            <button
+                              type="button"
+                              onClick={() => setFiche(a.agent.id)}
+                              title="Voir toute sa fiche"
+                              className="cursor-pointer text-left font-medium leading-snug hover:text-marque-700 hover:underline"
+                            >
                               {a.agent.nomComplet}
-                            </div>
+                            </button>
                             <div className="text-[11px] text-zinc-400">
                               {a.agent.diplomeBrut ?? "Diplôme inconnu"}
                             </div>
@@ -666,7 +715,10 @@ export default function Affectations() {
                               key={b}
                               type="button"
                               disabled={!peut.traiter(profil.role)}
-                              onClick={() => setAction({ type: "resoudre", aff: a, focus: b })}
+                              onClick={() =>
+                                // Doublon probable : les deux fiches côte à côte (supprimer l'une, ou deux personnes)
+                                b.startsWith("Doublon probable") ? setDoublon(a.agent.id) : setAction({ type: "resoudre", aff: a, focus: b })
+                              }
                               title="Cliquer pour régler ce problème"
                               className="mt-1 flex w-full items-start gap-1 rounded-lg px-1 py-0.5 text-left text-rouge-600 transition hover:bg-rouge-100 disabled:pointer-events-none"
                             >
@@ -680,7 +732,7 @@ export default function Affectations() {
                               key={w}
                               type="button"
                               disabled={!peut.traiter(profil.role)}
-                              onClick={() => setAction({ type: "resoudre", aff: a, focus: w })}
+                              onClick={() => (w.startsWith("Ressemble à") ? setDoublon(a.agent.id) : setAction({ type: "resoudre", aff: a, focus: w }))}
                               title="Cliquer pour vérifier ce point"
                               className="mt-1 flex w-full items-start gap-1 rounded-lg px-1 py-0.5 text-left text-or-700 transition hover:bg-or-100 disabled:pointer-events-none"
                             >

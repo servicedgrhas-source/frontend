@@ -4,6 +4,7 @@ import { ArrowLeftRight, ArrowRight, ChevronRight, FileSpreadsheet, Printer } fr
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { PanneauRattachement } from "@/components/rattachement";
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Pastille, Saisie, Tableau, Vide, ZoneFichier } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
@@ -46,6 +47,7 @@ export default function Mutations() {
         }
       />
       {peut.traiter(profil.role) && <ImportMutations apres={recharger} />}
+      {peut.traiter(profil.role) && <PanneauRattachement module="MUTATION" apres={recharger} />}
       <Carte>
         <div className="mb-3 flex flex-wrap items-end gap-3">
           <Champ libelle="Recherche" className="w-full sm:w-56">

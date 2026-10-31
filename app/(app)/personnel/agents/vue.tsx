@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Pagination } from "@/components/pagination";
 import { ouCorriger, type AnomalieFiche } from "@/components/recensement/anomalies";
 import { libelleStatut, peutRecenser, Taux, useConfigRecensement, type Manques } from "@/components/recensement/commun";
+import { FichesAValider } from "@/components/rattachement";
 import { useSession } from "@/components/session";
 import { Alerte, Bouton, Carte, Chargement, EnTete, Liste, Saisie, Tableau, Vide, cx } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
@@ -97,6 +98,7 @@ export function VueAgents() {
           </>
         }
       />
+      {profil.role !== "STRUCTURE" && profil.role !== "DDEPPSA" && <BandeauFichesCreees />}
 
       <Carte>
         <form
@@ -255,5 +257,31 @@ export function VueAgents() {
         )}
       </Carte>
     </div>
+  );
+}
+
+/** Fiches créées depuis une mutation ou une nomination (personne introuvable) : à valider. */
+function BandeauFichesCreees() {
+  const liste = useApi<{ id: number }[]>("/rattachement/fiches/a-valider");
+  const [ouvert, setOuvert] = useState(false);
+  if (!liste.donnees?.length) return null;
+  return (
+    <>
+      <Alerte ton="jaune">
+        <strong>{liste.donnees.length} fiche(s) créée(s) depuis des mutations ou des nominations</strong> : ces personnes n’étaient pas dans la base.
+        Vérifiez-les : valider, rejeter ou supprimer.{" "}
+        <button type="button" className="font-semibold underline" onClick={() => setOuvert(true)}>
+          Voir les fiches à valider
+        </button>
+      </Alerte>
+      {ouvert && (
+        <FichesAValider
+          fermer={() => {
+            setOuvert(false);
+            liste.recharger();
+          }}
+        />
+      )}
+    </>
   );
 }

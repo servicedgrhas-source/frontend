@@ -24,6 +24,7 @@ import {
 import { ProblemesFiche } from "@/components/recensement/anomalies";
 import { CarteCarriere } from "@/components/recensement/carriere";
 import { CarteEvaluations } from "@/components/recensement/evaluation";
+import { ModaleDoublons } from "@/components/doublons";
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, BoutonIcone, Bouton, Carte, Champ, Chargement, EnTete, Liste, Modale, Saisie, SaisieDate, Segments, Zone, useConfirmation } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
@@ -972,8 +973,11 @@ function MemesPersonnes({ c, agent, recharger }: { c: ConfigRecensement; agent: 
   const liste = useApi<MemePersonne[]>(`/recensement/agents/${agent.id}/memes-personnes`);
   const [confirmation, demander] = useConfirmation();
   const [erreur, setErreur] = useState<string | null>(null);
+  // Comparaison côte à côte (la même fenêtre que partout : Contrôle et vérification › Doublons probables)
+  const [comparer, setComparer] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
   const traiter = !["DDEPPSA", "STRUCTURE"].includes(profil.role);
-  if (!liste.donnees?.length) return null;
+  if (!liste.donnees?.length) return message ? <Alerte ton="vert">{message}</Alerte> : null;
   return (
     <Carte titre="Même personne ?">
       <p className="-mt-2 mb-3 text-[12px] text-zinc-500">
@@ -984,6 +988,31 @@ function MemesPersonnes({ c, agent, recharger }: { c: ConfigRecensement; agent: 
         <div className="mb-3">
           <Alerte>{erreur}</Alerte>
         </div>
+      )}
+      {message && (
+        <div className="mb-3">
+          <Alerte ton="vert">{message}</Alerte>
+        </div>
+      )}
+      {traiter && liste.donnees.some((m) => m.ressemblance === "PROBABLE") && (
+        <div className="mb-3">
+          <Bouton variante="secondaire" onClick={() => setComparer(true)}>
+            Comparer côte à côte et trancher
+          </Bouton>
+        </div>
+      )}
+      {comparer && (
+        <ModaleDoublons
+          base="PERSONNEL"
+          id={String(agent.id)}
+          fermer={() => setComparer(false)}
+          apres={(texte) => {
+            setComparer(false);
+            setMessage(texte);
+            liste.recharger();
+            recharger();
+          }}
+        />
       )}
       <ul className="divide-y divide-zinc-100">
         {liste.donnees.map((m) => (

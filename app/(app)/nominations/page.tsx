@@ -4,6 +4,7 @@ import { BookOpen, Check, CheckSquare, FileSpreadsheet, FileText, Lock, Pencil, 
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
+import { PanneauRattachement } from "@/components/rattachement";
 import { useSession } from "@/components/session";
 import { Aide, Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, Chiffre, EnTete, Liste, Modale, Saisie, Tableau, Vide, Zone, cx, useConfirmation } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
@@ -201,6 +202,7 @@ export default function Nominations() {
         }
       />
       <Annonce fermer={() => setMessage(null)}>{message}</Annonce>
+      {!d?.departement && peut.traiter(profil.role) && <PanneauRattachement module="NOMINATION" apres={() => r.recharger()} />}
       {erreur && <Alerte>{erreur}</Alerte>}
       {r.erreur && <Alerte>{r.erreur}</Alerte>}
       {!d ? (

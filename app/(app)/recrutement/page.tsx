@@ -27,6 +27,9 @@ interface Rapport {
   misAJour: number;
   /** Lignes d'une personne déjà lue dans une autre feuille, réunies en une fiche. */
   fusionnees: number;
+  /** Fiches déjà enregistrées dont le fichier a rempli des cases vides. */
+  fichesCompletees: number;
+  champsCompletes: Record<string, number>;
   affectationsCreees: number;
   lots: { numero: number; libelle: string; agents: number; meppsa: number; autresAvec: number; autresSans: number }[];
   anomalies: Record<string, number>;
@@ -358,6 +361,68 @@ export default function Recrutement() {
 }
 
 /**
+ * Les en-têtes que l'import reconnaît (DG, 31/10/2026). Majuscules, accents, espaces et ponctuation
+ * ne comptent pas (« Date de nais. » = « DATE DE NAISSANCE ») ; seul le début du mot compte.
+ */
+const COLONNES: [string, string, string][] = [
+  ["Noms et prénoms", "obligatoire", "Clé de la personne avec la date de naissance"],
+  ["Date de nais.", "conseillée", "jj/mm/aaaa ou date Excel"],
+  ["Lieu de nais.", "", ""],
+  ["Diplôme", "obligatoire", "CFEEN, BET, BAC, Licence, Master… (donne le grade et la note)"],
+  ["Département", "", "Brazzaville, Cuvette, Pointe-Noire… (« Cuvette (Makoua) » est lu Cuvette)"],
+  ["Source", "", "Écrit tel quel sur la fiche (« FP », nom d’école…)"],
+  ["Cycle", "", "Préscolaire, Primaire, Collège, Lycée, Administration"],
+  ["Spécialité", "", "Au primaire et au préscolaire : le cycle (donné tout seul s’il manque)"],
+  ["Qualification", "", "Écrite telle quelle sur la fiche"],
+  ["Quota", "MEPPSA", "Année : 2024, 2025…"],
+  ["N° d’ordre", "MEPPSA", ""],
+  ["N°/ Liste", "", ""],
+  ["Lot", "", "Lot de la commission (Lot 1, L2…)"],
+  ["Statut", "", "Volontaire, Communautaire, Autres"],
+  ["Transmission", "", "1ère, 2ème… transmission"],
+  ["N° Para-pheur", "", ""],
+  ["Lieu de service", "", ""],
+  ["Origine", "", ""],
+  ["Type de texte", "", "Arrêté ou Décret (avec ou sans accent)"],
+  ["N° Texte", "", ""],
+  ["Date de réception", "", ""],
+  ["Date de signature", "", "Sinon : date de signature du lot, saisie à l’écran"],
+  ["Lot de publicat°", "conseillée", "En chiffres romains (VIII) ou en chiffres (8) : range la personne dans son lot"],
+  ["OBS", "", "Observation"],
+];
+
+function ColonnesReconnues() {
+  return (
+    <details className="mb-4 rounded-2xl border border-zinc-200 px-4 py-2.5 text-[12px] text-zinc-600 open:pb-3">
+      <summary className="cursor-pointer font-medium text-encre">Comment nommer les colonnes du fichier Excel</summary>
+      <p className="mt-2 leading-relaxed">
+        L’en-tête peut être sur n’importe quelle ligne du haut de la feuille. Majuscules, accents, espaces et points ne comptent pas : « Date de nais. »,
+        « DATE DE NAISSANCE » et « date de naissance » sont la même colonne. Une colonne en plus est ignorée ; une colonne absente laisse la case telle
+        qu’elle est. <strong>Une case vide n’efface jamais</strong> ce qui est déjà enregistré : elle est complétée si le fichier la remplit.
+      </p>
+      <table className="mt-2 w-full text-left">
+        <thead className="text-[11px] text-zinc-400 uppercase">
+          <tr>
+            <th className="py-1 pr-3 font-medium">En-tête à écrire</th>
+            <th className="py-1 pr-3 font-medium" />
+            <th className="py-1 font-medium">Contenu</th>
+          </tr>
+        </thead>
+        <tbody>
+          {COLONNES.map(([c, o, d]) => (
+            <tr key={c} className="border-t border-zinc-100">
+              <td className="py-1 pr-3 font-medium whitespace-nowrap text-encre">{c}</td>
+              <td className="py-1 pr-3 whitespace-nowrap">{o && <Badge ton={o === "obligatoire" ? "rouge" : "bleu"}>{o}</Badge>}</td>
+              <td className="py-1">{d}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </details>
+  );
+}
+
+/**
  * Import de la base d'affectation, un bloc par quota (DG, 30/10/2026) : le bloc dit si les personnes
  * sont du quota MEPPSA ou du quota « Autres » (avec ou sans département). On choisit les feuilles ;
  * une personne présente dans plusieurs feuilles n'a qu'une fiche ; chacune est rangée dans le lot de
@@ -430,6 +495,7 @@ function ImportBase({ groupe, apres }: { groupe: "MEPPSA" | "AUTRES"; apres: () 
         Chaque personne est rangée dans son <strong>lot de publication</strong> (colonne « Lot de publicat° », en chiffres romains), les arrêtés et les décrets
         à part. Les personnes déjà enregistrées sont reconnues : rien n’est dupliqué, vos corrections sont gardées.
       </p>
+      <ColonnesReconnues />
       <ZoneFichier accept=".xlsx" envoi={envoi} envoyer={lire} aide={`Base d’affectation (.xlsx) — ${nomBloc}`} />
       <Modale titre={`ATTENTION : entrée directe dans la base — ${nomBloc}`} ouverte={!!enAttente} fermer={() => setEnAttente(null)} large>
         {enAttente && (
@@ -533,6 +599,15 @@ function ImportBase({ groupe, apres }: { groupe: "MEPPSA" | "AUTRES"; apres: () 
                   ))}
                 </tbody>
               </Tableau>
+            )}
+            {rapport.fichesCompletees > 0 && (
+              <p className="text-center text-[12px] text-zinc-600">
+                <strong>{rapport.fichesCompletees} fiche(s) déjà enregistrée(s) complétée(s)</strong> par le fichier :{" "}
+                {Object.entries(rapport.champsCompletes)
+                  .map(([k, n]) => `${k} (${n})`)
+                  .join(", ")}
+                . Une case vide du fichier n’efface jamais ce qui est déjà enregistré.
+              </p>
             )}
             {rapport.anciennesFichesEcartees > 0 && (
               <p className="text-center text-[12px] text-zinc-500">

@@ -536,6 +536,13 @@ export const ESPACES: Espace[] = [
     circuit: "Comparer des fichiers → listes des années passées → notes déjà signées",
     rubriques: [
       {
+        href: "/doublons",
+        libelle: "Doublons probables",
+        icone: Users,
+        visible: traiter,
+        explication: "Recrutés, base du personnel, registre des volontaires, enrôlés : les fiches qui sont probablement la même personne. Garder une fiche et supprimer l’autre, ou dire que ce sont deux personnes.",
+      },
+      {
         href: "/rapprochement",
         libelle: "Rapprochement de fichiers",
         icone: CopyCheck,
