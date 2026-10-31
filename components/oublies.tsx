@@ -35,6 +35,13 @@ const ETAT: Record<Oublie["etat"], { libelle: string; ton: "jaune" | "gris" | "v
 
 const jour = (d: string | null) => (d ? new Date(d).toLocaleDateString("fr-FR") : "");
 
+/** Texte sans accents ni majuscules, pour la recherche. */
+const plat = (t: string) =>
+  t
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
 /** Bloc réduit ou étendu : retenu sur ce poste (rien de grave s'il est perdu). */
 const CLE_REDUIT = "dgrhas.oublies.reduit";
 function lireReduit() {
@@ -74,6 +81,8 @@ export function ListeOublies({ apres }: { apres: (texte: string) => void }) {
     }
   };
   const [voirDecides, setVoirDecides] = useState(false);
+  // Recherche : nom, n° de texte, diplôme, département, lot… (tous les mots tapés doivent s'y trouver)
+  const [recherche, setRecherche] = useState("");
   const [deja, setDeja] = useState<Oublie | null>(null);
   const [precision, setPrecision] = useState("");
   const [supprimer, setSupprimer] = useState<Oublie | null>(null);
@@ -83,6 +92,17 @@ export function ListeOublies({ apres }: { apres: (texte: string) => void }) {
   if (!toutes.length) return null;
   const aControler = toutes.filter((o) => o.etat === "A_CONTROLER");
   const decides = toutes.filter((o) => o.etat !== "A_CONTROLER");
+  const mots = plat(recherche).split(/\s+/).filter(Boolean);
+  const trouve = (o: Oublie) => {
+    const texte = plat(
+      [o.nomComplet, o.texte, o.diplome, o.grade, o.specialite, o.departement, o.lot, o.liste, o.dateNaissance ? jour(o.dateNaissance) : "", o.ajoutePar, o.affectation?.motif]
+        .filter(Boolean)
+        .join(" "),
+    );
+    return mots.every((m) => texte.includes(m));
+  };
+  const aControlerVus = mots.length ? aControler.filter(trouve) : aControler;
+  const decidesVus = mots.length ? decides.filter(trouve) : decides;
 
   async function agir(action: () => Promise<unknown>, texte: string) {
     setErreur(null);
@@ -178,19 +198,40 @@ export function ListeOublies({ apres }: { apres: (texte: string) => void }) {
               <Alerte>{erreur}</Alerte>
             </div>
           )}
-          {aControler.length ? (
-            <div className="space-y-2">{aControler.map(ligne)}</div>
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+            <Saisie
+              className="max-w-md"
+              value={recherche}
+              onChange={(e) => setRecherche(e.target.value)}
+              placeholder="Rechercher : nom, n° de texte, diplôme, département, lot…"
+              aria-label="Rechercher dans la liste des oubliés"
+            />
+            {mots.length > 0 && (
+              <span className="text-[12px] text-zinc-500">
+                {aControlerVus.length + decidesVus.length} résultat(s) sur {toutes.length}
+                <button type="button" className="ml-2 text-marque-700 underline" onClick={() => setRecherche("")}>
+                  Effacer
+                </button>
+              </span>
+            )}
+          </div>
+          {aControlerVus.length ? (
+            <div className="space-y-2">{aControlerVus.map(ligne)}</div>
+          ) : mots.length ? (
+            <p className="text-[13px] text-zinc-500">Aucune personne à contrôler ne correspond à « {recherche} ».</p>
           ) : (
             <p className="flex items-center gap-1.5 text-[13px] text-marque-700">
               <CheckCircle2 className="size-4" /> Tout est contrôlé.
             </p>
           )}
-          {decides.length > 0 && (
+          {decidesVus.length > 0 && (
             <div className="mt-4">
               <button type="button" className="flex items-center gap-1 text-[13px] font-medium text-zinc-600 hover:text-marque-700" onClick={() => setVoirDecides(!voirDecides)}>
-                {voirDecides ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />} Déjà contrôlés ({decides.length})
+                {voirDecides || mots.length ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />} Déjà contrôlés ({decidesVus.length}
+                {mots.length ? ` sur ${decides.length}` : ""})
               </button>
-              {voirDecides && <div className="mt-2 space-y-2">{decides.map(ligne)}</div>}
+              {/* Une recherche ouvre aussi les personnes déjà contrôlées qui correspondent */}
+              {(voirDecides || mots.length > 0) && <div className="mt-2 space-y-2">{decidesVus.map(ligne)}</div>}
             </div>
           )}
         </>
