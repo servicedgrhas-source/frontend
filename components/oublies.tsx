@@ -2,6 +2,7 @@
 
 import { CheckCircle2, ChevronDown, ChevronRight, Trash2, UserCheck, UserX } from "lucide-react";
 import { useEffect, useState } from "react";
+import { FicheDossier } from "./fiche-dossier";
 import { useSession } from "./session";
 import { Alerte, Badge, Bouton, Carte, Champ, Modale, Saisie } from "./ui";
 import { api, TRAVAIL_MODIFIE, useApi } from "@/lib/api";
@@ -86,6 +87,8 @@ export function ListeOublies({ apres }: { apres: (texte: string) => void }) {
   const [deja, setDeja] = useState<Oublie | null>(null);
   const [precision, setPrecision] = useState("");
   const [supprimer, setSupprimer] = useState<Oublie | null>(null);
+  // Fiche complète de la personne (identité, recrutement, texte, affectation, pièces…), DG 31/10/2026
+  const [ficheOuverte, setFicheOuverte] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const controle = peut.controler(profil.role);
   const toutes = liste.donnees ?? [];
@@ -130,7 +133,14 @@ export function ListeOublies({ apres }: { apres: (texte: string) => void }) {
     return (
       <div key={o.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl bg-zinc-50 px-4 py-3 text-[13px]">
         <div className="min-w-56 flex-1">
-          <div className="font-medium text-encre">{o.nomComplet}</div>
+          <button
+            type="button"
+            onClick={() => setFicheOuverte(o.id)}
+            title="Voir toute la fiche"
+            className="cursor-pointer text-left font-medium text-encre hover:text-marque-700 hover:underline"
+          >
+            {o.nomComplet}
+          </button>
           <div className="text-[12px] text-zinc-500">
             {o.dateNaissance ? `Né(e) le ${jour(o.dateNaissance)} · ` : ""}
             {o.liste} · {o.diplome ?? "—"}
@@ -264,6 +274,7 @@ export function ListeOublies({ apres }: { apres: (texte: string) => void }) {
           </Bouton>
         </div>
       </Modale>
+      {ficheOuverte && <FicheDossier id={ficheOuverte} fermer={() => setFicheOuverte(null)} />}
     </Carte>
   );
 }
