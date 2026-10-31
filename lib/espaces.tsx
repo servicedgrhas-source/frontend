@@ -1,5 +1,6 @@
 import {
   ArrowLeftRight,
+  DatabaseBackup,
   Award,
   Briefcase,
   BookOpen,
@@ -584,6 +585,14 @@ export const ESPACES: Espace[] = [
         icone: Settings,
         visible: parametrer,
         explication: "Régler les notes de service (année scolaire, signataire…), le statut contractuel, les âges et calculs, l’envoi à la FP et la fiche de mutation.",
+      },
+      {
+        href: "/administration/sauvegarde",
+        libelle: "Sauvegarde de la base",
+        icone: DatabaseBackup,
+        // Toutes les données nominatives : le DG et l'administrateur seulement, jamais par délégation
+        visible: (p) => peut.administrer(p.role),
+        explication: "Télécharger un fichier avec toutes les données du système, à garder en lieu sûr : de quoi tout remettre en place si la base est perdue.",
       },
       {
         href: "/administration/regles",
