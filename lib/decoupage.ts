@@ -6,17 +6,26 @@ export type BlocMesure =
   | { cle: string; type: "libre"; garderAvecSuivant?: boolean; garderAvecPrecedent?: boolean; nouvellePage?: boolean }
   | { cle: string; type: "ligne"; tableau: string };
 
-export function decouperPages(blocs: BlocMesure[], hauteur: Map<string, number>, entete: Map<string, number>, dispo: number): string[][] {
+export function decouperPages(
+  blocs: BlocMesure[],
+  hauteur: Map<string, number>,
+  entete: Map<string, number>,
+  dispo: number,
+  /** Tableaux dont l'en-tête n'est écrit qu'une fois, au début (pas repris en haut de page). */
+  enteteUneFois: Set<string> = new Set(),
+): string[][] {
   const resultat: string[][] = [[]];
   let h = 0;
   let tableauOuvert: string | null = null;
+  const commences = new Set<string>();
   const nouvellePage = () => {
     resultat.push([]);
     h = 0;
     tableauOuvert = null;
   };
   // Une ligne en haut de page reprend l'en-tête de son tableau
-  const coutLigne = (b: Extract<BlocMesure, { type: "ligne" }>) => (hauteur.get(b.cle) ?? 0) + (tableauOuvert === b.tableau ? 0 : (entete.get(b.tableau) ?? 0));
+  const coutLigne = (b: Extract<BlocMesure, { type: "ligne" }>) =>
+    (hauteur.get(b.cle) ?? 0) + (tableauOuvert === b.tableau || (enteteUneFois.has(b.tableau) && commences.has(b.tableau)) ? 0 : (entete.get(b.tableau) ?? 0));
   const parCle = new Map(blocs.map((x) => [x.cle, x]));
   /**
    * Ce qui part avec un bloc « garderAvecPrecedent » sur la page suivante : les blocs du même genre
@@ -70,6 +79,7 @@ export function decouperPages(blocs: BlocMesure[], hauteur: Map<string, number>,
       h += coutLigne(b);
       resultat[resultat.length - 1].push(b.cle);
       tableauOuvert = b.tableau;
+      commences.add(b.tableau);
     }
   });
   return resultat;

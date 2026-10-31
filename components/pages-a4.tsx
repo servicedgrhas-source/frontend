@@ -32,6 +32,11 @@ export interface Tableau {
   colonnes: ReactNode;
   entete: ReactNode;
   className?: string;
+  /**
+   * L'en-tête n'est écrit qu'au début du tableau, pas en haut de chaque page où il continue
+   * (notes de service, DG 31/10/2026 : le n° 37 suit le n° 36 directement).
+   */
+  enteteUneFois?: boolean;
 }
 
 interface Props {
@@ -51,7 +56,7 @@ const HAUTEUR_PAGE = 296; // mm (un peu moins que 297 pour éviter une page blan
 const HAUTEUR_PAYSAGE = 209;
 
 /** Regroupe les lignes consécutives d'un même tableau dans un <table>. */
-function rendre(blocs: Bloc[], tableaux: Record<string, Tableau>, mesure = false) {
+function rendre(blocs: Bloc[], tableaux: Record<string, Tableau>, mesure = false, premieres?: Set<string>) {
   const sortie: ReactNode[] = [];
   for (let i = 0; i < blocs.length; ) {
     const b = blocs[i];
@@ -70,7 +75,7 @@ function rendre(blocs: Bloc[], tableaux: Record<string, Tableau>, mesure = false
     sortie.push(
       <table key={`${b.cle}-t`} className={t.className} style={{ tableLayout: "fixed", width: "100%" }}>
         {t.colonnes}
-        <thead data-entete={mesure ? b.tableau : undefined}>{t.entete}</thead>
+        {(!t.enteteUneFois || mesure || premieres?.has(b.cle)) && <thead data-entete={mesure ? b.tableau : undefined}>{t.entete}</thead>}
         <tbody>
           {lignes.map((l) => (
             <Fragment key={l.cle}>{l.contenu}</Fragment>
@@ -86,6 +91,9 @@ export function PagesA4({ blocs, tableaux, pied, classeFeuille, margeHaut = 12, 
   const mesureur = useRef<HTMLDivElement>(null);
   const sonde = useRef<HTMLDivElement>(null);
   const [pages, setPages] = useState<string[][] | null>(null);
+  const uneFois = Object.keys(tableaux)
+    .filter((t) => tableaux[t].enteteUneFois)
+    .join("|");
 
   useLayoutEffect(() => {
     let actif = true;
@@ -99,17 +107,25 @@ export function PagesA4({ blocs, tableaux, pied, classeFeuille, margeHaut = 12, 
       const entete = new Map<string, number>();
       zone.querySelectorAll<HTMLElement>("thead[data-entete]").forEach((el) => entete.set(el.dataset.entete!, el.offsetHeight));
 
-      setPages(decouperPages(blocs, hauteur, entete, dispo));
+      setPages(decouperPages(blocs, hauteur, entete, dispo, new Set(uneFois ? uneFois.split("|") : [])));
     };
     // On attend les polices : leur taille change la hauteur des lignes
     void document.fonts.ready.then(decouper);
     return () => {
       actif = false;
     };
-  }, [blocs, paysage]);
+  }, [blocs, paysage, uneFois]);
 
   const largeur = `${(paysage ? 297 : 210) - 2 * margeCote}mm`;
   const parCle = new Map(blocs.map((b) => [b.cle, b]));
+  // Première ligne de chaque tableau : la seule qui porte l'en-tête d'un tableau « enteteUneFois »
+  const premieres = new Set<string>();
+  const vus = new Set<string>();
+  for (const b of blocs)
+    if (b.type === "ligne" && !vus.has(b.tableau)) {
+      vus.add(b.tableau);
+      premieres.add(b.cle);
+    }
 
   return (
     <>
@@ -131,6 +147,8 @@ export function PagesA4({ blocs, tableaux, pied, classeFeuille, margeHaut = 12, 
           {rendre(
             cles.map((c) => parCle.get(c)!),
             tableaux,
+            false,
+            premieres,
           )}
           <div className="pied-a4" style={{ left: `${margeCote}mm`, right: `${margeCote}mm` }}>
             <span>{pied.gauche}</span>

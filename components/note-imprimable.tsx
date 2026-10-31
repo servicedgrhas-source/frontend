@@ -13,8 +13,8 @@ const LARGEUR: Record<string, number> = {
   n: 7,
   grade: 16,
   cat: 8,
-  ech: 8,
-  echl: 9,
+  ech: 9,
+  echl: 10,
   reference: 31,
   cycle: 19,
   specialite: 21,
@@ -113,9 +113,10 @@ function construire(note: NoteDetail, avecVisas: boolean) {
         ))}
       </tr>
       <tr>
-        <th>Cat</th>
-        <th>Ech</th>
-        <th>Echl</th>
+        {/* Sur une seule ligne, jamais « Ec/h » (DG, 31/10/2026) */}
+        <th className="whitespace-nowrap" style={{ paddingInline: 1 }}>Cat</th>
+        <th className="whitespace-nowrap" style={{ paddingInline: 1 }}>Ech</th>
+        <th className="whitespace-nowrap" style={{ paddingInline: 1 }}>Echl</th>
       </tr>
     </>
   ) : (
@@ -196,7 +197,7 @@ function construire(note: NoteDetail, avecVisas: boolean) {
 
   c.sections.forEach((s, i) => {
     const tableau = `t${i}`;
-    tableaux[tableau] = { colonnes, entete, className: "text-[10pt]" };
+    tableaux[tableau] = { colonnes, entete, className: "text-[10pt]", enteteUneFois: true };
     blocs.push({
       cle: `s${i}`,
       type: "libre",
@@ -266,12 +267,13 @@ function construire(note: NoteDetail, avecVisas: boolean) {
         // « Ampliations : » sur la même ligne que le nom du signataire
         <div className="grid grid-cols-[1fr_44%] gap-x-8 pt-6">
           <div />
-          <div>Fait à {e.lieu}, le {dateLongue(note.dateSignature) ?? " ".repeat(24)}</div>
+          {/* Sans date : « le » seul, la date est écrite à la main (DG, 31/10/2026) */}
+          <div>Fait à {e.lieu}, le{note.dateSignature ? ` ${dateLongue(note.dateSignature)}` : ""}</div>
           <div />
           <div className="mt-2">{e.signataireTitre}</div>
-          {/* Plus d'espace pour la signature (demande du DG, 19/10/2026) */}
-          <div className="mt-24 self-end text-[10pt] font-bold underline">Ampliations :</div>
-          <div className="mt-24 self-end font-bold">{e.signataireNom}</div>
+          {/* Plus d'espace pour la signature (DG, 19/10/2026), plus deux lignes (31/10/2026) */}
+          <div className="self-end text-[10pt] font-bold underline" style={{ marginTop: "calc(6rem + 3em)" }}>Ampliations :</div>
+          <div className="self-end font-bold" style={{ marginTop: "calc(6rem + 3em)" }}>{e.signataireNom}</div>
           <table className="ampliations w-auto justify-self-start text-[9pt]">
             <tbody>
               {c.ampliations.map((a) => (
