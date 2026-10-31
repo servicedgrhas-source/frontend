@@ -13,6 +13,10 @@ export interface RegleDiplome {
   libelle: string;
   cycle: string;
   typeNote: string;
+  /** Grade par défaut du diplôme. */
+  gradeCode: string | null;
+  /** Autres grades possibles, choisis à la demande personne par personne. */
+  gradesAutres: string[];
   grade: string | null;
   gradeLibelle: string | null;
   categorie: string | null;
@@ -20,9 +24,21 @@ export interface RegleDiplome {
   echelon: number | null;
 }
 
+/** Grade de la fonction publique (Règles des diplômes et grades). */
+export interface GradeFP {
+  code: string;
+  abreviation: string;
+  libelle: string;
+  categorie: string | null;
+  echelle: number | null;
+  echelon: number | null;
+  indice: number | null;
+}
+
 export interface Referentiels {
   departements: Departement[];
   regles: RegleDiplome[];
+  grades: GradeFP[];
   typesNote: { code: string; libelle: string }[];
   motifs: { code: string; libelle: string }[];
   roles: Role[];
@@ -110,6 +126,8 @@ export interface Agent {
   dateReception: string | null;
   lotPublication: LotRepere | null;
   contractuelForce: boolean | null;
+  /** Grade choisi à la demande (sinon le grade par défaut du diplôme). */
+  gradeChoisi?: (GradeFP & { par: string; le: string }) | null;
   anomalies: string[];
   observation: string | null;
   numeroListe: number | null;

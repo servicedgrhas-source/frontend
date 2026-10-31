@@ -35,6 +35,10 @@ interface Grade {
   echelon: number | null;
   indice: number | null;
   diplomes: string[];
+  /** Diplômes pour lesquels ce grade est aussi possible (choisi à la demande). */
+  diplomesAutres: { code: string; libelle: string }[];
+  /** Personnes à qui ce grade a été donné à la demande. */
+  personnes: number;
 }
 
 interface Regle {
@@ -43,6 +47,7 @@ interface Regle {
   cycle: string;
   typeNote: string;
   gradeCode: string | null;
+  gradesAutres: string[];
   ecritures: string[];
   agents: number;
 }
@@ -199,6 +204,19 @@ export default function ReglesEtGrades() {
                         <span className="rounded-lg bg-rouge-100 px-2 py-0.5 text-rouge-600">Aucun grade</span>
                       )}
                     </div>
+                    {r.gradesAutres.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[13px]">
+                        <span className="text-[11px] text-zinc-400">Aussi possible, à la demande :</span>
+                        {r.gradesAutres.map((c) => {
+                          const x = gradeDe(c);
+                          return (
+                            <span key={c} className="rounded-lg bg-zinc-100 px-2 py-0.5">
+                              {x ? `${x.libelle} (${x.abreviation})` : c}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
                     <div className="mt-2 text-[11px] text-zinc-400">Écrit dans Excel : {r.ecritures.join(", ")}</div>
                   </div>
                   <div className="flex shrink-0 gap-0.5">
@@ -282,6 +300,12 @@ export default function ReglesEtGrades() {
               </div>
               <div className="mt-auto pt-3 text-[11px] text-zinc-400">
                 {g.diplomes.length ? `Donné par : ${g.diplomes.join(", ")}` : "Donné par aucun diplôme"} · contractuel : {g.abreviation.replace(/\.+$/, "")}.C.
+                {g.diplomesAutres.length > 0 && (
+                  <div className="mt-1">
+                    Aussi possible pour : {g.diplomesAutres.map((d) => d.libelle).join(", ")}
+                    {g.personnes > 0 && ` · choisi pour ${g.personnes} personne(s)`}
+                  </div>
+                )}
               </div>
             </article>
           ))}
@@ -320,6 +344,7 @@ export default function ReglesEtGrades() {
       {gradeEdite && (
         <EditionGrade
           grade={gradeEdite === "nouveau" ? null : gradeEdite}
+          regles={e.regles}
           fermer={() => setGradeEdite(null)}
           apres={(t) => {
             setGradeEdite(null);
@@ -634,7 +659,7 @@ function Choix({
 
 /* ================================== Grade ================================== */
 
-function EditionGrade({ grade, fermer, apres }: { grade: Grade | null; fermer: () => void; apres: (t: string) => void }) {
+function EditionGrade({ grade, regles, fermer, apres }: { grade: Grade | null; regles: Regle[]; fermer: () => void; apres: (t: string) => void }) {
   const [f, setF] = useState({
     abreviation: grade?.abreviation ?? "",
     libelle: grade?.libelle ?? "",
@@ -643,15 +668,21 @@ function EditionGrade({ grade, fermer, apres }: { grade: Grade | null; fermer: (
     echelon: String(grade?.echelon ?? 1),
     indice: grade?.indice ? String(grade.indice) : "",
   });
+  // Diplômes rattachés : ce grade devient possible pour eux, leur grade par défaut ne change pas
+  const [rattaches, setRattaches] = useState<string[]>(grade?.diplomesAutres.map((d) => d.code) ?? []);
+  const proposables = regles.filter((r) => !grade || r.gradeCode !== grade.code);
   const [erreur, setErreur] = useState<string | null>(null);
   const nombres = (n: number) => Array.from({ length: n }, (_, i) => ({ valeur: String(i + 1), libelle: String(i + 1) }));
 
   async function enregistrer() {
-    const corps = { ...f, echelle: Number(f.echelle), echelon: Number(f.echelon), indice: f.indice ? Number(f.indice) : null };
+    const corps = { ...f, echelle: Number(f.echelle), echelon: Number(f.echelon), indice: f.indice ? Number(f.indice) : null, diplomesAutres: rattaches };
     try {
-      if (grade) await api.put(`/configuration/grades/${grade.code}`, corps);
-      else await api.post("/configuration/grades", corps);
-      apres(grade ? `Grade « ${f.libelle} » modifié${grade.diplomes.length ? ` : ${grade.diplomes.join(", ")} mis à jour` : ""}.` : `Grade « ${f.libelle} » créé.`);
+      const r = grade ? await api.put<{ retires?: number }>(`/configuration/grades/${grade.code}`, corps) : await api.post("/configuration/grades", corps);
+      const retires = (r as { retires?: number }).retires ?? 0;
+      apres(
+        (grade ? `Grade « ${f.libelle} » modifié${grade.diplomes.length ? ` : ${grade.diplomes.join(", ")} mis à jour` : ""}.` : `Grade « ${f.libelle} » créé.`) +
+          (retires ? ` ${retires} personne(s) remise(s) au grade par défaut de leur diplôme.` : ""),
+      );
     } catch (e) {
       setErreur((e as Error).message);
     }
@@ -690,6 +721,29 @@ function EditionGrade({ grade, fermer, apres }: { grade: Grade | null; fermer: (
         {grade && grade.diplomes.length > 0 && (
           <Alerte ton="jaune">Ce grade est donné par : {grade.diplomes.join(", ")}. Tous ces diplômes seront mis à jour (sauf dans les notes déjà validées).</Alerte>
         )}
+        <div>
+          <div className="text-xs font-medium text-zinc-500">Diplômes rattachés (aussi possible pour eux, à la demande)</div>
+          <p className="mt-0.5 text-[11px] text-zinc-400">
+            Leur grade par défaut ne change pas : ce grade se choisit personne par personne, dans la Base des recrutés ou dans Traitement des affectations.
+          </p>
+          <div className="mt-2 grid max-h-48 grid-cols-2 gap-1 overflow-auto">
+            {proposables.map((r) => (
+              <label key={r.code} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-[13px] hover:bg-zinc-50">
+                <input
+                  type="checkbox"
+                  checked={rattaches.includes(r.code)}
+                  onChange={() => setRattaches((l) => (l.includes(r.code) ? l.filter((x) => x !== r.code) : [...l, r.code]))}
+                />
+                {r.libelle}
+              </label>
+            ))}
+          </div>
+          {grade && grade.personnes > 0 && (
+            <p className="mt-1 text-[11px] text-zinc-500">
+              Choisi pour {grade.personnes} personne(s) : décocher leur diplôme les remet au grade par défaut (sauf dans les notes déjà validées).
+            </p>
+          )}
+        </div>
         <div className="flex justify-end gap-2">
           <Bouton onClick={fermer}>Annuler</Bouton>
           <Bouton variante="principal" disabled={!f.abreviation.trim() || !f.libelle.trim()} onClick={enregistrer}>

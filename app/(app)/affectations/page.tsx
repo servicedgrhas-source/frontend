@@ -10,6 +10,7 @@ import {
   TriangleAlert,
   UserRound,
 } from "lucide-react";
+import { ChoixGrade } from "@/components/choix-grade";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { CorrectionAnomalies } from "@/components/correction-anomalies";
@@ -877,9 +878,12 @@ function Completer({
     etablissement: aff.etablissement ?? "",
     obs: aff.obs ?? "",
   });
+  // Grade : par défaut celui du diplôme, un autre à la demande (DG, 31/10/2026)
+  const [gradeCode, setGradeCode] = useState(aff.agent.gradeChoisi?.code ?? "");
   const [erreur, setErreur] = useState<string | null>(null);
   async function ok() {
     try {
+      if (gradeCode !== (aff.agent.gradeChoisi?.code ?? "")) await api.patch(`/agents/${aff.agentId}`, { gradeCode: gradeCode || null });
       await api.patch(`/affectations/${aff.id}`, f);
       apres();
     } catch (e) {
@@ -903,6 +907,7 @@ function Completer({
           </Aide>
         </div>
         {erreur && <Alerte>{erreur}</Alerte>}
+        <ChoixGrade diplomeCode={aff.agent.diplomeCode} valeur={gradeCode} changer={setGradeCode} />
         <Champ
           libelle="Spécialité"
           aide="Pour les notes DEMA et décrets (ex. Musique, Arts plastiques, Français…)"

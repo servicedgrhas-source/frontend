@@ -4,6 +4,8 @@ import { CheckCircle2, PencilLine, TriangleAlert, UserRound } from "lucide-react
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { CorrectionAnomalies, CorrectionCyclesGroupee } from "@/components/correction-anomalies";
+import { AjoutManuel } from "@/components/ajout-manuel";
+import { ChoixGrade } from "@/components/choix-grade";
 import { FicheDossier } from "@/components/fiche-dossier";
 import { GuideImports } from "@/components/guide-imports";
 import { useSession } from "@/components/session";
@@ -117,21 +119,36 @@ export default function Recrutement() {
     <div className="space-y-4">
       <EnTete
         actions={
-          peut.controler(profil.role) ? (
-            <Bouton
-              onClick={() =>
-                api
-                  .telecharger("/recrutes/export", peut.voirBudget(profil.role) ? "Base des recrutes - DGRHAS.xlsx" : "Base des recrutes - sans incidence.xlsx")
-                  .catch(() => undefined)
-              }
-            >
-              Exporter la base (Excel)
-              <Aide>
-                {peut.voirBudget(profil.role)
-                  ? "Toute la base : commission, retour FP, incidence financière (salaires, total) et informations internes DGRHAS (origine, observations)."
-                  : "Toute la base : commission et retour FP. Sans l’incidence financière ni les informations internes DGRHAS, réservées au DG."}
-              </Aide>
-            </Bouton>
+          peut.controler(profil.role) || peut.importerBase(profil.role) ? (
+            <div className="flex flex-wrap gap-2">
+              {/* Ajout sans fichier Excel, mêmes contrôles que l'import (DG, 31/10/2026) */}
+              {peut.importerBase(profil.role) && (
+                <AjoutManuel
+                  apres={(t) => {
+                    setMessage(t);
+                    recharger();
+                    stats.recharger();
+                    resumeAnomalies.recharger();
+                  }}
+                />
+              )}
+              {peut.controler(profil.role) && (
+                <Bouton
+                  onClick={() =>
+                    api
+                      .telecharger("/recrutes/export", peut.voirBudget(profil.role) ? "Base des recrutes - DGRHAS.xlsx" : "Base des recrutes - sans incidence.xlsx")
+                      .catch(() => undefined)
+                  }
+                >
+                  Exporter la base (Excel)
+                  <Aide>
+                    {peut.voirBudget(profil.role)
+                      ? "Toute la base : commission, retour FP, incidence financière (salaires, total) et informations internes DGRHAS (origine, observations)."
+                      : "Toute la base : commission et retour FP. Sans l’incidence financière ni les informations internes DGRHAS, réservées au DG."}
+                  </Aide>
+                </Bouton>
+              )}
+            </div>
           ) : undefined
         }
         titre="Base des recrutés"
@@ -756,6 +773,7 @@ function EditionAgent({ agent, fermer, apres }: { agent: Agent; fermer: () => vo
     numeroTexte: agent.numeroTexte ?? "",
     dateSignatureTexte: agent.dateSignatureTexte ?? "",
     contractuel: agent.contractuelForce === null ? "" : agent.contractuelForce ? "1" : "0",
+    gradeCode: agent.gradeChoisi?.code ?? "",
   });
   const [erreur, setErreur] = useState<string | null>(null);
 
@@ -768,6 +786,7 @@ function EditionAgent({ agent, fermer, apres }: { agent: Agent; fermer: () => vo
     if ((f.dateSignatureTexte || null) !== agent.dateSignatureTexte) corps.dateSignatureTexte = f.dateSignatureTexte || null;
     const c = f.contractuel === "" ? null : f.contractuel === "1";
     if (c !== agent.contractuelForce) corps.contractuelForce = c;
+    if (f.gradeCode !== (agent.gradeChoisi?.code ?? "")) corps.gradeCode = f.gradeCode || null;
     try {
       await api.patch(`/agents/${agent.id}`, corps);
       apres();
@@ -787,8 +806,10 @@ function EditionAgent({ agent, fermer, apres }: { agent: Agent; fermer: () => vo
           <Liste value={f.departementId} onChange={(e) => setF({ ...f, departementId: e.target.value })} vide="—" options={refs.departements.map((d) => ({ valeur: d.id, libelle: d.nom }))} />
         </Champ>
         <Champ libelle="Diplôme (règle appliquée)" aide={`Dans le fichier : « ${agent.diplomeBrut ?? "—"} »`}>
-          <Liste value={f.diplomeCode} onChange={(e) => setF({ ...f, diplomeCode: e.target.value })} vide="—" options={refs.regles.map((r) => ({ valeur: r.code, libelle: `${r.libelle} → ${r.grade ?? "?"}` }))} />
+          {/* Autre diplôme : retour au grade par défaut du nouveau diplôme */}
+          <Liste value={f.diplomeCode} onChange={(e) => setF({ ...f, diplomeCode: e.target.value, gradeCode: "" })} vide="—" options={refs.regles.map((r) => ({ valeur: r.code, libelle: `${r.libelle} → ${r.grade ?? "?"}` }))} />
         </Champ>
+        <ChoixGrade diplomeCode={f.diplomeCode || null} valeur={f.gradeCode} changer={(gradeCode) => setF({ ...f, gradeCode })} />
         <Champ libelle="N° du texte">
           <Saisie value={f.numeroTexte} onChange={(e) => setF({ ...f, numeroTexte: e.target.value })} />
         </Champ>
