@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useSession } from "@/components/session";
-import { Alerte, Badge, Bouton, Carte, Chargement, EnTete, Liste, Modale, Segments, Tableau, Vide, Zone } from "@/components/ui";
+import { Alerte, Badge, Bouton, Carte, Chargement, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, Zone } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
 import { dateCourte, libelleLot, peut } from "@/lib/libelles";
 import type { Recommandation } from "@/lib/types";
@@ -14,6 +14,13 @@ const STATUTS = {
   REJETEE: { libelle: "Rejetée", ton: "rouge" as const },
 };
 const OPERATIONS: Record<string, string> = { AFFECTATION: "Affectation", MUTATION: "Mutation", ENROLEMENT: "Enrôlement" };
+
+/** Texte sans accents ni majuscules, pour la recherche. */
+const plat = (t: string) =>
+  t
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
 
 /**
  * Recommandations de toutes les opérations (affectations, mutations, enrôlements) : elles changent ce
@@ -29,6 +36,35 @@ export default function Recommandations() {
   const libType = (c?: string | null) => refs.typesNote.find((t) => t.code === c)?.libelle ?? c ?? "—";
   const directeur = profil.role === "DIRECTEUR" || profil.role === "ADMIN";
   const aMonAvis = (donnees ?? []).filter((r) => r.statut === "EN_ATTENTE" && r.etape === "AVIS_DIRECTEUR").length;
+  // Recherche (DG, 31/10/2026) : personne, diplôme, lot, départements, établissement, origine, motif…
+  const [recherche, setRecherche] = useState("");
+  const mots = plat(recherche).split(/\s+/).filter(Boolean);
+  const trouve = (r: Recommandation) => {
+    const texte = plat(
+      [
+        nomDe(r),
+        r.affectation?.agent.diplomeBrut,
+        r.affectation?.derive.grade,
+        r.affectation ? libelleLot(r.affectation.agent.lotPublication) : null,
+        OPERATIONS[r.operation],
+        r.departementAvant,
+        r.departementPropose,
+        r.avant?.etablissement,
+        r.etablissement,
+        r.structure,
+        r.typeNote ? libType(r.typeNote) : null,
+        r.origine,
+        r.motif,
+        r.soumisPar,
+        r.decidePar,
+        r.commentaireDecision,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+    return mots.every((m) => texte.includes(m));
+  };
+  const affichees = donnees ? (mots.length ? donnees.filter(trouve) : donnees) : null;
 
   return (
     <div className="space-y-4">
@@ -37,6 +73,13 @@ export default function Recommandations() {
         sousTitre="Une recommandation change ce que la règle donne naturellement (autre département, autre établissement ou lieu), pour une affectation, une mutation ou un enrôlement. Le chef de service la propose, le directeur donne son avis, le DG décide. Validée, elle s’applique au dossier et ressort sur la note ; sans validation, la règle s’applique."
       />
       <div className="flex flex-wrap items-center gap-2">
+        <Saisie
+          className="w-80"
+          value={recherche}
+          onChange={(e) => setRecherche(e.target.value)}
+          placeholder="Rechercher : nom, département, établissement, motif…"
+          aria-label="Rechercher une recommandation"
+        />
         <Liste value={statut} onChange={(e) => setStatut(e.target.value)} vide="Toutes" options={Object.entries(STATUTS).map(([k, v]) => ({ valeur: k, libelle: v.libelle }))} className="w-48" />
         <Segments
           valeur={operation}
@@ -44,13 +87,21 @@ export default function Recommandations() {
           options={[{ valeur: "", libelle: "Toutes les opérations" }, ...Object.entries(OPERATIONS).map(([k, v]) => ({ valeur: k, libelle: v }))]}
         />
       </div>
+      {mots.length > 0 && donnees && (
+        <p className="text-[12px] text-zinc-500">
+          {affichees?.length ?? 0} résultat(s) sur {donnees.length}
+          <button type="button" className="ml-2 text-marque-700 underline" onClick={() => setRecherche("")}>
+            Effacer
+          </button>
+        </p>
+      )}
       {directeur && aMonAvis > 0 && <Alerte ton="jaune">{aMonAvis} recommandation(s) attendent votre avis avant la décision du DG.</Alerte>}
       {erreur && <Alerte>{erreur}</Alerte>}
       <Carte>
-        {!donnees ? (
+        {!affichees ? (
           <Chargement />
-        ) : !donnees.length ? (
-          <Vide>Aucune recommandation.</Vide>
+        ) : !affichees.length ? (
+          <Vide>{mots.length ? `Aucune recommandation ne correspond à « ${recherche} ».` : "Aucune recommandation."}</Vide>
         ) : (
           <Tableau>
             <thead>
@@ -65,7 +116,7 @@ export default function Recommandations() {
               </tr>
             </thead>
             <tbody>
-              {donnees.map((r) => (
+              {affichees.map((r) => (
                 <tr key={r.id}>
                   <td className="whitespace-nowrap text-xs">
                     {dateCourte(r.creeLe)}
