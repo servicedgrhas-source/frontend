@@ -8,7 +8,7 @@ import { TableauDeBordCircuit } from "@/components/tableau-circuit";
 import { useSession } from "@/components/session";
 import { Alerte, Bouton, Carte, Chargement, Chiffre, Pastille, Progression } from "@/components/ui";
 import { useApi } from "@/lib/api";
-import { dateCourte, peut } from "@/lib/libelles";
+import { dateCourte, peut, romain } from "@/lib/libelles";
 import type { StatutNote } from "@/lib/types";
 
 interface TableauBord {
@@ -19,7 +19,17 @@ interface TableauBord {
   /** Hors demandes retirées : total = en cours + en instance + accordées + refusées. */
   mutations: { total: number; accordees: number; refusees: number; enCours: number; enInstance: number };
   /** Paquets reçus de la FP (un envoi = une date de réception). */
-  lots: { numero: number; dateReception: string | null; agents: number; affectes: number; lots: number }[];
+  /** Paquets de réception (anciens lots, par date) puis lots de publication de la base (« Arrêtés — lot VIII »). */
+  lots: {
+    cle: string;
+    numero: number;
+    dateReception: string | null;
+    typeTexte: string | null;
+    numeroFichier: number | null;
+    agents: number;
+    affectes: number;
+    lots: number;
+  }[];
   /** Mutations et autres prestations (congés, attestations…), hors demandes retirées. */
   demandes: { total: number; enCours: number; accordees: number; anomalies: number; autres: number; autresEnCours: number; enRetard: number };
   /** Base du personnel : seules les fiches acceptées comptent (pas celles en contrôle ou rejetées). */
@@ -156,10 +166,10 @@ function TableauDeBordDgrhas() {
         </div>
 
         <Carte
-          titre="Textes reçus par paquet"
+          titre="Textes reçus par lot"
           actions={
             <span className="text-xs text-zinc-400">
-              {t.lots.length > PAQUETS_HISTOGRAMME ? `${PAQUETS_HISTOGRAMME} derniers paquets · ` : ""}
+              {t.lots.length > PAQUETS_HISTOGRAMME ? `${PAQUETS_HISTOGRAMME} derniers lots · ` : ""}
               {nf.format(totalTextes)} agents au total
             </span>
           }
@@ -168,7 +178,7 @@ function TableauDeBordDgrhas() {
         </Carte>
 
         <Carte
-          titre="Paquets de textes de la Fonction Publique"
+          titre="Lots de textes de la Fonction Publique"
           actions={
             <Link href="/lots" className="inline-flex items-center gap-1 text-xs font-medium text-marque-700 hover:underline">
               Tout gérer <ArrowRight className="size-3.5" />
@@ -179,14 +189,16 @@ function TableauDeBordDgrhas() {
             {[...t.lots].reverse().slice(0, PAQUETS_LISTE).map((l) => {
               const fini = l.agents > 0 && l.affectes === l.agents;
               return (
-                <li key={l.numero}>
-                  <Link href="/lots" className="-mx-2 flex items-center gap-4 rounded-2xl px-2 py-3 transition-colors hover:bg-zinc-50">
+                <li key={l.cle}>
+                  <Link href={l.numeroFichier ? `/affectations?lot=${l.numero}` : "/lots"} className="-mx-2 flex items-center gap-4 rounded-2xl px-2 py-3 transition-colors hover:bg-zinc-50">
                     <Pastille ton={fini ? "vert" : l.affectes ? "jaune" : "gris"}>
                       {fini ? <CheckCircle2 /> : <Layers />}
                     </Pastille>
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium">Paquet du {dateCourte(l.dateReception)}</div>
-                      <div className="text-xs text-zinc-400">{l.lots} lot(s) : par quota et par type de texte</div>
+                      <div className="text-sm font-medium">{nomLot(l)}</div>
+                      <div className="text-xs text-zinc-400">
+                        {l.numeroFichier ? "Lot de publication de la base : tous quotas" : `${l.lots} lot(s) : par quota et par type de texte`}
+                      </div>
                     </div>
                     <div className="text-right">
                       <div className="text-sm font-semibold tabular-nums">{nf.format(l.agents)}</div>
@@ -199,7 +211,7 @@ function TableauDeBordDgrhas() {
           </ul>
           {t.lots.length > PAQUETS_LISTE && (
             <Link href="/lots" className="mt-2 block text-center text-xs text-zinc-500 hover:text-encre hover:underline">
-              {t.lots.length - PAQUETS_LISTE} paquet(s) plus ancien(s) : voir tous les paquets
+              {t.lots.length - PAQUETS_LISTE} autre(s) lot(s) ou paquet(s) : voir tous les lots
             </Link>
           )}
         </Carte>
@@ -213,15 +225,15 @@ function TableauDeBordDgrhas() {
           <h2 className="text-[15px] font-semibold">Avancement des affectations</h2>
           <p className="mb-4 text-xs text-zinc-400">
             {nf.format(totalAffectes)} agents affectés sur {nf.format(totalTextes)}
-            {t.lots.length > PAQUETS_LISTE ? ` · ${PAQUETS_LISTE} derniers paquets` : ""}
+            {t.lots.length > PAQUETS_LISTE ? ` · ${PAQUETS_LISTE} derniers lots` : ""}
           </p>
           <ul className="space-y-4">
             {[...t.lots].reverse().slice(0, PAQUETS_LISTE).map((l) => {
               const p = l.agents ? (100 * l.affectes) / l.agents : 0;
               return (
-                <li key={l.numero}>
+                <li key={l.cle}>
                   <div className="mb-1.5 flex items-baseline justify-between text-[13px]">
-                    <span className="text-zinc-600">Paquet du {dateCourte(l.dateReception)}</span>
+                    <span className="text-zinc-600">{nomLot(l)}</span>
                     <span className="text-xs font-medium tabular-nums text-zinc-500">{Math.round(p)} %</span>
                   </div>
                   <Progression valeur={p} ton={p >= 100 ? "vert" : p > 0 ? "jaune" : "gris"} />
@@ -340,13 +352,20 @@ function Encart({ titre, texte, href, action, alerte }: { titre: string; texte: 
   );
 }
 
-/** Histogramme d'une seule série (textes par paquet), avec info-bulle au survol. */
+/** Histogramme d'une seule série (textes par paquet ou par lot), avec info-bulle au survol. */
+/** Nom d'une barre : « Arr. VIII » pour un lot de la base, « 04/03 » pour un paquet. */
+const courtLot = (l: TableauBord["lots"][number]) =>
+  l.numeroFichier ? `${l.typeTexte === "DECRET" ? "Déc." : "Arr."} ${romain(l.numeroFichier)}` : dateCourte(l.dateReception).slice(0, 5);
+/** « Arrêtés — lot VIII » ou « Paquet du 04/03/2026 ». */
+const nomLot = (l: TableauBord["lots"][number]) =>
+  l.numeroFichier ? `${l.typeTexte === "DECRET" ? "Décrets" : "Arrêtés"} — lot ${romain(l.numeroFichier)}` : `Paquet du ${dateCourte(l.dateReception)}`;
+
 function Histogramme({ lots }: { lots: TableauBord["lots"] }) {
-  const [survol, setSurvol] = useState<number | null>(null);
+  const [survol, setSurvol] = useState<string | null>(null);
   const max = Math.max(1, ...lots.map((l) => l.agents));
   // « jj/mm » ; l'année en dessous (« 2026 ») si les paquets montrés couvrent plusieurs années :
   // sur une seule ligne, douze dates « jj/mm/aa » ne tiennent pas et poussent les barres hors du cadre
-  const annees = new Set(lots.map((l) => l.dateReception?.slice(0, 4)));
+  const annees = new Set(lots.filter((l) => !l.numeroFichier).map((l) => l.dateReception?.slice(0, 4)));
   const surDeuxLignes = annees.size > 1;
   const basEtiquettes = surDeuxLignes ? "2.25rem" : "1.5rem";
   const graduations = [0, 0.5, 1].map((f) => Math.round(f * max));
@@ -368,28 +387,28 @@ function Histogramme({ lots }: { lots: TableauBord["lots"] }) {
           const affH = l.agents ? (l.affectes / l.agents) * 100 : 0;
           return (
             <div
-              key={l.numero}
+              key={l.cle}
               className="relative flex min-w-0 flex-1 flex-col items-center justify-end"
-              onMouseEnter={() => setSurvol(l.numero)}
+              onMouseEnter={() => setSurvol(l.cle)}
               onMouseLeave={() => setSurvol(null)}
             >
-              {survol === l.numero && (
+              {survol === l.cle && (
                 <div className="absolute z-10 rounded-xl bg-nuit px-3 py-2 text-[11px] whitespace-nowrap text-white shadow-lg" style={{ bottom: `calc(${h}% + 0.5rem)` }}>
-                  <div className="font-semibold">Paquet du {dateCourte(l.dateReception)}</div>
+                  <div className="font-semibold">{nomLot(l)}</div>
                   <div className="text-white/70">{nf.format(l.agents)} textes · {nf.format(l.affectes)} affectés</div>
                 </div>
               )}
               <div className="relative flex w-full max-w-9 items-end" style={{ height: `calc(100% - ${basEtiquettes})` }}>
                 <div
-                  className={`relative w-full overflow-hidden rounded-t-[4px] transition-colors ${survol === l.numero ? "bg-marque-300" : "bg-marque-200"}`}
+                  className={`relative w-full overflow-hidden rounded-t-[4px] transition-colors ${survol === l.cle ? "bg-marque-300" : "bg-marque-200"}`}
                   style={{ height: `${Math.max(h, 1.5)}%` }}
                 >
                   <div className="absolute inset-x-0 bottom-0 bg-marque-500" style={{ height: `${affH}%` }} />
                 </div>
               </div>
-              <span className={`mt-2 text-center text-[11px] leading-tight tabular-nums ${survol === l.numero ? "font-medium text-encre" : "text-zinc-400"}`}>
-                {dateCourte(l.dateReception).slice(0, 5)}
-                {surDeuxLignes && <span className="block text-[10px]">{l.dateReception?.slice(0, 4)}</span>}
+              <span className={`mt-2 text-center text-[11px] leading-tight tabular-nums ${survol === l.cle ? "font-medium text-encre" : "text-zinc-400"}`}>
+                {courtLot(l)}
+                {surDeuxLignes && !l.numeroFichier && <span className="block text-[10px]">{l.dateReception?.slice(0, 4)}</span>}
               </span>
             </div>
           );
