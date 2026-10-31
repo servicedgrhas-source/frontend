@@ -128,6 +128,8 @@ export interface Agent {
   contractuelForce: boolean | null;
   specialite?: string | null;
   qualification?: string | null;
+  /** Ajoutée à la main : liste des oubliés (contrôlée avant d'entrer dans une note). */
+  oubli?: "A_CONTROLER" | "DEJA_AFFECTE" | "PAS_AFFECTE" | null;
   /** Grade choisi à la demande (sinon le grade par défaut du diplôme). */
   gradeChoisi?: (GradeFP & { par: string; le: string }) | null;
   anomalies: string[];

@@ -138,8 +138,9 @@ export function AjoutManuel({ apres }: { apres: (texte: string) => void }) {
       });
       fermer();
       apres(
-        `${r.nomComplet} : ${r.cree ? "ajouté(e) à la base" : "fiche existante mise à jour"}` +
-          (r.affectation && r.lot ? `, prêt(e) pour la note ${verif?.note ?? ""} (${r.lot}).` : r.lot ? ` (${r.lot}).` : ", en attente du texte de la FP."),
+        r.cree
+          ? `${r.nomComplet} : ajouté(e) à la base, dans « Oubliés à contrôler » : à déclarer déjà affecté(e) ou pas encore affecté(e) avant d’entrer dans une note${r.lot ? ` (${r.lot})` : ""}.`
+          : `${r.nomComplet} : fiche existante mise à jour${r.lot ? ` (${r.lot})` : ""}.`,
       );
     } catch (e) {
       setErreur((e as Error).message);
@@ -278,7 +279,8 @@ export function AjoutManuel({ apres }: { apres: (texte: string) => void }) {
               <li>
                 {verif.lot ? (
                   <>
-                    Rangée dans <strong>{verif.lot}</strong>, prête pour la note <strong>{verif.note ?? "à définir"}</strong> de ce lot.
+                    Rangée dans <strong>{verif.lot}</strong>, pour la note <strong>{verif.note ?? "à définir"}</strong> de ce lot
+                    {verif.existante ? "." : " — après le contrôle des oubliés (déjà affecté ou pas encore affecté)."}
                   </>
                 ) : (
                   <>Sans lot de publication : en attente du texte de la FP, dans aucune note pour l’instant.</>

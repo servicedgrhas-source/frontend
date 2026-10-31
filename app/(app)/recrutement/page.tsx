@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { CorrectionAnomalies, CorrectionCyclesGroupee } from "@/components/correction-anomalies";
 import { AjoutManuel } from "@/components/ajout-manuel";
+import { ListeOublies } from "@/components/oublies";
 import { ChoixGrade } from "@/components/choix-grade";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
 import { FicheDossier } from "@/components/fiche-dossier";
@@ -202,6 +203,17 @@ export default function Recrutement() {
         />
       )}
 
+      {/* Personnes ajoutées à la main : contrôlées avant d'entrer dans une note (DG, 31/10/2026) */}
+      {peut.traiter(profil.role) && (
+        <ListeOublies
+          apres={(t) => {
+            setMessage(t);
+            recharger();
+            stats.recharger();
+          }}
+        />
+      )}
+
       <Carte>
         <div className="mb-3 flex flex-wrap items-end gap-3">
           <Champ libelle="Recherche (nom ou n° de texte)" className="w-72">
@@ -349,6 +361,8 @@ export default function Recrutement() {
                       )}
                     </td>
                     <td className="max-w-64 text-[11px]">
+                      {a.oubli === "A_CONTROLER" && <Badge ton="jaune" titre="Ajoutée à la main : contrôlée dans « Oubliés à contrôler » avant d’entrer dans une note">Oublié · à contrôler</Badge>}
+                      {a.oubli === "DEJA_AFFECTE" && <Badge titre="Liste des oubliés : déjà affectée, hors des notes">Déjà affecté</Badge>}
                       {a.contractuel === true && <Badge ton="bleu" titre={a.contractuelForce !== null ? "Imposé par l’arrêté" : "Calculé par l’âge"}>Contractuel</Badge>}
                       {a.contractuel === false && <Badge>Fonctionnaire</Badge>}
                       {a.contractuel === null && <Badge ton="rouge">À préciser</Badge>}
