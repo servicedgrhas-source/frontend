@@ -526,7 +526,7 @@ function Signature({ note, fermer, ok }: { note: NoteDetail; fermer: () => void;
   return (
     <Modale titre="Signature de la note" ouverte fermer={fermer}>
       <div className="grid grid-cols-2 gap-3">
-        <Champ libelle="N° de la note" aide={`Sera imprimé : N° ${numero || "…"}/${note.entete.reference}`}>
+        <Champ libelle="N° de la note" aide={`Sera imprimé : N° ${numero || "…"}/${note.entete.reference}./`}>
           <Saisie value={numero} onChange={(e) => setNumero(e.target.value)} />
         </Champ>
         <Champ libelle="Date de signature">

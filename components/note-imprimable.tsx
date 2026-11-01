@@ -158,7 +158,7 @@ function construire(note: NoteDetail, avecVisas: boolean) {
         <>
           <div className="text-center text-[8pt]">{repere}</div>
           <div className="mt-2 flex items-start justify-between gap-6 text-[10pt]">
-            <div className="w-[58%] text-center font-semibold leading-tight">
+            <div className="w-[60%] text-center font-semibold leading-tight">
               <div>MINISTERE DE L’ENSEIGNEMENT PRESCOLAIRE,</div>
               <div>PRIMAIRE, SECONDAIRE ET DE L’ALPHABETISATION</div>
               {SEP}
@@ -183,11 +183,13 @@ function construire(note: NoteDetail, avecVisas: boolean) {
                   {SEP}
                 </>
               )}
-              <div className="mt-1 font-semibold">
-                N°{note.numero ? ` ${note.numero}` : "__________"}/{e.reference}
+              {/* Plus de place pour écrire le numéro, et « ./ » après la référence (DG, 01/11/2026) */}
+              <div className="mt-1 whitespace-nowrap font-semibold">
+                N°{note.numero ? ` ${note.numero}` : "______________________"}/{e.reference}./
               </div>
             </div>
-            <div className="w-[34%] text-center leading-tight">
+            {/* Un peu plus à droite (DG, 01/11/2026) */}
+            <div className="w-[32%] text-center leading-tight">
               <div className="font-semibold">REPUBLIQUE DU CONGO</div>
               <div className="text-[9.5pt]">Unité-Travail-Progrès</div>
               {SEP}
