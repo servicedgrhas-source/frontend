@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { type Enrole, FicheEnrole } from "@/components/enrolement/commun";
+import { FicheDossier } from "@/components/fiche-dossier";
 import { useSession } from "@/components/session";
 import { Alerte, Badge, Bouton, Carte, Chargement, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, Zone } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
@@ -35,6 +37,18 @@ export default function Recommandations() {
   const [operationChoisie, setOperation] = useState<string | null>(null);
   const operation = operationChoisie ?? (operationUrl && operationUrl in OPERATIONS ? operationUrl : "");
   const { donnees, erreur, recharger } = useApi<Recommandation[]>(`/recommandations${qs({ statut, operation })}`);
+  // Combien par opération, pour le statut choisi (DG, 01/11/2026)
+  const toutes = useApi<Recommandation[]>(`/recommandations${qs({ statut })}`);
+  const compte = (op: string) => (toutes.donnees ?? []).filter((r) => !op || r.operation === op).length;
+  // Plus d'informations sur la personne : sa fiche (affectation) ou son dossier d'enrôlement
+  const [ficheAgent, setFicheAgent] = useState<string | null>(null);
+  const [ficheEnrole, setFicheEnrole] = useState<Enrole | null>(null);
+  const [erreurFiche, setErreurFiche] = useState<string | null>(null);
+  const ouvrirEnrole = (id: string) =>
+    api
+      .get<Enrole>(`/enrolement/dossiers/${id}/fiche`)
+      .then(setFicheEnrole)
+      .catch((e: Error) => setErreurFiche(e.message));
   const [decision, setDecision] = useState<{ r: Recommandation; d: "VALIDEE" | "REJETEE" } | null>(null);
   const [avis, setAvis] = useState<{ r: Recommandation; a: "FAVORABLE" | "DEFAVORABLE" } | null>(null);
   const libType = (c?: string | null) => refs.typesNote.find((t) => t.code === c)?.libelle ?? c ?? "—";
@@ -88,7 +102,10 @@ export default function Recommandations() {
         <Segments
           valeur={operation}
           changer={setOperation}
-          options={[{ valeur: "", libelle: "Toutes les opérations" }, ...Object.entries(OPERATIONS).map(([k, v]) => ({ valeur: k, libelle: v }))]}
+          options={[
+            { valeur: "", libelle: `Toutes les opérations${toutes.donnees ? ` (${compte("")})` : ""}` },
+            ...Object.entries(OPERATIONS).map(([k, v]) => ({ valeur: k, libelle: `${v}${toutes.donnees ? ` (${compte(k)})` : ""}` })),
+          ]}
         />
       </div>
       {mots.length > 0 && donnees && (
@@ -101,6 +118,7 @@ export default function Recommandations() {
       )}
       {directeur && aMonAvis > 0 && <Alerte ton="jaune">{aMonAvis} recommandation(s) attendent votre avis avant la décision du DG.</Alerte>}
       {erreur && <Alerte>{erreur}</Alerte>}
+      {erreurFiche && <Alerte>{erreurFiche}</Alerte>}
       <Carte>
         {!affichees ? (
           <Chargement />
@@ -130,7 +148,14 @@ export default function Recommandations() {
                     <Badge ton="gris">{OPERATIONS[r.operation] ?? r.operation}</Badge>
                     {r.affectation ? (
                       <>
-                        <div className="font-medium">{r.affectation.agent.nomComplet}</div>
+                        <button
+                          type="button"
+                          onClick={() => setFicheAgent(r.affectation!.agentId)}
+                          title="Voir toute la fiche"
+                          className="block cursor-pointer text-left font-medium hover:text-marque-700 hover:underline"
+                        >
+                          {r.affectation.agent.nomComplet}
+                        </button>
                         <div className="text-xs text-zinc-500">
                           {r.affectation.agent.diplomeBrut} · {r.affectation.derive.grade} · {libelleLot(r.affectation.agent.lotPublication)}
                         </div>
@@ -139,6 +164,15 @@ export default function Recommandations() {
                       <Link href={`/mutation/${r.demandeId}`} className="block font-medium text-marque-700 hover:underline">
                         {r.personne}
                       </Link>
+                    ) : r.enroleId ? (
+                      <button
+                        type="button"
+                        onClick={() => ouvrirEnrole(r.enroleId!)}
+                        title="Voir le dossier d’enrôlement"
+                        className="block cursor-pointer text-left font-medium hover:text-marque-700 hover:underline"
+                      >
+                        {r.personne}
+                      </button>
                     ) : (
                       <div className="font-medium">{r.personne}</div>
                     )}
@@ -198,6 +232,8 @@ export default function Recommandations() {
           </Tableau>
         )}
       </Carte>
+      {ficheAgent && <FicheDossier id={ficheAgent} fermer={() => setFicheAgent(null)} />}
+      {ficheEnrole && <FicheEnrole e={ficheEnrole} fermer={() => setFicheEnrole(null)} />}
       {decision && (
         <Decision
           {...decision}
@@ -205,6 +241,7 @@ export default function Recommandations() {
           apres={() => {
             setDecision(null);
             recharger();
+            toutes.recharger();
           }}
         />
       )}
@@ -215,6 +252,7 @@ export default function Recommandations() {
           apres={() => {
             setAvis(null);
             recharger();
+            toutes.recharger();
           }}
         />
       )}
