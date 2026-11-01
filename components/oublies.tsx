@@ -16,6 +16,7 @@ interface Oublie {
   diplome: string | null;
   grade: string | null;
   specialite: string | null;
+  observation: string | null;
   departement: string | null;
   texte: string | null;
   typeTexte: string | null;
@@ -100,10 +101,17 @@ export function ListeOublies({ apres, modifier }: { apres: (texte: string) => vo
   const [supprimer, setSupprimer] = useState<Oublie | null>(null);
   // Fiche complète de la personne (identité, recrutement, texte, affectation, pièces…), DG 31/10/2026
   const [ficheOuverte, setFicheOuverte] = useState<string | null>(null);
+  // Plusieurs personnes cochées, traitées ensemble (DG, 01/11/2026)
+  const [cochees, setCochees] = useState<string[]>([]);
+  const [groupe, setGroupe] = useState<"DEJA_AFFECTE" | "PAS_AFFECTE" | "SUPPRIMER" | null>(null);
+  const [precisionGroupe, setPrecisionGroupe] = useState("");
+  const [encours, setEncours] = useState<number | null>(null);
+  const [bilan, setBilan] = useState<{ ok: number; refus: { nom: string; raison: string }[] } | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const controle = peut.controler(profil.role);
   const toutes = liste.donnees ?? [];
-  if (!toutes.length) return null;
+  // Liste vide : rien à afficher, sauf le bilan d'une action groupée (sa fenêtre reste ouverte)
+  if (!toutes.length && !groupe) return null;
   const aControler = toutes.filter((o) => o.etat === "A_CONTROLER");
   const decides = toutes.filter((o) => o.etat !== "A_CONTROLER");
   const mots = plat(recherche).split(/\s+/).filter(Boolean);
@@ -117,6 +125,41 @@ export function ListeOublies({ apres, modifier }: { apres: (texte: string) => vo
   };
   const aControlerVus = mots.length ? aControler.filter(trouve) : aControler;
   const decidesVus = mots.length ? decides.filter(trouve) : decides;
+  // Personne dans une note validée : sa décision est figée, elle ne se coche pas
+  const fige = (o: Oublie) => !!o.affectation?.dansUneNote || o.affectation?.statut === "AFFECTE";
+  const cochablesAControler = aControlerVus.filter((o) => !fige(o));
+  const choisies = toutes.filter((o) => cochees.includes(o.id) && !fige(o));
+  const toutCoche = cochablesAControler.length > 0 && cochablesAControler.every((o) => cochees.includes(o.id));
+  const basculerCoche = (id: string) => setCochees((l) => (l.includes(id) ? l.filter((x) => x !== id) : [...l, id]));
+
+  /** La même action pour chaque personne cochée, l'une après l'autre ; bilan à la fin. */
+  async function agirGroupe() {
+    if (!groupe) return;
+    let ok = 0;
+    const refus: { nom: string; raison: string }[] = [];
+    for (const [i, o] of choisies.entries()) {
+      setEncours(i + 1);
+      try {
+        if (groupe === "SUPPRIMER") await api.delete(`/recrutes/oublies/${o.id}`);
+        else await api.post(`/recrutes/oublies/${o.id}/decision`, { etat: groupe, precision: precisionGroupe.trim() || undefined });
+        ok++;
+      } catch (e) {
+        refus.push({ nom: o.nomComplet, raison: (e as Error).message });
+      }
+    }
+    setEncours(null);
+    setBilan({ ok, refus });
+    setCochees([]);
+    liste.recharger();
+    apres(
+      `${ok} personne(s) ${groupe === "SUPPRIMER" ? "supprimée(s)" : groupe === "DEJA_AFFECTE" ? "déclarée(s) déjà affectée(s)" : "déclarée(s) pas encore affectée(s)"}${refus.length ? `, ${refus.length} refus` : ""}.`,
+    );
+  }
+  const fermerGroupe = () => {
+    setGroupe(null);
+    setBilan(null);
+    setPrecisionGroupe("");
+  };
 
   async function agir(action: () => Promise<unknown>, texte: string) {
     setErreur(null);
@@ -142,7 +185,10 @@ export function ListeOublies({ apres, modifier }: { apres: (texte: string) => vo
   const ligne = (o: Oublie) => {
     const bloque = !!o.affectation?.dansUneNote || o.affectation?.statut === "AFFECTE";
     return (
-      <div key={o.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl bg-zinc-50 px-4 py-3 text-[13px]">
+      <div key={o.id} className={`flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl px-4 py-3 text-[13px] ${cochees.includes(o.id) ? "bg-marque-50 ring-1 ring-marque-200" : "bg-zinc-50"}`}>
+        {controle && !bloque && (
+          <input type="checkbox" className="size-4" aria-label={`Cocher ${o.nomComplet}`} checked={cochees.includes(o.id)} onChange={() => basculerCoche(o.id)} />
+        )}
         <div className="min-w-56 flex-1">
           <button
             type="button"
@@ -168,6 +214,7 @@ export function ListeOublies({ apres, modifier }: { apres: (texte: string) => vo
             {` · ajouté(e) le ${jour(o.ajouteLe)}${o.ajoutePar ? ` par ${o.ajoutePar}` : ""}`}
             {o.decidePar && o.etat !== "A_CONTROLER" ? ` · décidé par ${o.decidePar} le ${jour(o.decideLe)}` : ""}
           </div>
+          {o.observation && <div className="text-[12px] font-medium text-rouge-600">Observation : {o.observation}</div>}
           {o.etat === "DEJA_AFFECTE" && o.affectation?.motif && <div className="text-[12px] text-zinc-500">{o.affectation.motif}</div>}
         </div>
         <Badge ton={ETAT[o.etat].ton}>{ETAT[o.etat].libelle}</Badge>
@@ -246,6 +293,41 @@ export function ListeOublies({ apres, modifier }: { apres: (texte: string) => vo
                 </span>
               )}
             </div>
+            {controle && (cochablesAControler.length > 0 || choisies.length > 0) && (
+              <div className="sticky top-2 z-10 mb-2 flex flex-wrap items-center gap-2 rounded-2xl bg-zinc-100 px-4 py-2 text-[13px]">
+                <label className="flex cursor-pointer items-center gap-2 font-medium">
+                  <input
+                    type="checkbox"
+                    className="size-4"
+                    checked={toutCoche}
+                    disabled={!cochablesAControler.length}
+                    onChange={() =>
+                      setCochees(toutCoche ? cochees.filter((id) => !cochablesAControler.some((o) => o.id === id)) : [...new Set([...cochees, ...cochablesAControler.map((o) => o.id)])])
+                    }
+                  />
+                  Tout cocher{mots.length ? " (résultats)" : ""}
+                </label>
+                {choisies.length > 0 && (
+                  <>
+                    <span className="text-zinc-500">· {choisies.length} cochée(s)</span>
+                    <span className="ml-auto flex flex-wrap gap-1.5">
+                      <Bouton onClick={() => setGroupe("DEJA_AFFECTE")}>
+                        <UserX /> Déjà affecté
+                      </Bouton>
+                      <Bouton variante="principal" onClick={() => setGroupe("PAS_AFFECTE")}>
+                        <UserCheck /> Pas encore affecté
+                      </Bouton>
+                      <Bouton variante="danger" onClick={() => setGroupe("SUPPRIMER")}>
+                        <Trash2 /> Supprimer
+                      </Bouton>
+                      <Bouton variante="discret" onClick={() => setCochees([])}>
+                        Tout décocher
+                      </Bouton>
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
             {aControlerVus.length ? (
               <div className="space-y-2">{aControlerVus.map(ligne)}</div>
             ) : mots.length ? (
@@ -295,7 +377,89 @@ export function ListeOublies({ apres, modifier }: { apres: (texte: string) => vo
             </Bouton>
           </div>
         </Modale>
-        {ficheOuverte && <FicheDossier id={ficheOuverte} fermer={() => setFicheOuverte(null)} />}
+        <Modale
+        titre={
+          bilan
+            ? "Terminé"
+            : groupe === "SUPPRIMER"
+              ? `Supprimer ${choisies.length} fiche(s) ?`
+              : groupe === "DEJA_AFFECTE"
+                ? `Déclarer ${choisies.length} personne(s) déjà affectée(s) ?`
+                : `Déclarer ${choisies.length} personne(s) pas encore affectée(s) ?`
+        }
+        ouverte={!!groupe}
+        fermer={encours ? () => undefined : fermerGroupe}
+      >
+        {bilan ? (
+          <div className="space-y-3 text-[13px]">
+            <Alerte ton={bilan.refus.length ? "jaune" : "vert"}>
+              {bilan.ok} personne(s) traitée(s).{bilan.refus.length > 0 && ` ${bilan.refus.length} n’ont pas pu l’être :`}
+            </Alerte>
+            {bilan.refus.length > 0 && (
+              <ul className="max-h-60 space-y-1 overflow-auto">
+                {bilan.refus.map((x) => (
+                  <li key={x.nom} className="rounded-xl bg-zinc-50 px-3 py-2">
+                    <strong>{x.nom}</strong> <span className="text-zinc-500">— {x.raison}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex justify-end">
+              <Bouton variante="principal" onClick={fermerGroupe}>
+                Fermer
+              </Bouton>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3 text-[13px] leading-relaxed text-zinc-600">
+            <p>
+              {groupe === "SUPPRIMER" ? (
+                <>
+                  Ces fiches sont <strong>supprimées définitivement</strong> de la base des recrutés (ajoutées par erreur, en double…). Cette action ne peut
+                  pas être annulée.
+                </>
+              ) : groupe === "DEJA_AFFECTE" ? (
+                "Ces personnes ne rentreront dans aucune note de service. Vous pourrez revenir sur cette décision tant qu’elles ne sont pas dans une note validée."
+              ) : (
+                "Ces personnes rentreront dans les notes de leur lot."
+              )}
+            </p>
+            <ul className="max-h-48 space-y-1 overflow-auto">
+              {choisies.map((o) => (
+                <li key={o.id} className="rounded-xl bg-zinc-50 px-3 py-1.5">
+                  <strong className="text-encre">{o.nomComplet}</strong>
+                  <span className="text-zinc-500">
+                    {" "}
+                    · {o.diplome ?? "—"}
+                    {o.lot ? ` · ${o.lot}` : ""}
+                  </span>
+                  {o.observation && <span className="text-rouge-600"> · {o.observation}</span>}
+                </li>
+              ))}
+            </ul>
+            {groupe === "DEJA_AFFECTE" && (
+              <Champ libelle="Note où elles sont déjà affectées (facultatif, la même pour toutes)" aide="Ex. note n° 270 du 08/04/2026, note CBD…">
+                <Saisie value={precisionGroupe} onChange={(e) => setPrecisionGroupe(e.target.value)} />
+              </Champ>
+            )}
+            <div className="flex items-center justify-end gap-2 pt-2">
+              {encours && (
+                <span className="mr-auto text-[12px] text-zinc-500">
+                  En cours… {encours} / {choisies.length}
+                </span>
+              )}
+              <Bouton onClick={fermerGroupe} disabled={!!encours}>
+                Annuler
+              </Bouton>
+              <Bouton variante={groupe === "SUPPRIMER" ? "danger" : "principal"} disabled={!!encours || !choisies.length} onClick={agirGroupe}>
+                {groupe === "SUPPRIMER" ? `Supprimer les ${choisies.length}` : `Confirmer pour les ${choisies.length}`}
+              </Bouton>
+            </div>
+          </div>
+        )}
+      </Modale>
+
+      {ficheOuverte && <FicheDossier id={ficheOuverte} fermer={() => setFicheOuverte(null)} />}
       </Carte>
     </div>
   );
