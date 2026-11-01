@@ -102,8 +102,12 @@ function construire(note: NoteDetail, avecVisas: boolean) {
     ) * elargi;
   // Grade : toujours sur une seule ligne (« Com. des SAF.C. », DG 31/10/2026)
   const plusLongGrade = Math.max(0, ...c.sections.flatMap((s) => s.lignes.map((l) => largeurTexte(String(l.grade ?? ""), 10)))) * elargi;
+  // N° : le plus grand numéro tient sur une ligne (« 233 » et non « 23 / 3 », DG 01/11/2026)
+  const plusLongNumero = Math.max(0, ...c.sections.flatMap((s) => s.lignes.map((l) => largeurTexte(String(l.n ?? ""), 10)))) * elargi;
   const largeur = (k: string) =>
-    k === "specialite"
+    k === "n"
+      ? Math.max(LARGEUR.n, Math.ceil(plusLongNumero + 3))
+      : k === "specialite"
       ? Math.min(36, Math.max(LARGEUR.specialite, Math.ceil(motSpecialite + 3)))
       : k === "grade"
         ? Math.min(36, Math.max(LARGEUR.grade, Math.ceil(plusLongGrade + 3)))
@@ -239,7 +243,7 @@ function construire(note: NoteDetail, avecVisas: boolean) {
         tableau,
         contenu: (
           <tr data-ligne={`${tableau}-${l.id}`}>
-            <td className="text-center">{l.n}</td>
+            <td className="whitespace-nowrap text-center">{l.n}</td>
             <td>{l.nom}</td>
             {c.classification ? (
               <>
