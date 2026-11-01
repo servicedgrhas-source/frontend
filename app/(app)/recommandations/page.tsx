@@ -53,6 +53,10 @@ export default function Recommandations() {
   const [avis, setAvis] = useState<{ r: Recommandation; a: "FAVORABLE" | "DEFAVORABLE" } | null>(null);
   const libType = (c?: string | null) => refs.typesNote.find((t) => t.code === c)?.libelle ?? c ?? "—";
   const directeur = profil.role === "DIRECTEUR" || profil.role === "ADMIN";
+  // Décision groupée (DG, 01/11/2026) : cocher des dossiers, puis les valider ou les rejeter ensemble
+  const decideur = peut.decider(profil.role);
+  const [cochees, setCochees] = useState<string[]>([]);
+  const [groupe, setGroupe] = useState<"VALIDEE" | "REJETEE" | null>(null);
   const aMonAvis = (donnees ?? []).filter((r) => r.statut === "EN_ATTENTE" && r.etape === "AVIS_DIRECTEUR").length;
   // Recherche (DG, 31/10/2026) : personne, diplôme, lot, départements, établissement, origine, motif…
   const [recherche, setRecherche] = useState("");
@@ -83,6 +87,11 @@ export default function Recommandations() {
     return mots.every((m) => texte.includes(m));
   };
   const affichees = donnees ? (mots.length ? donnees.filter(trouve) : donnees) : null;
+  // Seules les recommandations en attente se décident ; les cases suivent la liste affichée
+  const cochables = (affichees ?? []).filter((r) => r.statut === "EN_ATTENTE");
+  const choisies = cochables.filter((r) => cochees.includes(r.id));
+  const toutCoche = cochables.length > 0 && choisies.length === cochables.length;
+  const basculer = (id: string) => setCochees((l) => (l.includes(id) ? l.filter((x) => x !== id) : [...l, id]));
 
   return (
     <div className="space-y-4">
@@ -116,6 +125,21 @@ export default function Recommandations() {
           </button>
         </p>
       )}
+      {decideur && choisies.length > 0 && (
+        <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-2xl bg-nuit px-4 py-3 text-[13px] text-white shadow-doux">
+          <strong>{choisies.length} recommandation(s) cochée(s)</strong>
+          <span className="text-white/60">sur {cochables.length} en attente dans la liste</span>
+          <span className="ml-auto flex flex-wrap gap-2">
+            <Bouton variante="principal" onClick={() => setGroupe("VALIDEE")}>
+              Valider la sélection
+            </Bouton>
+            <Bouton variante="danger" onClick={() => setGroupe("REJETEE")}>
+              Rejeter la sélection
+            </Bouton>
+            <Bouton onClick={() => setCochees([])}>Tout décocher</Bouton>
+          </span>
+        </div>
+      )}
       {directeur && aMonAvis > 0 && <Alerte ton="jaune">{aMonAvis} recommandation(s) attendent votre avis avant la décision du DG.</Alerte>}
       {erreur && <Alerte>{erreur}</Alerte>}
       {erreurFiche && <Alerte>{erreurFiche}</Alerte>}
@@ -128,6 +152,18 @@ export default function Recommandations() {
           <Tableau>
             <thead>
               <tr>
+                {decideur && (
+                  <th className="w-8">
+                    <input
+                      type="checkbox"
+                      aria-label="Tout cocher"
+                      title="Tout cocher (recommandations en attente de la liste)"
+                      disabled={!cochables.length}
+                      checked={toutCoche}
+                      onChange={() => setCochees(toutCoche ? [] : cochables.map((r) => r.id))}
+                    />
+                  </th>
+                )}
                 <th>Date</th>
                 <th>Personne</th>
                 <th>Selon la règle</th>
@@ -139,7 +175,14 @@ export default function Recommandations() {
             </thead>
             <tbody>
               {affichees.map((r) => (
-                <tr key={r.id}>
+                <tr key={r.id} className={cochees.includes(r.id) ? "bg-marque-50/60" : undefined}>
+                  {decideur && (
+                    <td>
+                      {r.statut === "EN_ATTENTE" && (
+                        <input type="checkbox" aria-label={`Cocher la recommandation de ${nomDe(r)}`} checked={cochees.includes(r.id)} onChange={() => basculer(r.id)} />
+                      )}
+                    </td>
+                  )}
                   <td className="whitespace-nowrap text-xs">
                     {dateCourte(r.creeLe)}
                     <div className="text-zinc-500">{r.soumisPar}</div>
@@ -232,6 +275,19 @@ export default function Recommandations() {
           </Tableau>
         )}
       </Carte>
+      {groupe && (
+        <DecisionGroupee
+          liste={choisies}
+          d={groupe}
+          fermer={() => setGroupe(null)}
+          apres={() => {
+            setGroupe(null);
+            setCochees([]);
+            recharger();
+            toutes.recharger();
+          }}
+        />
+      )}
       {ficheAgent && <FicheDossier id={ficheAgent} fermer={() => setFicheAgent(null)} />}
       {ficheEnrole && <FicheEnrole e={ficheEnrole} fermer={() => setFicheEnrole(null)} />}
       {decision && (
@@ -261,6 +317,106 @@ export default function Recommandations() {
 }
 
 const nomDe = (r: Recommandation) => r.affectation?.agent.nomComplet ?? r.personne ?? "";
+
+/**
+ * Décision du DG sur plusieurs recommandations cochées : chacune passe par la même décision que
+ * seule (contrôles, mise à jour du dossier, journal), l'une après l'autre.
+ */
+function DecisionGroupee({ liste, d, fermer, apres }: { liste: Recommandation[]; d: "VALIDEE" | "REJETEE"; fermer: () => void; apres: () => void }) {
+  const [commentaire, setCommentaire] = useState("");
+  const [encours, setEncours] = useState<number | null>(null);
+  const [bilan, setBilan] = useState<{ ok: number; refus: { nom: string; raison: string }[] } | null>(null);
+  const sansAvis = liste.filter((r) => r.etape === "AVIS_DIRECTEUR").length;
+  const manque = sansAvis > 0 && commentaire.trim().length < 3;
+  async function lancer() {
+    let ok = 0;
+    const refus: { nom: string; raison: string }[] = [];
+    for (const [i, r] of liste.entries()) {
+      setEncours(i + 1);
+      try {
+        await api.post(`/recommandations/${r.id}/decision`, { decision: d, commentaire });
+        ok++;
+      } catch (e) {
+        refus.push({ nom: nomDe(r), raison: (e as Error).message });
+      }
+    }
+    setEncours(null);
+    setBilan({ ok, refus });
+  }
+  const valider = d === "VALIDEE";
+  if (bilan)
+    return (
+      <Modale titre={valider ? "Validation terminée" : "Rejet terminé"} ouverte fermer={apres}>
+        <div className="space-y-3 text-[13px]">
+          <Alerte ton={bilan.refus.length ? "jaune" : "vert"}>
+            {bilan.ok} recommandation(s) {valider ? "validée(s) : les dossiers sont mis à jour" : "rejetée(s) : la règle s’applique"}.
+            {bilan.refus.length > 0 && ` ${bilan.refus.length} n’ont pas pu l’être.`}
+          </Alerte>
+          {bilan.refus.length > 0 && (
+            <ul className="max-h-60 space-y-1 overflow-auto">
+              {bilan.refus.map((x) => (
+                <li key={x.nom} className="rounded-xl bg-zinc-50 px-3 py-2">
+                  <strong>{x.nom}</strong> <span className="text-zinc-500">— {x.raison}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex justify-end">
+            <Bouton variante="principal" onClick={apres}>
+              Fermer
+            </Bouton>
+          </div>
+        </div>
+      </Modale>
+    );
+  return (
+    <Modale titre={`${valider ? "Valider" : "Rejeter"} ${liste.length} recommandation(s) ?`} ouverte fermer={encours ? () => undefined : fermer}>
+      <div className="space-y-3 text-[13px] leading-relaxed text-zinc-600">
+        <p>
+          {valider
+            ? "Chaque dossier prend ce qui est proposé (département, note, établissement…), comme pour une validation une par une ; les notes pas encore validées en tiennent compte."
+            : "Pour chaque dossier, la règle s’applique : rien ne change."}
+        </p>
+        <ul className="max-h-52 space-y-1 overflow-auto">
+          {liste.map((r) => (
+            <li key={r.id} className="flex flex-wrap gap-x-2 rounded-xl bg-zinc-50 px-3 py-1.5">
+              <strong className="text-encre">{nomDe(r)}</strong>
+              <span className="text-zinc-500">
+                {OPERATIONS[r.operation] ?? r.operation} · {r.departementAvant ?? "—"} →{" "}
+                {[r.departementPropose, r.structure, r.etablissement].filter(Boolean).join(" · ") || "—"}
+                {r.etape === "AVIS_DIRECTEUR" ? " · sans l’avis du directeur" : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+        {sansAvis > 0 && (
+          <Alerte ton="jaune">
+            {sansAvis} n’ont pas encore l’avis du directeur : écrivez pourquoi vous décidez sans lui (le commentaire vaut pour toutes).
+          </Alerte>
+        )}
+        <Zone
+          placeholder={sansAvis ? "Pourquoi vous décidez sans l’avis du directeur (obligatoire)" : "Commentaire (facultatif, le même pour toutes)"}
+          value={commentaire}
+          onChange={(e) => setCommentaire(e.target.value)}
+          className="w-full"
+        />
+        <div className="flex items-center justify-end gap-2">
+          {encours && (
+            <span className="mr-auto text-[12px] text-zinc-500">
+              {valider ? "Validation" : "Rejet"} en cours… {encours} / {liste.length}
+            </span>
+          )}
+          <Bouton onClick={fermer} disabled={!!encours}>
+            Annuler
+          </Bouton>
+          <Bouton variante={valider ? "principal" : "danger"} disabled={manque || !!encours} onClick={lancer}>
+            {valider ? `Valider les ${liste.length}` : `Rejeter les ${liste.length}`}
+          </Bouton>
+        </div>
+      </div>
+    </Modale>
+  );
+}
 
 function Avis({ r, a, fermer, apres }: { r: Recommandation; a: "FAVORABLE" | "DEFAVORABLE"; fermer: () => void; apres: () => void }) {
   const [motif, setMotif] = useState("");

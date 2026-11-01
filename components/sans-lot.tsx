@@ -3,8 +3,9 @@
 import { FolderInput, Info } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { FicheDossier } from "./fiche-dossier";
 import { useSession } from "./session";
-import { Alerte, Bouton, Champ, Modale, Saisie, Segments } from "./ui";
+import { Alerte, Badge, Bouton, Champ, Modale, Saisie, Segments } from "./ui";
 import { api, TRAVAIL_MODIFIE, useApi } from "@/lib/api";
 import { peut } from "@/lib/libelles";
 
@@ -83,8 +84,19 @@ export function BandeauSansLot({ apres }: { apres: () => void }) {
     return () => window.removeEventListener(TRAVAIL_MODIFIE, apresEcriture);
   }, [recharger]);
   const [ouverte, setOuverte] = useState(false);
+  // Case « Afficher les personnes sans lot » : la liste se déplie ici (DG, 01/11/2026)
+  const [afficher, setAfficher] = useState(false);
+  const [recherche, setRecherche] = useState("");
+  const [ficheOuverte, setFicheOuverte] = useState<string | null>(null);
   const d = donnees.donnees;
   if (!d?.total) return null;
+  const mots = plat(recherche).split(/\s+/).filter(Boolean);
+  const visibles = mots.length
+    ? d.personnes.filter((p) => {
+        const t = plat([p.nomComplet, p.liste, p.diplome, p.departement, p.numeroTexte, p.lotIllisible].filter(Boolean).join(" "));
+        return mots.every((m) => t.includes(m));
+      })
+    : d.personnes;
   return (
     <>
       <Alerte ton="jaune">
@@ -105,7 +117,58 @@ export function BandeauSansLot({ apres }: { apres: () => void }) {
         <Link href="/recrutement?texte=attente" className="underline">
           Voir dans la Base des recrutés
         </Link>
+        <label className="mt-2 flex w-fit cursor-pointer items-center gap-2 text-[13px] font-medium">
+          <input type="checkbox" checked={afficher} onChange={(e) => setAfficher(e.target.checked)} />
+          Afficher les personnes sans lot de publication ({d.total})
+        </label>
       </Alerte>
+      {afficher && (
+        <div className="rounded-3xl bg-white p-4 shadow-doux">
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+            <Saisie
+              className="max-w-sm"
+              value={recherche}
+              onChange={(e) => setRecherche(e.target.value)}
+              placeholder="Rechercher : nom, diplôme, département, n° de texte…"
+              aria-label="Rechercher une personne sans lot"
+            />
+            <span className="text-[12px] text-zinc-500">
+              {mots.length ? `${visibles.length} résultat(s) sur ${d.total}` : `${d.total} personne(s)`}
+            </span>
+          </div>
+          <div className="max-h-[28rem] space-y-1 overflow-auto">
+            {visibles.map((p) => (
+              <div key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-zinc-50 px-3 py-2 text-[13px]">
+                <button
+                  type="button"
+                  onClick={() => setFicheOuverte(p.id)}
+                  title="Voir toute la fiche"
+                  className="cursor-pointer text-left font-medium text-encre hover:text-marque-700 hover:underline"
+                >
+                  {p.nomComplet}
+                </button>
+                <span className="text-zinc-500">
+                  {p.liste} · {p.diplome ?? "—"}
+                  {p.departement ? ` · ${p.departement}` : ""}
+                </span>
+                <span className="ml-auto flex flex-wrap gap-1">
+                  {p.numeroTexte ? (
+                    <Badge ton="jaune">
+                      Sans lot · {p.typeTexte === "DECRET" ? "Décret" : "Arrêté"} {p.numeroTexte}
+                    </Badge>
+                  ) : (
+                    <Badge>En attente du texte</Badge>
+                  )}
+                  {p.lotIllisible && <Badge ton="rouge">Lot écrit « {p.lotIllisible} » illisible</Badge>}
+                  {p.oubli === "A_CONTROLER" && <Badge ton="jaune">Oublié · à contrôler</Badge>}
+                </span>
+              </div>
+            ))}
+            {!visibles.length && <p className="py-6 text-center text-[13px] text-zinc-400">Aucune personne ne correspond.</p>}
+          </div>
+        </div>
+      )}
+      {ficheOuverte && <FicheDossier id={ficheOuverte} fermer={() => setFicheOuverte(null)} />}
       {ouverte && (
         <RangerDansLot
           personnes={d.personnes}
