@@ -63,6 +63,28 @@ export function VueNote() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          {/* Police des notes (paramètre commun à toutes les notes), DG 01/11/2026 */}
+          {peut.parametrer(profil.role) && (
+            <label className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-[13px] ring-1 ring-zinc-200" title="Police de toutes les notes, à l’impression comme dans Word">
+              Police
+              <select
+                className="bg-transparent font-medium outline-none"
+                value={note.entete.police ?? "Times New Roman"}
+                onChange={async (e) => {
+                  try {
+                    await api.put("/parametres/POLICE_NOTES", { valeur: e.target.value });
+                    setMessage({ ton: "vert", texte: `Police des notes : ${e.target.value}.` });
+                    recharger();
+                  } catch (err) {
+                    setMessage({ ton: "rouge", texte: (err as Error).message });
+                  }
+                }}
+              >
+                <option value="Times New Roman">Times New Roman (d’origine)</option>
+                <option value="Sylfaen">Sylfaen</option>
+              </select>
+            </label>
+          )}
           {aDesVisas && (
             <label className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-[13px] ring-1 ring-zinc-200" title="Les spécimens de visa du service, de la direction et de la direction générale, à droite de leur ligne dans l’en-tête">
               <input type="checkbox" className="size-4 accent-marque-600" checked={avecVisas} onChange={(e) => setAvecVisas(e.target.checked)} />

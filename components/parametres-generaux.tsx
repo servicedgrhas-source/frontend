@@ -18,7 +18,7 @@ const GROUPES: { titre: string; effet: string; cles: string[] }[] = [
     titre: "Notes de service (affectation, mutation et enrôlement)",
     effet:
       "Pris en compte immédiatement par les notes « à soumettre au DG » et « soumises au DG ». Une note validée ou signée garde les réglages du jour de sa validation ; pour qu’elle reprenne les nouveaux, le DG la rouvre (tant que le ministre n’a pas signé).",
-    cles: ["ANNEE_SCOLAIRE", "ANNEE_SCOLAIRE_MUTATION", "SIGNATAIRE_TITRE", "SIGNATAIRE_NOM", "LIEU_SIGNATURE", "REFERENCE_NOTE", "PIED_PAGE_DROITE", "ADRESSE_PIED", "MENTION_BOURSE_ENROLEMENT"],
+    cles: ["ANNEE_SCOLAIRE", "ANNEE_SCOLAIRE_MUTATION", "SIGNATAIRE_TITRE", "SIGNATAIRE_NOM", "LIEU_SIGNATURE", "POLICE_NOTES", "REFERENCE_NOTE", "PIED_PAGE_DROITE", "ADRESSE_PIED", "MENTION_BOURSE_ENROLEMENT"],
   },
   {
     titre: "Statut contractuel, âges et calculs",
@@ -109,6 +109,25 @@ export function ParametresGeneraux() {
                     const e = etats[p.cle];
                     return (
                       <Champ key={p.cle} libelle={p.description}>
+                        {p.cle === "POLICE_NOTES" ? (
+                          <select
+                            className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-[13px]"
+                            defaultValue={p.valeur.trim().toLowerCase() === "sylfaen" ? "Sylfaen" : "Times New Roman"}
+                            onChange={async (ev) => {
+                              changer(p.cle, { ton: "envoi", texte: "Enregistrement…" });
+                              try {
+                                await api.put(`/parametres/${p.cle}`, { valeur: ev.target.value });
+                                changer(p.cle, { ton: "ok", texte: `Enregistré : ${ev.target.value}.` });
+                                params.recharger();
+                              } catch (err) {
+                                changer(p.cle, { ton: "erreur", texte: (err as Error).message });
+                              }
+                            }}
+                          >
+                            <option value="Times New Roman">Times New Roman (d’origine)</option>
+                            <option value="Sylfaen">Sylfaen</option>
+                          </select>
+                        ) : (
                         <Saisie
                           defaultValue={p.valeur}
                           className={e?.ton === "modifie" ? "ring-2 ring-or-400" : e?.ton === "erreur" ? "ring-2 ring-rouge-400" : ""}
@@ -125,6 +144,7 @@ export function ParametresGeneraux() {
                           }}
                           onBlur={(ev) => void enregistrer(p, ev.currentTarget)}
                         />
+                        )}
                         {e && (
                           <p
                             role="status"

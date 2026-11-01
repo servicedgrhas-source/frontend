@@ -309,6 +309,8 @@ export interface NoteDetail extends NoteResume {
     lieu: string;
     piedDroite: string;
     adresse: string;
+    /** Police réglée dans les paramètres (Times New Roman par défaut). */
+    police?: "Times New Roman" | "Sylfaen";
   };
 }
 

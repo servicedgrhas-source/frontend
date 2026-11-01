@@ -38,14 +38,18 @@ const LARGEUR: Record<string, number> = {
 /** Rendu officiel d'une note de service, découpé en pages A4 par le système. */
 export function NoteImprimable({ note, visas = true }: { note: NoteDetail; /** Imprimer avec les spécimens de visa (sinon sans). */ visas?: boolean }) {
   const { blocs, tableaux } = useMemo(() => construire(note, visas), [note, visas]);
+  const sylfaen = note.entete.police === "Sylfaen";
   return (
-    <PagesA4
-      key={`${note.id}-${note.statut}-${note.contenu.total}-${note.introduction.length}-${visas}`}
-      blocs={blocs}
-      tableaux={tableaux}
-      classeFeuille="feuille-note"
-      pied={{ gauche: note.contenu.piedDePage, droite: note.entete.piedDroite }}
-    />
+    // Police réglée dans les paramètres : Times New Roman (d'origine) ou Sylfaen (DG, 01/11/2026)
+    <div style={sylfaen ? ({ "--font-note": "Sylfaen, 'Times New Roman', Times, serif" } as React.CSSProperties) : undefined}>
+      <PagesA4
+        key={`${note.id}-${note.statut}-${note.contenu.total}-${note.introduction.length}-${visas}-${note.entete.police ?? ""}`}
+        blocs={blocs}
+        tableaux={tableaux}
+        classeFeuille="feuille-note"
+        pied={{ gauche: note.contenu.piedDePage, droite: note.entete.piedDroite }}
+      />
+    </div>
   );
 }
 
@@ -90,12 +94,14 @@ function construire(note: NoteDetail, avecVisas: boolean) {
 
   // Spécialité : assez large pour son plus long mot, jamais coupé au milieu (« Mathématiques »,
   // DG 31/10/2026) ; « Histoire-Géographie » passe à la ligne après le trait d'union
-  const motSpecialite = plusLongMot(
-    c.sections.flatMap((s) => s.lignes.map((l) => String(l.specialite ?? ""))),
-    10,
-  );
+  const elargi = note.entete.police === "Sylfaen" ? 1.06 : 1;
+  const motSpecialite =
+    plusLongMot(
+      c.sections.flatMap((s) => s.lignes.map((l) => String(l.specialite ?? ""))),
+      10,
+    ) * elargi;
   // Grade : toujours sur une seule ligne (« Com. des SAF.C. », DG 31/10/2026)
-  const plusLongGrade = Math.max(0, ...c.sections.flatMap((s) => s.lignes.map((l) => largeurTexte(String(l.grade ?? ""), 10))));
+  const plusLongGrade = Math.max(0, ...c.sections.flatMap((s) => s.lignes.map((l) => largeurTexte(String(l.grade ?? ""), 10)))) * elargi;
   const largeur = (k: string) =>
     k === "specialite"
       ? Math.min(36, Math.max(LARGEUR.specialite, Math.ceil(motSpecialite + 3)))

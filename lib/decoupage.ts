@@ -40,8 +40,17 @@ export function decouperPages(
       else break;
     }
     if (!k) return [];
-    // Une ligne de tableau (et les titres qui la précèdent), ou à défaut le bloc d'avant
-    k--;
+    // Deux lignes du tableau quand la page en a au moins trois (DG, 01/11/2026), sinon une ;
+    // et les titres qui les précèdent si tout le tableau part ; à défaut, le bloc d'avant
+    const derniere = parCle.get(page[k - 1])!;
+    let suite = 0;
+    if (derniere.type === "ligne")
+      while (k - suite > 0) {
+        const x = parCle.get(page[k - 1 - suite])!;
+        if (x.type === "ligne" && x.tableau === derniere.tableau) suite++;
+        else break;
+      }
+    k -= suite >= 3 ? 2 : 1;
     while (k > 0) {
       const x = parCle.get(page[k - 1])!;
       if (x.type === "libre" && x.garderAvecSuivant) k--;
