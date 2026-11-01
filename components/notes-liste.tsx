@@ -188,6 +188,8 @@ export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "E
               <tr>
                 <th>Note</th>
                 <th className="text-right">Agents</th>
+                {/* Le cycle de la note, sans avoir à le chercher dans son nom (DG, 01/11/2026) */}
+                <th>Cycle</th>
                 <th>Statut</th>
                 <th>N° / date de signature</th>
                 <th>Suivi</th>
@@ -223,6 +225,7 @@ export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "E
                     )}
                     {n.total === 0 && !n.enAttente && ["BROUILLON", "SOUMISE"].includes(n.statut) && <div className="text-[11px] font-medium text-or-700">vide : à supprimer</div>}
                   </td>
+                  <td className="whitespace-nowrap">{n.cycle ? <Badge ton="bleu">{n.cycle}</Badge> : <span className="text-zinc-400">—</span>}</td>
                   <td>
                     <span className="inline-flex items-center gap-1">
                       <Badge ton={STATUT_NOTE[n.statut].ton}>{STATUT_NOTE[n.statut].libelle}</Badge>

@@ -269,6 +269,8 @@ export interface NoteResume {
   libelle: string;
   /** Note d'affectation réunie : son lot de départ et les lots réunis avec lui (sans doublon). */
   reunion?: { depart: string; reunis: string[]; resume: string } | null;
+  /** Cycle de la note : Préscolaire, Primaire, Collège, Lycée, Administration… */
+  cycle?: string | null;
   total: number;
   /** Enrôlement : retenus sans département retenu (pas encore dans la note). */
   enAttente?: number;
