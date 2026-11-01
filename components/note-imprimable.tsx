@@ -175,7 +175,7 @@ function construire(note: NoteDetail, avecVisas: boolean) {
               </AvecVisa>
               {SEP}
               {/* Le service suit le numéro : « …-DRSC-SR » (une note signée avant garde son en-tête) */}
-              {/-SR$/.test(e.reference) && (
+              {/-SR[./ ]*$/.test(e.reference) && (
                 <>
                   <AvecVisa visa={v.SERVICE} style="SERVICE">
                     <div>SERVICE DES RECRUTEMENTS</div>
@@ -183,9 +183,9 @@ function construire(note: NoteDetail, avecVisas: boolean) {
                   {SEP}
                 </>
               )}
-              {/* Plus de place pour écrire le numéro, et « ./ » après la référence (DG, 01/11/2026) */}
+              {/* Plus de place pour écrire le numéro (DG, 01/11/2026) ; la référence est un paramètre */}
               <div className="mt-1 whitespace-nowrap font-semibold">
-                N°{note.numero ? ` ${note.numero}` : "______________________"}/{e.reference}./
+                N°{note.numero ? ` ${note.numero}` : "______________________"}/{e.reference}
               </div>
             </div>
             {/* Un peu plus à droite (DG, 01/11/2026) */}

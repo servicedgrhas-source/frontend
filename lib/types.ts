@@ -268,7 +268,13 @@ export interface NoteResume {
   statut: StatutNote;
   libelle: string;
   /** Note d'affectation réunie : son lot de départ et les lots réunis avec lui (sans doublon). */
-  reunion?: { depart: string; reunis: string[]; resume: string } | null;
+  reunion?: {
+    depart: string;
+    reunis: string[];
+    resume: string;
+    /** Chaque lot, le départ d'abord ; total : ses agents (note en préparation), sinon null. */
+    lots: { id: number; libelle: string; depart: boolean; total: number | null }[];
+  } | null;
   /** Cycle de la note : Préscolaire, Primaire, Collège, Lycée, Administration… */
   cycle?: string | null;
   total: number;

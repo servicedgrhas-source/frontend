@@ -1,8 +1,8 @@
 "use client";
 
-import { FilePen, FileSignature, Link2, Lock, Send, type LucideIcon } from "lucide-react";
+import { ChevronRight, CornerDownRight, FilePen, FileSignature, Layers, Lock, Send, Unlink, type LucideIcon } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useCampagne } from "./enrolement/commun";
 import { useSession } from "./session";
 import { Aide, Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, EnTete, Liste, Modale, Pastille, Saisie, Tableau, Vide } from "./ui";
@@ -99,6 +99,27 @@ export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "E
   const { donnees, erreur, recharger } = useApi<NoteResume[]>(`/notes${qs({ module })}`);
   const [message, setMessage] = useState<{ ton: "vert" | "rouge"; texte: string } | null>(null);
   const [enrolement, setEnrolement] = useState(false);
+  // Notes réunies dont le menu déroulant est ouvert, et note à séparer (confirmation)
+  const [ouvertes, setOuvertes] = useState<Set<string>>(new Set());
+  const [aSeparer, setASeparer] = useState<NoteResume | null>(null);
+  const basculer = (id: string) =>
+    setOuvertes((x) => {
+      const y = new Set(x);
+      if (y.has(id)) y.delete(id);
+      else y.add(id);
+      return y;
+    });
+
+  async function separer(n: NoteResume) {
+    try {
+      await api.post(`/notes/${n.id}/separer`);
+      setMessage({ ton: "vert", texte: "Lots séparés : chaque lot a retrouvé sa note, comme avant la réunion." });
+      setASeparer(null);
+      recharger();
+    } catch (e) {
+      setMessage({ ton: "rouge", texte: (e as Error).message });
+    }
+  }
 
   async function preparerNominations() {
     try {
@@ -177,6 +198,18 @@ export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "E
         />
       )}
       {erreur && <Alerte>{erreur}</Alerte>}
+      <Modale titre="Séparer les lots ?" ouverte={!!aSeparer} fermer={() => setASeparer(null)}>
+        <p className="text-[13px] leading-relaxed text-zinc-600">
+          <strong>« {aSeparer?.libelle} »</strong> ne gardera que <strong>{aSeparer?.reunion?.depart}</strong>. Les autres (<strong>{aSeparer?.reunion?.resume}</strong>){" "}
+          retrouvent chacun leur note « à soumettre au DG », comme avant la réunion. Vous pourrez les réunir de nouveau.
+        </p>
+        <div className="mt-6 flex justify-end gap-2">
+          <Bouton onClick={() => setASeparer(null)}>Annuler</Bouton>
+          <Bouton variante="principal" onClick={() => aSeparer && separer(aSeparer)}>
+            Séparer les lots
+          </Bouton>
+        </div>
+      </Modale>
       <Carte>
         {!donnees ? (
           <Chargement />
@@ -198,17 +231,23 @@ export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "E
             </thead>
             <tbody>
               {donnees.map((n) => (
-                <tr key={n.id}>
+                <Fragment key={n.id}>
+                <tr className={ouvertes.has(n.id) ? "bg-sky-50/60" : undefined}>
                   <td className="font-medium">
                     {n.libelle}
-                    {/* Notes réunies, à titre d'information (DG, 01/11/2026) */}
+                    {/* Notes réunies : un menu déroulant les montre une à une (DG, 01/11/2026) */}
                     {n.reunion && (
-                      <div className="mt-1 flex items-start gap-1.5 rounded-lg bg-sky-50 px-2 py-1 text-xs font-normal text-sky-800" title={[`Note de départ : ${n.reunion.depart}`, ...n.reunion.reunis.map((r) => `Réunie : ${r}`)].join("\n")}>
-                        <Link2 className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                        <span>
-                          {n.reunion.reunis.length + 1} notes réunies en une : <strong className="font-semibold">{n.reunion.depart}</strong> (note de départ) avec {n.reunion.resume}
-                        </span>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => basculer(n.id)}
+                        aria-expanded={ouvertes.has(n.id)}
+                        className="mt-1.5 flex items-center gap-1.5 rounded-full bg-sky-100 py-1 pl-2 pr-3 text-xs font-semibold text-sky-800 ring-1 ring-sky-200 transition hover:bg-sky-200"
+                        title={ouvertes.has(n.id) ? "Masquer les notes réunies" : "Voir les notes réunies"}
+                      >
+                        <ChevronRight className={`size-3.5 transition-transform ${ouvertes.has(n.id) ? "rotate-90" : ""}`} aria-hidden />
+                        <Layers className="size-3.5" aria-hidden />
+                        {n.reunion.lots.length} notes réunies
+                      </button>
                     )}
                     <div className="text-xs font-normal text-zinc-500">Année scolaire {n.anneeScolaire}</div>
                     {/* Date de préparation, pour s'y retrouver (DG, 01/11/2026) */}
@@ -244,6 +283,43 @@ export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "E
                     </Link>
                   </td>
                 </tr>
+                {n.reunion && ouvertes.has(n.id) && (
+                  <>
+                    {n.reunion.lots.map((l, i) => (
+                      <tr key={l.id} className="bg-sky-50/60 text-[13px]">
+                        <td className="!py-2">
+                          <div className="flex items-center gap-2 border-l-2 border-sky-300 pl-3">
+                            <CornerDownRight className="size-3.5 shrink-0 text-sky-500" aria-hidden />
+                            <span className="whitespace-nowrap font-medium text-encre">{l.libelle}</span>
+                            {l.depart ? <Badge ton="bleu">note de départ</Badge> : <span className="whitespace-nowrap text-[11px] text-zinc-500">réunie ({i})</span>}
+                          </div>
+                        </td>
+                        <td className="!py-2 text-right tabular-nums text-zinc-600">{l.total ?? "—"}</td>
+                        <td className="!py-2" />
+                        <td className="!py-2 text-[11px] text-zinc-500" colSpan={4}>
+                          {l.depart ? "Les autres lots ont rejoint cette note" : "Dans la note ci-dessus"}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="bg-sky-50/60">
+                      <td colSpan={7} className="!pt-1 !pb-3">
+                        <div className="flex flex-wrap items-center gap-3 border-l-2 border-sky-300 pl-3 text-xs text-zinc-600">
+                          <span>
+                            {n.reunion.lots.length} lots, {n.total} agent(s) en une seule note.
+                            {n.reunion.lots.some((l) => l.total === null) && " Note figée : le détail par lot n’est plus recalculé."}
+                          </span>
+                          {n.statut === "BROUILLON" && peut.traiter(profil.role) && (
+                            <Bouton variante="discret" onClick={() => setASeparer(n)}>
+                              <Unlink className="size-3.5" aria-hidden />
+                              Séparer les lots
+                            </Bouton>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  </>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </Tableau>
