@@ -36,6 +36,9 @@ const ETAT: Record<Oublie["etat"], { libelle: string; ton: "jaune" | "gris" | "v
 };
 
 const jour = (d: string | null) => (d ? new Date(d).toLocaleDateString("fr-FR") : "");
+/** « 01/11/2026 à 12:21 » : l'heure montre l'ordre (du plus récent au plus ancien). */
+const jourHeure = (d: string | null) =>
+  d ? `${new Date(d).toLocaleDateString("fr-FR")} à ${new Date(d).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : "";
 
 /** Texte sans accents ni majuscules, pour la recherche. */
 const plat = (t: string) =>
@@ -211,8 +214,8 @@ export function ListeOublies({ apres, modifier }: { apres: (texte: string) => vo
               : o.texte
                 ? `Sans lot · ${o.typeTexte === "DECRET" ? "Décret" : "Arrêté"} ${o.texte}`
                 : "En attente du texte de la FP"}
-            {` · ajouté(e) le ${jour(o.ajouteLe)}${o.ajoutePar ? ` par ${o.ajoutePar}` : ""}`}
-            {o.decidePar && o.etat !== "A_CONTROLER" ? ` · décidé par ${o.decidePar} le ${jour(o.decideLe)}` : ""}
+            {` · ajouté(e) le ${jourHeure(o.ajouteLe)}${o.ajoutePar ? ` par ${o.ajoutePar}` : ""}`}
+            {o.decidePar && o.etat !== "A_CONTROLER" ? ` · décidé par ${o.decidePar} le ${jourHeure(o.decideLe)}` : ""}
           </div>
           {o.observation && <div className="text-[12px] font-medium text-rouge-600">Observation : {o.observation}</div>}
           {o.etat === "DEJA_AFFECTE" && o.affectation?.motif && <div className="text-[12px] text-zinc-500">{o.affectation.motif}</div>}
@@ -307,6 +310,7 @@ export function ListeOublies({ apres, modifier }: { apres: (texte: string) => vo
                   />
                   Tout cocher{mots.length ? " (résultats)" : ""}
                 </label>
+                <span className="text-[12px] text-zinc-500">· du plus récent au plus ancien</span>
                 {choisies.length > 0 && (
                   <>
                     <span className="text-zinc-500">· {choisies.length} cochée(s)</span>
@@ -341,7 +345,7 @@ export function ListeOublies({ apres, modifier }: { apres: (texte: string) => vo
               <div className="mt-4">
                 <button type="button" className="flex items-center gap-1 text-[13px] font-medium text-zinc-600 hover:text-marque-700" onClick={() => setVoirDecides(!voirDecides)}>
                   {voirDecides || mots.length ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />} Déjà contrôlés ({decidesVus.length}
-                  {mots.length ? ` sur ${decides.length}` : ""})
+                  {mots.length ? ` sur ${decides.length}` : ""}) · dernière décision d’abord
                 </button>
                 {/* Une recherche ouvre aussi les personnes déjà contrôlées qui correspondent */}
                 {(voirDecides || mots.length > 0) && <div className="mt-2 space-y-2">{decidesVus.map(ligne)}</div>}
