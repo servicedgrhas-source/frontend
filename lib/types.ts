@@ -302,6 +302,9 @@ export interface NoteDetail extends NoteResume {
   /** Notes d'affectation : autres lots réunis dans cette note. */
   lotsReunis?: { id: number; numero: number; libelle: string }[];
   contenu: ContenuNote;
+  /** Toutes les lignes d’ampliation possibles (contenu.ampliations : celles gardées). */
+  ampliationsToutes?: { libelle: string; nombre: string }[];
+  ampliationsExclues?: string[];
   entete: {
     reference: string;
     signataireTitre: string;

@@ -152,7 +152,8 @@ export function PagesA4({ blocs, tableaux, pied, classeFeuille, margeHaut = 12, 
           )}
           <div className="pied-a4" style={{ left: `${margeCote}mm`, right: `${margeCote}mm` }}>
             <span>{pied.gauche}</span>
-            <span className="text-center">
+            {/* En gras (DG, 01/11/2026) */}
+            <span className="text-center font-bold">
               Page {i + 1} sur {pages!.length}
             </span>
             <span className="text-right">{pied.droite}</span>

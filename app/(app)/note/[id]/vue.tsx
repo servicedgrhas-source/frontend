@@ -16,7 +16,7 @@ export function VueNote() {
   const { donnees: note, erreur, recharger } = useApi<NoteDetail>(`/notes/${id}`);
   const [message, setMessage] = useState<{ ton: "vert" | "rouge"; texte: string } | null>(null);
   const [avecVisas, setAvecVisas] = useState(true);
-  const [dialogue, setDialogue] = useState<"renvoyer" | "signer" | "intro" | "rouvrir" | "supprimer" | "reunir" | "separer" | null>(null);
+  const [dialogue, setDialogue] = useState<"renvoyer" | "signer" | "intro" | "rouvrir" | "supprimer" | "reunir" | "separer" | "ampliations" | null>(null);
 
   if (erreur) return <Alerte>{erreur}</Alerte>;
   if (!note) return <Chargement />;
@@ -85,6 +85,13 @@ export function VueNote() {
               </select>
             </label>
           )}
+          {/* Ampliations à cocher, archives recalculées (DG, 01/11/2026) */}
+          {peut.traiter(profil.role) && s !== "SIGNEE" && note.ampliationsToutes?.length ? (
+            <Bouton onClick={() => setDialogue("ampliations")}>
+              Ampliations
+              <Aide>Cochez ou décochez les destinataires des copies de la note. Le nombre des archives (2 sur le total des exemplaires) se recalcule tout seul.</Aide>
+            </Bouton>
+          ) : null}
           {aDesVisas && (
             <label className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-[13px] ring-1 ring-zinc-200" title="Les spécimens de visa du service, de la direction et de la direction générale, à droite de leur ligne dans l’en-tête">
               <input type="checkbox" className="size-4 accent-marque-600" checked={avecVisas} onChange={(e) => setAvecVisas(e.target.checked)} />
@@ -276,6 +283,22 @@ export function VueNote() {
       {dialogue === "renvoyer" && <Renvoi fermer={() => setDialogue(null)} ok={(c) => action("renvoyer", { commentaire: c }, "Note renvoyée aux agents.")} />}
       {dialogue === "signer" && (
         <Signature note={note} fermer={() => setDialogue(null)} ok={(numero, date) => action("signer", { numero, dateSignature: date }, "Signature enregistrée.")} />
+      )}
+      {dialogue === "ampliations" && (
+        <Ampliations
+          note={note}
+          fermer={() => setDialogue(null)}
+          ok={async (exclues) => {
+            try {
+              await api.put(`/notes/${id}/ampliations`, { exclues });
+              setMessage({ ton: "vert", texte: "Ampliations enregistrées." });
+              setDialogue(null);
+              recharger();
+            } catch (e) {
+              setMessage({ ton: "rouge", texte: (e as Error).message });
+            }
+          }}
+        />
       )}
       {dialogue === "intro" && (
         <Introduction
@@ -511,6 +534,50 @@ function Signature({ note, fermer, ok }: { note: NoteDetail; fermer: () => void;
       <div className="mt-3 flex justify-end gap-2">
         <Bouton onClick={fermer}>Annuler</Bouton>
         <Bouton variante="principal" disabled={!numero.trim() || !date} onClick={() => ok(numero, date)}>Enregistrer</Bouton>
+      </div>
+    </Modale>
+  );
+}
+
+/** Lignes d’ampliation à garder ; les archives (2 sur le total) suivent et ne se décochent pas. */
+function Ampliations({ note, fermer, ok }: { note: NoteDetail; fermer: () => void; ok: (exclues: string[]) => void }) {
+  const toutes = note.ampliationsToutes ?? note.contenu.ampliations;
+  const [exclues, setExclues] = useState<string[]>(note.ampliationsExclues ?? []);
+  const gardees = toutes.filter((a) => a.libelle !== "Archives" && !exclues.includes(a.libelle));
+  const somme = gardees.reduce((t, a) => t + (Number(a.nombre) || 0), 0) + 2;
+  const basculer = (libelle: string) => setExclues((x) => (x.includes(libelle) ? x.filter((y) => y !== libelle) : [...x, libelle]));
+  return (
+    <Modale titre="Ampliations" ouverte fermer={fermer}>
+      <p className="mb-3 text-sm text-zinc-600">Décochez les destinataires qui ne reçoivent pas de copie de cette note. Les archives gardent 2 exemplaires sur le total, recalculé ici.</p>
+      <ul className="divide-y divide-zinc-100 rounded-xl ring-1 ring-zinc-200">
+        {toutes.map((a) =>
+          a.libelle === "Archives" ? (
+            <li key={a.libelle} className="flex items-center justify-between gap-3 bg-zinc-50 px-3 py-2 text-sm">
+              <span className="flex items-center gap-3">
+                <input type="checkbox" className="size-4" checked disabled />
+                Archives
+              </span>
+              <span className="font-semibold tabular-nums">2/{somme}</span>
+            </li>
+          ) : (
+            <li key={a.libelle}>
+              <label className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-zinc-50">
+                <span className="flex items-center gap-3">
+                  <input type="checkbox" className="size-4 accent-marque-600" checked={!exclues.includes(a.libelle)} onChange={() => basculer(a.libelle)} />
+                  <span className={exclues.includes(a.libelle) ? "text-zinc-400 line-through" : ""}>{a.libelle}</span>
+                </span>
+                <span className={`tabular-nums ${exclues.includes(a.libelle) ? "text-zinc-400" : ""}`}>{a.nombre}</span>
+              </label>
+            </li>
+          ),
+        )}
+      </ul>
+      <p className="mt-2 text-sm">
+        Total : <span className="font-semibold tabular-nums">{somme}</span> exemplaire(s)
+      </p>
+      <div className="mt-3 flex justify-end gap-2">
+        <Bouton onClick={fermer}>Annuler</Bouton>
+        <Bouton variante="principal" onClick={() => ok(exclues.filter((x) => toutes.some((a) => a.libelle === x)))}>Enregistrer</Bouton>
       </div>
     </Modale>
   );
