@@ -68,6 +68,7 @@ const ICONES_CYCLE: Record<string, LucideIcon> = {
   PRIMAIRE: BookOpen,
   COLLEGE: School,
   LYCEE: GraduationCap,
+  ALPHABETISATION: BookOpen,
   ADMINISTRATION: Briefcase,
 };
 
@@ -77,6 +78,7 @@ const NOTE_CONSEILLEE: Record<string, string[]> = {
   PRIMAIRE: ["PRIMAIRE"],
   COLLEGE: ["DEMA", "DECRET_COLLEGE"],
   LYCEE: ["DECRET_LYCEE"],
+  ALPHABETISATION: ["PRIMAIRE"],
   ADMINISTRATION: ["PERS_ADM"],
 };
 

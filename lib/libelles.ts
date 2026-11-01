@@ -59,6 +59,8 @@ export const CYCLES: Record<string, string> = {
   PRIMAIRE: "Primaire",
   COLLEGE: "Collège",
   LYCEE: "Lycée",
+  // Pour certains titulaires du CFEEN primaire ou préscolaire (DG, 01/11/2026)
+  ALPHABETISATION: "Alphabétisation",
   ADMINISTRATION: "Administration",
 };
 

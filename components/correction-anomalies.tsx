@@ -9,7 +9,7 @@ import { Alerte, Bouton, Champ, Liste, Modale, Saisie } from "./ui";
 import { api, useApi } from "@/lib/api";
 import type { Agent } from "@/lib/types";
 
-const CYCLES: Record<string, string> = { PRESCOLAIRE: "Préscolaire", PRIMAIRE: "Primaire", COLLEGE: "Collège", LYCEE: "Lycée", ADMINISTRATION: "Administration" };
+const CYCLES: Record<string, string> = { PRESCOLAIRE: "Préscolaire", PRIMAIRE: "Primaire", COLLEGE: "Collège", LYCEE: "Lycée", ALPHABETISATION: "Alphabétisation", ADMINISTRATION: "Administration" };
 
 /** Ce que l'on corrige pour chaque anomalie. */
 type Genre = "date" | "departement" | "diplome" | "cycle" | "texte" | "verifier";

@@ -477,7 +477,7 @@ const COLONNES: [string, string, string][] = [
   ["Diplôme", "obligatoire", "CFEEN, BET, BAC, Licence, Master… (donne le grade et la note)"],
   ["Département", "", "Brazzaville, Cuvette, Pointe-Noire… (« Cuvette (Makoua) » est lu Cuvette)"],
   ["Source", "", "Écrit tel quel sur la fiche (« FP », nom d’école…)"],
-  ["Cycle", "", "Préscolaire, Primaire, Collège, Lycée, Administration"],
+  ["Cycle", "", "Préscolaire, Primaire, Collège, Lycée, Alphabétisation, Administration"],
   ["Spécialité", "", "Au primaire et au préscolaire : le cycle (donné tout seul s’il manque)"],
   ["Qualification", "", "Écrite telle quelle sur la fiche"],
   ["Quota", "MEPPSA", "Année : 2024, 2025…"],
@@ -880,7 +880,7 @@ function EditionAgent({ agent, fermer, apres }: { agent: Agent; fermer: () => vo
             value={infos.cycleBrut}
             onChange={(e) => setInfos({ ...infos, cycleBrut: e.target.value })}
             vide="—"
-            options={["Préscolaire", "Primaire", "Collège", "Lycée", "Administration"].map((c) => ({ valeur: c, libelle: c }))}
+            options={["Préscolaire", "Primaire", "Collège", "Lycée", "Alphabétisation", "Administration"].map((c) => ({ valeur: c, libelle: c }))}
           />
         </Champ>
         <Champ libelle="Statut">

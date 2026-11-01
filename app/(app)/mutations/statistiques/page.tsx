@@ -192,6 +192,7 @@ function DetailCycles({ lignes, departements, departement }: { lignes: LigneStat
     { titre: "Administration", lignes: lignes.filter((l) => l.cycle === "ADMINISTRATION") },
     { titre: "Préscolaire", lignes: lignes.filter((l) => l.cycle === "PRESCOLAIRE") },
     { titre: "Primaire", lignes: lignes.filter((l) => l.cycle === "PRIMAIRE") },
+    { titre: "Alphabétisation", lignes: lignes.filter((l) => l.cycle === "ALPHABETISATION") },
     { titre: "Collège", lignes: lignes.filter((l) => l.cycle === "COLLEGE") },
     { titre: "Lycée", lignes: lignes.filter((l) => l.cycle === "LYCEE") },
   ];

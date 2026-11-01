@@ -9,7 +9,7 @@ import { useSession } from "./session";
 import { Alerte, Bouton, Champ, Liste, Modale, Saisie, SaisieDate } from "./ui";
 import { api } from "@/lib/api";
 
-const CYCLES = ["Préscolaire", "Primaire", "Collège", "Lycée", "Administration"];
+const CYCLES = ["Préscolaire", "Primaire", "Collège", "Lycée", "Alphabétisation", "Administration"];
 
 interface FicheResumee {
   id: string;

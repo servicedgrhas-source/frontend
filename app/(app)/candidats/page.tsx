@@ -1351,7 +1351,7 @@ function FormulaireCandidat({ fiche, apres, annuler }: { fiche?: Fiche; apres: (
 }
 
 function cycleLisible(c: string) {
-  return { PRESCOLAIRE: "Préscolaire", PRIMAIRE: "Primaire", COLLEGE: "Collège", LYCEE: "Lycée", ADMINISTRATION: "Administration" }[c] ?? c;
+  return { PRESCOLAIRE: "Préscolaire", PRIMAIRE: "Primaire", COLLEGE: "Collège", LYCEE: "Lycée", ALPHABETISATION: "Alphabétisation", ADMINISTRATION: "Administration" }[c] ?? c;
 }
 
 function ListeDoublons({ liste }: { liste: Doublon[] }) {
