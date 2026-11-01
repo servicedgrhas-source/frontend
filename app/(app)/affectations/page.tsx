@@ -152,10 +152,18 @@ export default function Affectations() {
     }
   }
 
+  // « Lot déjà traité » / « Remettre à traiter » : confirmé avant de changer (DG, 01/11/2026)
+  const [confirmLot, setConfirmLot] = useState<{ l: Lot; archive: boolean } | null>(null);
   async function archiver(l: Lot, archive: boolean) {
     try {
       await api.patch(`/lots/${l.id}`, { archive });
       if (archive) setSelection(selection.filter((x) => x !== l.numero));
+      setMessage({
+        ton: "vert",
+        texte: archive
+          ? `${l.libelle} : marqué comme déjà traité, il n’est plus proposé (« Voir les lots déjà traités » pour le retrouver).`
+          : `${l.libelle} : remis parmi les lots à traiter.`,
+      });
       lots.recharger();
     } catch (e) {
       setMessage({ ton: "rouge", texte: (e as Error).message });
@@ -302,7 +310,7 @@ export default function Affectations() {
           }}
           groupes={groupes}
           choisirGroupes={setGroupes}
-          archiver={peut.traiter(profil.role) ? archiver : undefined}
+          archiver={peut.traiter(profil.role) ? (l, archive) => setConfirmLot({ l, archive }) : undefined}
           archiverTous={peut.traiter(profil.role) ? archiverTous : undefined}
         />
       )}
@@ -831,6 +839,46 @@ export default function Affectations() {
         </Carte>
       </div>
 
+      <Modale
+        titre={confirmLot?.archive ? `Marquer « ${confirmLot.l.libelle} » comme déjà traité ?` : `Remettre « ${confirmLot?.l.libelle ?? ""} » à traiter ?`}
+        ouverte={!!confirmLot}
+        fermer={() => setConfirmLot(null)}
+      >
+        {confirmLot && (
+          <div className="space-y-3 text-[13px] leading-relaxed text-zinc-600">
+            {confirmLot.archive ? (
+              <>
+                <p>
+                  Le lot ne sera plus proposé parmi les lots à traiter : il passe dans « Voir les lots déjà traités ». Rien n’est effacé ; les personnes, leurs
+                  affectations et les notes restent telles quelles.
+                </p>
+                {confirmLot.l.aTraiter > 0 && (
+                  <Alerte ton="jaune">
+                    Il reste <strong>{confirmLot.l.aTraiter} personne(s) à affecter</strong> dans ce lot. Marquez-le comme traité seulement si elles l’ont été
+                    ailleurs (à la main, par une autre note).
+                  </Alerte>
+                )}
+              </>
+            ) : (
+              <p>Le lot revient parmi les lots à traiter : on peut de nouveau le choisir et préparer ses notes.</p>
+            )}
+            <p className="text-[12px] text-zinc-500">Vous pourrez revenir sur ce choix à tout moment.</p>
+            <div className="flex justify-end gap-2 pt-2">
+              <Bouton onClick={() => setConfirmLot(null)}>Annuler</Bouton>
+              <Bouton
+                variante="principal"
+                onClick={async () => {
+                  const c = confirmLot;
+                  setConfirmLot(null);
+                  await archiver(c.l, c.archive);
+                }}
+              >
+                {confirmLot.archive ? "Oui, déjà traité" : "Oui, remettre à traiter"}
+              </Bouton>
+            </div>
+          </div>
+        )}
+      </Modale>
       {action?.type === "modifier" && (
         <Completer
           aff={action.aff}
