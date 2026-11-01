@@ -11,6 +11,18 @@ import { dateCourte, peut, STATUT_NOTE } from "@/lib/libelles";
 import type { NoteResume, StatutNote } from "@/lib/types";
 import type { Ton } from "@/lib/libelles";
 
+/** « aujourd’hui à 10:42 », « hier à 16:05 », « le 29/10/2026 à 09:12 ». */
+function quand(d: string) {
+  const t = new Date(d);
+  const heure = t.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  const jour = (x: Date) => x.toDateString();
+  const hier = new Date();
+  hier.setDate(hier.getDate() - 1);
+  if (jour(t) === jour(new Date())) return `aujourd’hui à ${heure}`;
+  if (jour(t) === jour(hier)) return `hier à ${heure}`;
+  return `le ${t.toLocaleDateString("fr-FR")} à ${heure}`;
+}
+
 const ETAPES: { statut: StatutNote; texte: string; icone: LucideIcon; ton: Ton }[] = [
   { statut: "BROUILLON", texte: "Préparée, à relire puis à envoyer au DG ; se met à jour toute seule", icone: FilePen, ton: "gris" },
   { statut: "SOUMISE", texte: "Transmise pour validation", icone: Send, ton: "jaune" },
@@ -188,6 +200,11 @@ export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "E
                   <td className="font-medium">
                     {n.libelle}
                     <div className="text-xs font-normal text-zinc-500">Année scolaire {n.anneeScolaire}</div>
+                    {/* Date de préparation, pour s'y retrouver (DG, 01/11/2026) */}
+                    <div className="text-xs font-normal text-zinc-400">
+                      Préparée {quand(n.creeLe)}
+                      {n.valideeLe && ` · validée ${quand(n.valideeLe)}`}
+                    </div>
                     {n.commentaire && n.statut === "BROUILLON" && <div className="text-xs font-normal text-rouge-600">Renvoyée par le DG : {n.commentaire}</div>}
                   </td>
                   <td className="text-right tabular-nums">
