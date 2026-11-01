@@ -259,13 +259,12 @@ export function VueNote() {
       )}
       <Modale titre="Séparer les lots ?" ouverte={dialogue === "separer"} fermer={() => setDialogue(null)}>
         <p className="text-[13px] leading-relaxed text-zinc-600">
-          Cette note ne gardera que son premier lot. Les personnes des lots{" "}
-          <strong>{(note.lotsReunis ?? []).map((l) => l.libelle).join(", ")}</strong> en sortent : pour elles, cliquez de nouveau sur « Préparer les notes de ce lot »
-          dans « Traitement des affectations ».
+          Cette note ne gardera que son premier lot. Les lots <strong>{(note.lotsReunis ?? []).map((l) => l.libelle).join(", ")}</strong> retrouvent chacun leur
+          note « à soumettre au DG », avec leurs personnes : vous pourrez les réunir de nouveau quand vous voudrez.
         </p>
         <div className="mt-6 flex justify-end gap-2">
           <Bouton onClick={() => setDialogue(null)}>Annuler</Bouton>
-          <Bouton variante="principal" onClick={() => action("separer", undefined, "Lots séparés.")}>
+          <Bouton variante="principal" onClick={() => action("separer", undefined, "Lots séparés : chaque lot a retrouvé sa note.")}>
             Séparer les lots
           </Bouton>
         </div>
