@@ -6,6 +6,19 @@ import { useState } from "react";
 import { Alerte, Carte, Champ, Chargement, Saisie } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 
+/** Paramètres à choisir dans une liste plutôt qu'à écrire. */
+const CHOIX: Record<string, [string, string][]> = {
+  POLICE_NOTES: [
+    ["Times New Roman", "Times New Roman (d’origine)"],
+    ["Sylfaen", "Sylfaen"],
+  ],
+  // DG, 01/11/2026 : « PROJET DE NOTE DE SERVICE » jusqu'à la fin du circuit, ou comme avant
+  PROJET_DE_NOTE: [
+    ["OUI", "Oui : « PROJET DE NOTE DE SERVICE » jusqu’à la validation du DG et les trois avis conformes"],
+    ["NON", "Non : toujours « NOTE DE SERVICE » (comme avant)"],
+  ],
+};
+
 interface Parametre {
   cle: string;
   valeur: string;
@@ -18,7 +31,7 @@ const GROUPES: { titre: string; effet: string; cles: string[] }[] = [
     titre: "Notes de service (affectation, mutation et enrôlement)",
     effet:
       "Pris en compte immédiatement par les notes « à soumettre au DG » et « soumises au DG ». Une note validée ou signée garde les réglages du jour de sa validation ; pour qu’elle reprenne les nouveaux, le DG la rouvre (tant que le ministre n’a pas signé).",
-    cles: ["ANNEE_SCOLAIRE", "ANNEE_SCOLAIRE_MUTATION", "SIGNATAIRE_TITRE", "SIGNATAIRE_NOM", "LIEU_SIGNATURE", "POLICE_NOTES", "REFERENCE_NOTE", "PIED_PAGE_DROITE", "ADRESSE_PIED", "MENTION_BOURSE_ENROLEMENT"],
+    cles: ["ANNEE_SCOLAIRE", "ANNEE_SCOLAIRE_MUTATION", "SIGNATAIRE_TITRE", "SIGNATAIRE_NOM", "LIEU_SIGNATURE", "POLICE_NOTES", "PROJET_DE_NOTE", "REFERENCE_NOTE", "PIED_PAGE_DROITE", "ADRESSE_PIED", "MENTION_BOURSE_ENROLEMENT"],
   },
   {
     titre: "Statut contractuel, âges et calculs",
@@ -109,23 +122,34 @@ export function ParametresGeneraux() {
                     const e = etats[p.cle];
                     return (
                       <Champ key={p.cle} libelle={p.description}>
-                        {p.cle === "POLICE_NOTES" ? (
+                        {CHOIX[p.cle] ? (
                           <select
                             className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-[13px]"
-                            defaultValue={p.valeur.trim().toLowerCase() === "sylfaen" ? "Sylfaen" : "Times New Roman"}
+                            defaultValue={
+                              p.cle === "POLICE_NOTES"
+                                ? p.valeur.trim().toLowerCase() === "sylfaen"
+                                  ? "Sylfaen"
+                                  : "Times New Roman"
+                                : p.valeur.trim().toUpperCase() === "NON"
+                                  ? "NON"
+                                  : "OUI"
+                            }
                             onChange={async (ev) => {
                               changer(p.cle, { ton: "envoi", texte: "Enregistrement…" });
                               try {
                                 await api.put(`/parametres/${p.cle}`, { valeur: ev.target.value });
-                                changer(p.cle, { ton: "ok", texte: `Enregistré : ${ev.target.value}.` });
+                                changer(p.cle, { ton: "ok", texte: `Enregistré : ${CHOIX[p.cle].find(([v]) => v === ev.target.value)?.[1] ?? ev.target.value}.` });
                                 params.recharger();
                               } catch (err) {
                                 changer(p.cle, { ton: "erreur", texte: (err as Error).message });
                               }
                             }}
                           >
-                            <option value="Times New Roman">Times New Roman (d’origine)</option>
-                            <option value="Sylfaen">Sylfaen</option>
+                            {CHOIX[p.cle].map(([v, libelle]) => (
+                              <option key={v} value={v}>
+                                {libelle}
+                              </option>
+                            ))}
                           </select>
                         ) : (
                         <Saisie
