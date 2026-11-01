@@ -10,6 +10,8 @@ import { api, useApi } from "@/lib/api";
 import { dateCourte, peut, STATUT_NOTE } from "@/lib/libelles";
 import type { NoteDetail, NoteResume } from "@/lib/types";
 
+type Ampliation = { libelle: string; nombre: string };
+
 export function VueNote() {
   const { id } = useParams<{ id: string }>();
   const { profil } = useSession();
@@ -288,9 +290,9 @@ export function VueNote() {
         <Ampliations
           note={note}
           fermer={() => setDialogue(null)}
-          ok={async (exclues) => {
+          ok={async (exclues, ajoutees) => {
             try {
-              await api.put(`/notes/${id}/ampliations`, { exclues });
+              await api.put(`/notes/${id}/ampliations`, { exclues, ajoutees });
               setMessage({ ton: "vert", texte: "Ampliations enregistrées." });
               setDialogue(null);
               recharger();
@@ -539,45 +541,96 @@ function Signature({ note, fermer, ok }: { note: NoteDetail; fermer: () => void;
   );
 }
 
-/** Lignes d’ampliation à garder ; les archives (2 sur le total) suivent et ne se décochent pas. */
-function Ampliations({ note, fermer, ok }: { note: NoteDetail; fermer: () => void; ok: (exclues: string[]) => void }) {
-  const toutes = note.ampliationsToutes ?? note.contenu.ampliations;
+/** Lignes d’ampliation à garder, ou à ajouter ; les archives (2 sur le total) suivent et ne se décochent pas. */
+function Ampliations({ note, fermer, ok }: { note: NoteDetail; fermer: () => void; ok: (exclues: string[], ajoutees: Ampliation[]) => void }) {
+  const toutes: (Ampliation & { ajoutee?: boolean })[] = note.ampliationsToutes ?? note.contenu.ampliations;
+  const calculees = toutes.filter((a) => a.libelle !== "Archives" && !a.ajoutee);
+  const [ajoutees, setAjoutees] = useState<Ampliation[]>(toutes.filter((a) => a.ajoutee).map(({ libelle, nombre }) => ({ libelle, nombre })));
   const [exclues, setExclues] = useState<string[]>(note.ampliationsExclues ?? []);
-  const gardees = toutes.filter((a) => a.libelle !== "Archives" && !exclues.includes(a.libelle));
-  const somme = gardees.reduce((t, a) => t + (Number(a.nombre) || 0), 0) + 2;
-  const basculer = (libelle: string) => setExclues((x) => (x.includes(libelle) ? x.filter((y) => y !== libelle) : [...x, libelle]));
+  const [libelle, setLibelle] = useState("");
+  const [nombre, setNombre] = useState("1");
+  const [erreur, setErreur] = useState<string | null>(null);
+  const lignes = [...calculees, ...ajoutees];
+  const somme = lignes.filter((a) => !exclues.includes(a.libelle)).reduce((t, a) => t + (Number(a.nombre) || 0), 0) + 2;
+  const basculer = (l: string) => setExclues((x) => (x.includes(l) ? x.filter((y) => y !== l) : [...x, l]));
+  const ajouter = () => {
+    const l = libelle.replace(/\s+/g, " ").trim();
+    const n = Number(nombre);
+    if (!l) return setErreur("Écrivez le destinataire de la copie.");
+    if (!Number.isInteger(n) || n < 1 || n > 99) return setErreur("Nombre d’exemplaires : de 1 à 99.");
+    if (l.toLowerCase() === "archives" || lignes.some((a) => a.libelle.toLowerCase() === l.toLowerCase())) return setErreur(`« ${l} » figure déjà dans la liste.`);
+    setAjoutees((x) => [...x, { libelle: l, nombre: String(n) }]);
+    setLibelle("");
+    setNombre("1");
+    setErreur(null);
+  };
+  const retirer = (l: string) => {
+    setAjoutees((x) => x.filter((a) => a.libelle !== l));
+    setExclues((x) => x.filter((y) => y !== l));
+  };
   return (
     <Modale titre="Ampliations" ouverte fermer={fermer}>
-      <p className="mb-3 text-sm text-zinc-600">Décochez les destinataires qui ne reçoivent pas de copie de cette note. Les archives gardent 2 exemplaires sur le total, recalculé ici.</p>
+      <p className="mb-3 text-sm text-zinc-600">Décochez les destinataires qui ne reçoivent pas de copie de cette note, ou ajoutez-en un en bas. Les archives gardent 2 exemplaires sur le total, recalculé ici.</p>
       <ul className="divide-y divide-zinc-100 rounded-xl ring-1 ring-zinc-200">
-        {toutes.map((a) =>
-          a.libelle === "Archives" ? (
-            <li key={a.libelle} className="flex items-center justify-between gap-3 bg-zinc-50 px-3 py-2 text-sm">
-              <span className="flex items-center gap-3">
-                <input type="checkbox" className="size-4" checked disabled />
-                Archives
-              </span>
-              <span className="font-semibold tabular-nums">2/{somme}</span>
-            </li>
-          ) : (
-            <li key={a.libelle}>
-              <label className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-sm hover:bg-zinc-50">
-                <span className="flex items-center gap-3">
-                  <input type="checkbox" className="size-4 accent-marque-600" checked={!exclues.includes(a.libelle)} onChange={() => basculer(a.libelle)} />
-                  <span className={exclues.includes(a.libelle) ? "text-zinc-400 line-through" : ""}>{a.libelle}</span>
+        {lignes.map((a) => {
+          const exclue = exclues.includes(a.libelle);
+          const ajoutee = ajoutees.includes(a);
+          return (
+            <li key={a.libelle} className="flex items-center gap-2 pr-2 hover:bg-zinc-50">
+              <label className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 py-2 pl-3 text-sm">
+                <span className="flex min-w-0 items-center gap-3">
+                  <input type="checkbox" className="size-4 shrink-0 accent-marque-600" checked={!exclue} onChange={() => basculer(a.libelle)} />
+                  <span className={`truncate ${exclue ? "text-zinc-400 line-through" : ""}`}>{a.libelle}</span>
+                  {ajoutee && <Badge ton="bleu">ajoutée</Badge>}
                 </span>
-                <span className={`tabular-nums ${exclues.includes(a.libelle) ? "text-zinc-400" : ""}`}>{a.nombre}</span>
+                <span className={`tabular-nums ${exclue ? "text-zinc-400" : ""}`}>{a.nombre}</span>
               </label>
+              {ajoutee && (
+                <button type="button" className="rounded-lg px-1.5 text-lg leading-none text-zinc-400 hover:bg-red-50 hover:text-red-600" title={`Retirer « ${a.libelle} »`} aria-label={`Retirer ${a.libelle}`} onClick={() => retirer(a.libelle)}>
+                  ×
+                </button>
+              )}
             </li>
-          ),
-        )}
+          );
+        })}
+        <li className="flex items-center justify-between gap-3 bg-zinc-50 px-3 py-2 text-sm">
+          <span className="flex items-center gap-3">
+            <input type="checkbox" className="size-4" checked disabled />
+            Archives
+          </span>
+          <span className="font-semibold tabular-nums">2/{somme}</span>
+        </li>
       </ul>
       <p className="mt-2 text-sm">
         Total : <span className="font-semibold tabular-nums">{somme}</span> exemplaire(s)
       </p>
+      <form
+        className="mt-4 rounded-xl bg-zinc-50 p-3 ring-1 ring-zinc-200"
+        onSubmit={(e) => {
+          e.preventDefault();
+          ajouter();
+        }}
+      >
+        <p className="mb-2 text-sm font-medium">Ajouter une ampliation</p>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="min-w-0 flex-1 text-xs text-zinc-600">
+            Destinataire
+            <Saisie className="mt-1 w-full" placeholder="Ex. : DDEPPSA Pool, Trésor public…" maxLength={60} value={libelle} onChange={(e) => setLibelle(e.target.value)} />
+          </label>
+          <label className="w-24 text-xs text-zinc-600">
+            Exemplaires
+            <Saisie className="mt-1 w-full" type="number" min={1} max={99} value={nombre} onChange={(e) => setNombre(e.target.value)} />
+          </label>
+          <Bouton type="submit">Ajouter</Bouton>
+        </div>
+        {erreur && <p className="mt-2 text-sm text-red-600">{erreur}</p>}
+      </form>
+      <p className="mt-2 text-xs text-zinc-500">La ligne ajoutée ne vaut que pour cette note ; elle s’écrit avant les archives.</p>
       <div className="mt-3 flex justify-end gap-2">
         <Bouton onClick={fermer}>Annuler</Bouton>
-        <Bouton variante="principal" onClick={() => ok(exclues.filter((x) => toutes.some((a) => a.libelle === x)))}>Enregistrer</Bouton>
+        <Bouton variante="principal" onClick={() => ok(exclues.filter((x) => lignes.some((a) => a.libelle === x)), ajoutees)}>
+          Enregistrer
+        </Bouton>
       </div>
     </Modale>
   );

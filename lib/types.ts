@@ -303,7 +303,7 @@ export interface NoteDetail extends NoteResume {
   lotsReunis?: { id: number; numero: number; libelle: string }[];
   contenu: ContenuNote;
   /** Toutes les lignes d’ampliation possibles (contenu.ampliations : celles gardées). */
-  ampliationsToutes?: { libelle: string; nombre: string }[];
+  ampliationsToutes?: { libelle: string; nombre: string; ajoutee?: boolean }[];
   ampliationsExclues?: string[];
   entete: {
     reference: string;
