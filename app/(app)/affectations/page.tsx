@@ -3,6 +3,7 @@
 import {
   Ban,
   CheckCircle2,
+  Download,
   PencilLine,
   RotateCcw,
   Search,
@@ -25,6 +26,7 @@ import type { Affectation, Lot, NoteResume } from "@/lib/types";
 import { useParametreUrl } from "@/lib/url";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
 import { ChoixLots, familleDe, GROUPES, type Famille } from "@/components/choix-lots";
+import { ExportAffectations } from "@/components/export-affectations";
 import { DeportPersonnel } from "@/components/deport-personnel";
 import { ModaleDoublons } from "@/components/doublons";
 import { FicheDossier } from "@/components/fiche-dossier";
@@ -58,6 +60,8 @@ export default function Affectations() {
   const [familleChoisie, setFamille] = useState<Famille | null>(null);
   const [groupes, setGroupes] = useState<GroupeQuota[]>(TOUS_GROUPES);
   const [deport, setDeport] = useState(false);
+  // Fenêtre « Exporter une liste » (Excel, Word, PDF), DG 01/11/2026
+  const [exporter, setExporter] = useState(false);
   // Fiche complète d'une personne (clic sur son nom), comparaison d'un doublon probable
   const [fiche, setFiche] = useState<string | null>(null);
   const [doublon, setDoublon] = useState<string | null>(null);
@@ -281,14 +285,25 @@ export default function Affectations() {
         titre="Traitement des affectations"
         sousTitre="Grade, classification, statut contractuel, référence du texte et département sont remplis automatiquement. Vérifiez, complétez et préparez les notes."
         actions={
-          peut.traiter(profil.role) &&
-          filtreLots && (
-            <Bouton variante="principal" onClick={preparer}>
-              Préparer les notes {choisis.length > 1 ? "de ces lots" : "de ce lot"}
-            </Bouton>
-          )
+          <div className="flex flex-wrap gap-2">
+            {!!lots.donnees?.length && (
+              <Bouton onClick={() => setExporter(true)}>
+                <Download className="size-4" aria-hidden />
+                Exporter une liste
+                <Aide>Les personnes de vos lots en Excel, Word ou PDF, avec des filtres : arrêtés ou décrets, sans département, un cycle, un département, un quota…</Aide>
+              </Bouton>
+            )}
+            {peut.traiter(profil.role) && filtreLots && (
+              <Bouton variante="principal" onClick={preparer}>
+                Préparer les notes {choisis.length > 1 ? "de ces lots" : "de ce lot"}
+              </Bouton>
+            )}
+          </div>
         }
       />
+      {exporter && lots.donnees && (
+        <ExportAffectations lots={lots.donnees} familleDepart={famille} selectionDepart={selection} fermer={() => setExporter(false)} />
+      )}
       {/* Personnes sans lot : absentes de toutes les listes ci-dessous (DG, 31/10/2026) */}
       {peut.traiter(profil.role) && <BandeauSansLot apres={rafraichir} />}
       <Annonce ton={message?.ton} fermer={() => setMessage(null)}>
