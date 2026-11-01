@@ -1,6 +1,6 @@
 "use client";
 
-import { FilePen, FileSignature, Lock, Send, type LucideIcon } from "lucide-react";
+import { FilePen, FileSignature, Link2, Lock, Send, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { useCampagne } from "./enrolement/commun";
@@ -199,6 +199,15 @@ export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "E
                 <tr key={n.id}>
                   <td className="font-medium">
                     {n.libelle}
+                    {/* Notes réunies, à titre d'information (DG, 01/11/2026) */}
+                    {n.reunion && (
+                      <div className="mt-1 flex items-start gap-1.5 rounded-lg bg-sky-50 px-2 py-1 text-xs font-normal text-sky-800" title={[`Note de départ : ${n.reunion.depart}`, ...n.reunion.reunis.map((r) => `Réunie : ${r}`)].join("\n")}>
+                        <Link2 className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                        <span>
+                          {n.reunion.reunis.length + 1} notes réunies en une : <strong className="font-semibold">{n.reunion.depart}</strong> (note de départ) avec {n.reunion.resume}
+                        </span>
+                      </div>
+                    )}
                     <div className="text-xs font-normal text-zinc-500">Année scolaire {n.anneeScolaire}</div>
                     {/* Date de préparation, pour s'y retrouver (DG, 01/11/2026) */}
                     <div className="text-xs font-normal text-zinc-400">
