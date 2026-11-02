@@ -196,6 +196,7 @@ export function Coquille({ children }: { children: ReactNode }) {
       session?.profil.role === "STRUCTURE" &&
       !chemin.startsWith("/a-traiter") &&
       !chemin.startsWith("/mutation/") &&
+      !chemin.startsWith("/prestations") &&
       !chemin.startsWith("/personnel") &&
       !chemin.startsWith("/recensement") &&
       !(chemin === "/ecoles" || /^\/ecoles\/\d+$/.test(chemin)) &&
@@ -412,6 +413,8 @@ interface AlerteCircuit {
   lue: boolean;
   /** Où en est la demande maintenant (l'alerte, elle, raconte le moment où elle a été créée). */
   aujourdhui: string | null;
+  /** Page de la demande (mutation, ou demande de prestation). */
+  lien?: string;
 }
 
 const TYPE_ALERTE: Record<AlerteCircuit["type"], string> = {
@@ -560,7 +563,7 @@ function PanneauAlertes({ fermer, aller }: { fermer: () => void; aller: (href: s
             onClick={async () => {
               await lire([a.id]);
               fermer();
-              aller(`/mutation/${a.demandeId}`);
+              aller(a.lien ?? `/mutation/${a.demandeId}`);
             }}
             className={cx("w-full rounded-2xl px-3 py-2 text-left text-[13px] transition hover:bg-zinc-50", !a.lue && "bg-or-100/50")}
           >

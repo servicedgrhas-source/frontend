@@ -37,8 +37,10 @@ const quand = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("f
  * Circuit d'approbation d'une demande : chaque étape vise et donne un avis motivé ; favorable
  * ou non, le dossier monte toujours jusqu'au décideur final, qui accorde, rejette ou met en instance.
  */
-export function CircuitDemande({ id, apres }: { id: string; apres: () => void }) {
-  const c = useApi<EtatCircuit>(`/mutations/${id}/circuit`);
+export function CircuitDemande({ id, apres, base }: { id: string; apres: () => void; base?: string }) {
+  // Adresse du circuit : celle d'une mutation, ou d'une demande de prestation (module à part)
+  const url = base ?? `/mutations/${id}/circuit`;
+  const c = useApi<EtatCircuit>(url);
   const [message, setMessage] = useState<{ ton: "vert" | "rouge"; texte: string } | null>(null);
   const d = c.donnees;
   const recharger = (texte: string) => {
@@ -94,7 +96,7 @@ export function CircuitDemande({ id, apres }: { id: string; apres: () => void })
           <Etape key={k} e={e} k={k} d={d} />
         ))}
 
-        {enCours && d.peutAgir && <Agir id={id} derniere={derniere} sigle={d.circuit[i!].sigle} apres={recharger} erreur={(t) => setMessage({ ton: "rouge", texte: t })} />}
+        {enCours && d.peutAgir && <Agir url={url} derniere={derniere} sigle={d.circuit[i!].sigle} apres={recharger} erreur={(t) => setMessage({ ton: "rouge", texte: t })} />}
         {enCours && !d.peutAgir && d.peutRecopier && (
           <details className="rounded-2xl bg-zinc-50 px-4 py-3">
             <summary className="cursor-pointer text-[13px] font-medium text-zinc-700">
@@ -103,12 +105,12 @@ export function CircuitDemande({ id, apres }: { id: string; apres: () => void })
             <p className="mt-2 text-[12px] text-zinc-500">
               Pour un dossier papier, ou une structure qui n’a pas encore de compte : recopiez l’avis et la motivation écrits et visés sur le formulaire.
             </p>
-            <Agir id={id} derniere={derniere} sigle={d.circuit[i!].sigle} papier apres={recharger} erreur={(t) => setMessage({ ton: "rouge", texte: t })} />
+            <Agir url={url} derniere={derniere} sigle={d.circuit[i!].sigle} papier apres={recharger} erreur={(t) => setMessage({ ton: "rouge", texte: t })} />
           </details>
         )}
-        {enCours && d.peutInstruire && <Instruire id={id} sigle={d.circuit[i!].sigle} apres={recharger} erreur={(t) => setMessage({ ton: "rouge", texte: t })} />}
+        {enCours && d.peutInstruire && <Instruire url={url} sigle={d.circuit[i!].sigle} apres={recharger} erreur={(t) => setMessage({ ton: "rouge", texte: t })} />}
         {enCours && d.peutSauter && (
-          <Franchir id={id} sigle={d.circuit[i!].sigle} apres={recharger} erreur={(t) => setMessage({ ton: "rouge", texte: t })} />
+          <Franchir url={url} sigle={d.circuit[i!].sigle} apres={recharger} erreur={(t) => setMessage({ ton: "rouge", texte: t })} />
         )}
       </div>
     </Carte>
@@ -194,12 +196,12 @@ function Etape({ e, k, d }: { e: EtapeCircuit; k: number; d: EtatCircuit }) {
 }
 
 /** Visa + avis motivé, ou décision à la dernière étape. */
-function Agir({ id, derniere, sigle, papier, apres, erreur }: { id: string; derniere: boolean; sigle: string; papier?: boolean; apres: (t: string) => void; erreur: (t: string) => void }) {
+function Agir({ url, derniere, sigle, papier, apres, erreur }: { url: string; derniere: boolean; sigle: string; papier?: boolean; apres: (t: string) => void; erreur: (t: string) => void }) {
   const [motivation, setMotivation] = useState("");
   const [decision, setDecision] = useState<"ACCORDEE" | "REJETEE" | "EN_INSTANCE">("ACCORDEE");
   const envoyer = async (corps: Record<string, unknown>, texte: string) => {
     try {
-      await api.post(`/mutations/${id}/circuit/agir`, { ...corps, motivation, surPapier: !!papier });
+      await api.post(`${url}/agir`, { ...corps, motivation, surPapier: !!papier });
       setMotivation("");
       apres(texte);
     } catch (e) {
@@ -249,7 +251,7 @@ function Agir({ id, derniere, sigle, papier, apres, erreur }: { id: string; dern
   );
 }
 
-function Instruire({ id, sigle, apres, erreur }: { id: string; sigle: string; apres: (t: string) => void; erreur: (t: string) => void }) {
+function Instruire({ url, sigle, apres, erreur }: { url: string; sigle: string; apres: (t: string) => void; erreur: (t: string) => void }) {
   const [texte, setTexte] = useState("");
   const [echeance, setEcheance] = useState("");
   const [aujourdhui] = useState(() => Date.now());
@@ -279,7 +281,7 @@ function Instruire({ id, sigle, apres, erreur }: { id: string; sigle: string; ap
           disabled={!texte.trim()}
           onClick={async () => {
             try {
-              await api.post(`/mutations/${id}/circuit/instruction`, { texte, echeance: echeance || null });
+              await api.post(`${url}/instruction`, { texte, echeance: echeance || null });
               setTexte("");
               setEcheance("");
               apres(`Instruction envoyée à ${sigle}.`);
@@ -295,7 +297,7 @@ function Instruire({ id, sigle, apres, erreur }: { id: string; sigle: string; ap
   );
 }
 
-function Franchir({ id, sigle, apres, erreur }: { id: string; sigle: string; apres: (t: string) => void; erreur: (t: string) => void }) {
+function Franchir({ url, sigle, apres, erreur }: { url: string; sigle: string; apres: (t: string) => void; erreur: (t: string) => void }) {
   const [motif, setMotif] = useState("");
   return (
     <details className="rounded-2xl bg-zinc-50 px-4 py-3">
@@ -306,7 +308,7 @@ function Franchir({ id, sigle, apres, erreur }: { id: string; sigle: string; apr
           disabled={!motif.trim()}
           onClick={async () => {
             try {
-              await api.post(`/mutations/${id}/circuit/franchir`, { motif });
+              await api.post(`${url}/franchir`, { motif });
               apres(`Étape ${sigle} franchie : ${motif}.`);
             } catch (e) {
               erreur((e as Error).message);

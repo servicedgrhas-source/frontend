@@ -120,6 +120,8 @@ export default function ATraiter() {
 
   const taches = useApi<{ notes: TacheNote[]; dossiers: TacheNote[]; total: number }>(profil.role === "STRUCTURE" ? null : "/notes/a-faire");
   const totalTaches = taches.donnees?.total ?? 0;
+  // Demandes de prestations (module à part) qui attendent l'avis du compte
+  const prestations = useApi<{ aTraiter: number }>("/demandes-prestation/compteur");
   // Onglet par défaut : le secrétariat travaille sur les impressions ; sinon « à traiter »,
   // ou les notes s'il n'y a aucun dossier mais des notes en attente
   const ongletCircuit: "aTraiter" | "aSuivre" = etat.onglet === "aSuivre" ? "aSuivre" : "aTraiter";
@@ -148,6 +150,18 @@ export default function ATraiter() {
         titre="Dossiers à traiter"
         sousTitre="Les demandes qui attendent votre visa et votre avis, du plus ancien au plus récent. Dans « À suivre », celles qui viendront chez vous : vous voyez où elles sont et depuis quand, et vous pouvez donner une instruction."
       />
+      {!!prestations.donnees?.aTraiter && (
+        <Link href="/prestations" className="flex items-center gap-3 rounded-2xl bg-or-100/70 px-4 py-3 text-[13px] ring-1 ring-or-400/40 hover:bg-or-100">
+          <Megaphone className="size-4 shrink-0 text-or-700" />
+          <span className="flex-1">
+            <strong>
+              {prestations.donnees.aTraiter} demande{prestations.donnees.aTraiter > 1 ? "s" : ""} de prestation
+            </strong>{" "}
+            (affectation, nomination…) {prestations.donnees.aTraiter > 1 ? "attendent" : "attend"} votre visa et votre avis.
+          </span>
+          <ArrowRight className="size-4 text-or-700" />
+        </Link>
+      )}
       <div className="flex flex-wrap items-center gap-3">
         <Segments
           valeur={onglet}

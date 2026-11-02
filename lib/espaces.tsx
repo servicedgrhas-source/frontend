@@ -417,7 +417,7 @@ export const ESPACES: Espace[] = [
     cle: "demandes",
     titre: "Demandes de prestations",
     icone: FilePlus2,
-    description: "Les demandes des agents autres que les mutations : congés, autorisations d’absence, attestations, primes… de leur dépôt à l’acte signé.",
+    description: "Les demandes des agents autres que les mutations (affectations, nominations…, d’après les circuits d’approbation de la DGRHAS) : de leur dépôt à l’acte signé.",
     circuit: "Dépôt par la structure ou sur le portail → avis → décision → acte",
     rubriques: [
       {
@@ -425,14 +425,14 @@ export const ESPACES: Espace[] = [
         libelle: "Déposer une demande de prestation",
         icone: FilePlus2,
         visible: recenser,
-        explication: "Congé, autorisation d’absence, attestation, prime, mutation… pour un de vos agents : la demande part de votre structure, l’agent la suit sur le portail et y imprime son acte.",
+        explication: "Affectation, nomination, mutation… pour un agent de la base du personnel : la demande part de sa structure, l’agent la suit sur le portail et y imprime son acte.",
       },
       {
-        href: "/mutations?motif=PRESTATION",
+        href: "/prestations",
         libelle: "Suivi des prestations",
         icone: ListChecks,
-        visible: traiter,
-        explication: "Les demandes de prestations en cours et accordées : où en est chacune, qui doit donner son avis.",
+        visible: recenser,
+        explication: "Les demandes de prestations à viser (« à traiter »), à suivre et décidées : où en est chacune, qui doit donner son avis, le formulaire et l’acte.",
       },
     ],
   },

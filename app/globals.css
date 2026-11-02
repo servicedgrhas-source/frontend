@@ -244,3 +244,11 @@ div.page-a4:last-of-type {
 fieldset {
   min-width: 0;
 }
+
+/* Page de connexion : soulignement en barres nettes (« - - - »), comme les tirets des en-têtes
+   officiels ; 2 px d'épaisseur pour rester bien visible sur le fond sombre. */
+.barres-devise {
+  height: 2px;
+  background-image: repeating-linear-gradient(to right, rgb(255 255 255 / 0.8) 0 8px, transparent 8px 13px);
+  border-radius: 1px;
+}

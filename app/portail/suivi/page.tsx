@@ -7,7 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { appelPublic } from "@/lib/portail";
 
 interface Suivi {
-  numero: number;
+  numero: number | string;
   date: string | null;
   objet: string | null;
   decision: "ACCORDEE" | "REJETEE" | "EN_INSTANCE" | null;
@@ -22,6 +22,31 @@ const DECISION = {
   REJETEE: { texte: "Votre demande est rejetée", fond: "bg-rouge-100 text-rouge-600" },
   EN_INSTANCE: { texte: "Votre demande est en instance", fond: "bg-or-100 text-or-700" },
 };
+
+/** « P-12 » : demande de prestation (module à part) ; un nombre seul : demande de mutation. */
+const estPrestation = (n: string) => /^P/i.test(n.trim());
+
+/** Réponse du suivi d'une demande de prestation, mise sous la forme de celle des mutations. */
+interface SuiviPrestation {
+  numero: string;
+  prestation: string;
+  objet: string;
+  date: string;
+  etat: "EN_COURS" | "EN_INSTANCE" | "ACCORDEE" | "REJETEE" | "RETIREE";
+  decisionMotivation: string | null;
+  motifRetrait: string | null;
+  acteDisponible: boolean;
+  etapes: { sigle: string; nom: string; etat: "FAITE" | "EN_COURS" | "A_VENIR"; le: string | null }[];
+}
+const depuisPrestation = (p: SuiviPrestation): Suivi => ({
+  numero: p.numero,
+  date: p.date.slice(0, 10),
+  objet: `${p.prestation} — ${p.objet}`,
+  decision: p.etat === "ACCORDEE" || p.etat === "REJETEE" || p.etat === "EN_INSTANCE" ? p.etat : null,
+  decisionMotivation: p.etat === "RETIREE" ? `Demande retirée : ${p.motifRetrait ?? ""}` : p.decisionMotivation,
+  acteDisponible: p.acteDisponible,
+  etapes: p.etapes.map((e) => ({ sigle: e.sigle, nom: e.nom, etat: e.etat === "FAITE" ? "FAIT" : e.etat, date: e.le })),
+});
 
 const CHAMP = "w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-[16px] outline-none focus:border-marque-300 focus:ring-4 focus:ring-marque-100";
 
@@ -46,7 +71,8 @@ function Suivi() {
 
   async function chercher(n = numero, c = code) {
     try {
-      const r = await appelPublic<Suivi>(`/suivi?numero=${encodeURIComponent(n)}&code=${encodeURIComponent(c)}`);
+      const q = `?numero=${encodeURIComponent(n)}&code=${encodeURIComponent(c)}`;
+      const r = estPrestation(n) ? depuisPrestation(await appelPublic<SuiviPrestation>(`/prestations/suivi${q}`)) : await appelPublic<Suivi>(`/suivi${q}`);
       setErreur(null);
       setSuivi(r);
     } catch (e) {
@@ -80,7 +106,7 @@ function Suivi() {
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
             <span className="mb-1.5 block text-[13px] font-medium">Numéro</span>
-            <input className={CHAMP} inputMode="numeric" value={numero} onChange={(e) => setNumero(e.target.value.replace(/\D/g, ""))} />
+            <input className={`${CHAMP} uppercase`} placeholder="Ex. 125 ou P-12" value={numero} onChange={(e) => setNumero(e.target.value.toUpperCase().replace(/[^0-9P-]/g, ""))} />
           </label>
           <label className="block">
             <span className="mb-1.5 block text-[13px] font-medium">Code</span>
@@ -109,7 +135,7 @@ function Suivi() {
             </div>
           )}
           {suivi.acteDisponible && (
-            <Link href={`/portail/acte?numero=${suivi.numero}&code=${encodeURIComponent(code)}`} className="flex items-center justify-center gap-2 rounded-2xl bg-marque-500 px-5 py-4 text-[15px] font-semibold text-white">
+            <Link href={`/portail/acte?numero=${encodeURIComponent(String(suivi.numero))}&code=${encodeURIComponent(code)}`} className="flex items-center justify-center gap-2 rounded-2xl bg-marque-500 px-5 py-4 text-[15px] font-semibold text-white">
               <FileText className="size-4" /> Voir et imprimer mon acte
             </Link>
           )}

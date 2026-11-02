@@ -4,10 +4,12 @@ import { CheckCircle2, Paperclip, X } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { ChampsPrestation, champsManquants, PiecesAJoindre, PresentationPrestation, type PieceChoisie } from "@/components/prestations";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
 import { useSession } from "@/components/session";
-import { Alerte, Bouton, Carte, Champ, Chargement, EnTete, Liste, Saisie, Zone } from "@/components/ui";
+import { Alerte, Bouton, Carte, Champ, Chargement, EnTete, Liste, Saisie, styleSaisie, Zone } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
+import { FAMILLES, type DefinitionPrestation } from "@/lib/prestations";
 
 interface Type {
   code: string;
@@ -25,7 +27,14 @@ interface AgentListe {
   lieuService: string | null;
 }
 
-/** Le chef de structure dépose la demande d'un de ses agents ; elle part de sa structure et suit la voie hiérarchique. */
+/** Valeur de la liste « Démarche » pour une prestation du module (à part des mutations). */
+const MODULE = "P:";
+
+/**
+ * Le chef de structure (ou la DGRHAS) dépose la demande d'un de ses agents ; elle part de sa structure
+ * et suit la voie hiérarchique. Mutations : leur module ; autres prestations : le module des demandes
+ * de prestations (affectations, nominations…), avec leurs renseignements et pièces propres.
+ */
 export default function NouvelleDemande() {
   return (
     <Suspense fallback={<Chargement />}>
@@ -38,6 +47,7 @@ function Formulaire() {
   const { refs } = useSession();
   const params = useSearchParams();
   const types = useApi<Type[]>("/demandes/types");
+  const catalogue = useApi<DefinitionPrestation[]>("/demandes-prestation/catalogue");
   const [agent, setAgent] = useState<{ id: number; nom: string } | null>(null);
   // Agent venu de sa fiche (?agent=) : « changer » revient à la recherche
   const [ignorerFiche, setIgnorerFiche] = useState(false);
@@ -53,7 +63,9 @@ function Formulaire() {
   const [pieces, setPieces] = useState<{ libelle: string; fichier: File }[]>([]);
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
-  const [fait, setFait] = useState<{ id: string; numero: number; code: string; etape: string } | null>(null);
+  const [fait, setFait] = useState<{ id: string; numero: number | string; code: string; etape: string; module?: boolean } | null>(null);
+  const [valeurs, setValeurs] = useState<Record<string, string>>({});
+  const [piecesModule, setPiecesModule] = useState<PieceChoisie[]>([]);
   const agents = useApi<{ lignes: AgentListe[] }>(recherche.length >= 2 ? `/recensement/agents?recherche=${encodeURIComponent(recherche)}` : null);
   const depuisFiche = useApi<{ agent: { id: number; nomComplet: string } }>(params.get("agent") && !agent ? `/recensement/agents/${params.get("agent")}` : null);
   useEffect(() => {
@@ -62,6 +74,29 @@ function Formulaire() {
   }, [q]);
   const choisi = agent ?? (!ignorerFiche && depuisFiche.donnees ? { id: depuisFiche.donnees.agent.id, nom: depuisFiche.donnees.agent.nomComplet } : null);
   const type = types.donnees?.find((t) => t.code === code);
+  const def = code.startsWith(MODULE) ? catalogue.donnees?.find((p) => `${MODULE}${p.code}` === code) : undefined;
+  const manquants = def ? champsManquants(def, valeurs) : [];
+  const demandeJointe = !!def && piecesModule.some((x) => x.libelle === def.pieces[0].libelle);
+
+  /** Prestation du module : renseignements propres et pièces, déposée dans son propre circuit. */
+  async function envoyerModule() {
+    if (!choisi || !def) return;
+    setErreur(null);
+    setEnvoi(true);
+    const fd = new FormData();
+    fd.append("donnees", JSON.stringify({ type: def.code, objet: objet || def.objet, precisions: observation || null, details: valeurs }));
+    for (const p of piecesModule) {
+      fd.append("fichiers", p.fichier);
+      fd.append("libelles", p.libelle);
+    }
+    try {
+      setFait({ ...(await api.post<{ id: string; numero: string; code: string; etape: string }>(`/demandes-prestation/agents/${choisi.id}`, fd)), module: true });
+    } catch (e) {
+      setErreur((e as Error).message);
+    } finally {
+      setEnvoi(false);
+    }
+  }
 
   async function envoyer() {
     if (!choisi || !type) return;
@@ -113,7 +148,7 @@ function Formulaire() {
             </div>
             <p className="text-zinc-600">Remettez le numéro et le code à l’agent : il suit son dossier sur le portail et, une fois la demande accordée, y imprime son acte.</p>
             <div className="flex gap-2">
-              <Link href={`/mutation/${fait.id}`} className="font-medium text-marque-700 underline">
+              <Link href={fait.module ? `/prestations/${fait.id}` : `/mutation/${fait.id}`} className="font-medium text-marque-700 underline">
                 Ouvrir la demande
               </Link>
               <button type="button" className="text-zinc-500 underline" onClick={() => window.location.reload()}>
@@ -129,7 +164,7 @@ function Formulaire() {
     <div className="space-y-5">
       <EnTete
         titre="Déposer la demande d’un agent"
-        sousTitre="Congé, autorisation d’absence, attestation, prime, mutation… La demande part de votre structure : vous la visez en premier, puis elle suit la voie hiérarchique jusqu’à la décision. L’agent la suit sur le portail avec son numéro et son code."
+        sousTitre="Affectation, nomination, mutation… pour un agent de la base du personnel. La demande part de sa structure : elle y est visée en premier, puis suit la voie hiérarchique jusqu’à la décision. L’agent la suit sur le portail avec son numéro et son code."
       />
       <Carte titre="1. L’agent">
         {choisi ? (
@@ -148,7 +183,7 @@ function Formulaire() {
           </div>
         ) : (
           <>
-            <Saisie value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nom de l’agent (base du personnel, 2 lettres au moins)…" />
+            <Saisie className="w-full" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nom de l’agent (base du personnel, 2 lettres au moins)…" />
             <ul className="mt-2 max-h-56 divide-y divide-zinc-100 overflow-y-auto rounded-xl ring-1 ring-zinc-200">
               {(agents.donnees?.lignes ?? []).map((a) => (
                 <li key={a.id}>
@@ -165,32 +200,71 @@ function Formulaire() {
       </Carte>
 
       <Carte titre="2. La demande">
-        {!types.donnees ? (
+        {!types.donnees || !catalogue.donnees ? (
           <Chargement />
-        ) : !types.donnees.length ? (
-          <Alerte ton="jaune">Aucune démarche n’est ouverte. Le DG les ouvre dans Administration › Catalogue des prestations.</Alerte>
         ) : (
           <div className="space-y-3">
-            <Champ libelle="Démarche *">
-              <Liste
+            <Champ libelle="Démarche *" aide="Choisissez la prestation demandée par l’agent : ce qu’il faut renseigner et joindre s’affiche ensuite.">
+              <select
+                className={`${styleSaisie} cursor-pointer pr-8`}
                 value={code}
-                vide="— Choisir —"
                 onChange={(e) => {
-                  setCode(e.target.value);
-                  setObjet(types.donnees!.find((t) => t.code === e.target.value)?.libelle ?? "");
+                  const v = e.target.value;
+                  setCode(v);
+                  setValeurs({});
+                  setPiecesModule([]);
+                  setObjet(v.startsWith(MODULE) ? (catalogue.donnees!.find((p) => `${MODULE}${p.code}` === v)?.objet ?? "") : (types.donnees!.find((t) => t.code === v)?.libelle ?? ""));
                 }}
-                options={types.donnees.map((t) => ({ valeur: t.code, libelle: `${t.libelle}${t.mutation ? " (mutation)" : ""}` }))}
-              />
+              >
+                <option value="">— Choisir —</option>
+                {(Object.keys(FAMILLES) as (keyof typeof FAMILLES)[]).map((f) => (
+                  <optgroup key={f} label={FAMILLES[f]}>
+                    {catalogue.donnees!
+                      .filter((p) => p.famille === f)
+                      .map((p) => (
+                        <option key={p.code} value={`${MODULE}${p.code}`}>
+                          {p.libelle}
+                        </option>
+                      ))}
+                  </optgroup>
+                ))}
+                {types.donnees.some((t) => t.mutation) && (
+                  <optgroup label="Mutations">
+                    {types.donnees
+                      .filter((t) => t.mutation)
+                      .map((t) => (
+                        <option key={t.code} value={t.code}>
+                          {t.libelle}
+                        </option>
+                      ))}
+                  </optgroup>
+                )}
+                {types.donnees.some((t) => !t.mutation) && (
+                  <optgroup label="Autres démarches">
+                    {types.donnees
+                      .filter((t) => !t.mutation)
+                      .map((t) => (
+                        <option key={t.code} value={t.code}>
+                          {t.libelle}
+                        </option>
+                      ))}
+                  </optgroup>
+                )}
+              </select>
             </Champ>
+            {def && <PresentationPrestation def={def} />}
             {type && (
               <p className="text-[12px] text-zinc-500">
                 Décision : {type.decision}
                 {type.acte ? ` · acte délivré : ${type.acte.toLowerCase()}` : ""}
               </p>
             )}
-            <Champ libelle="Objet *">
-              <Saisie value={objet} onChange={(e) => setObjet(e.target.value)} />
-            </Champ>
+            {(type || def) && (
+              <Champ libelle="Objet *" aide={def ? "Proposé d’après la démarche ; précisez-le si besoin." : undefined}>
+                <Saisie value={objet} onChange={(e) => setObjet(e.target.value)} />
+              </Champ>
+            )}
+            {def && <ChampsPrestation def={def} valeurs={valeurs} changer={(k, v) => setValeurs((x) => ({ ...x, [k]: v }))} departements={refs.departements} />}
             {type && !type.mutation && (
               <div className="grid grid-cols-2 gap-3">
                 <Champ libelle="Du">
@@ -211,13 +285,20 @@ function Formulaire() {
                 </Champ>
               </div>
             )}
-            <Champ libelle="Précisions">
-              <Zone className="w-full" value={observation} onChange={(e) => setObservation(e.target.value)} />
-            </Champ>
+            {(type || def) && (
+              <Champ libelle="Précisions">
+                <Zone className="w-full" value={observation} onChange={(e) => setObservation(e.target.value)} />
+              </Champ>
+            )}
           </div>
         )}
       </Carte>
 
+      {def && (
+        <Carte titre="3. Les pièces (scans ou photos)">
+          <PiecesAJoindre def={def} pieces={piecesModule} changer={setPiecesModule} erreur={setErreur} />
+        </Carte>
+      )}
       {type && (
         <Carte titre="3. Les pièces (scans ou photos)">
           <div className="space-y-2">
@@ -265,9 +346,22 @@ function Formulaire() {
       )}
       {erreur && <Alerte>{erreur}</Alerte>}
       <div className="flex justify-end">
-        <Bouton variante="principal" disabled={!choisi || !type || envoi || !pieces.length} onClick={envoyer}>
-          Déposer la demande
-        </Bouton>
+        {def ? (
+          <div className="flex flex-col items-end gap-1">
+            <Bouton variante="principal" disabled={!choisi || envoi || !demandeJointe || manquants.length > 0} onClick={envoyerModule}>
+              {envoi ? "Envoi…" : "Déposer la demande"}
+            </Bouton>
+            {(!choisi || !demandeJointe || manquants.length > 0) && (
+              <span className="text-[11px] text-zinc-500">
+                Il manque : {[!choisi && "l’agent", ...manquants.map((m) => m.toLowerCase()), !demandeJointe && `« ${def.pieces[0].libelle.toLowerCase()} » (pièce indispensable)`].filter(Boolean).join(", ")}
+              </span>
+            )}
+          </div>
+        ) : (
+          <Bouton variante="principal" disabled={!choisi || !type || envoi || !pieces.length} onClick={envoyer}>
+            Déposer la demande
+          </Bouton>
+        )}
       </div>
     </div>
   );

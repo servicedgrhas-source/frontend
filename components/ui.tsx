@@ -280,7 +280,7 @@ export function ChoixMois({
   );
 }
 
-const styleSaisie =
+export const styleSaisie =
   "rounded-xl border border-transparent bg-zinc-100/80 px-3 py-2 text-[13px] text-encre outline-none transition placeholder:text-zinc-400 hover:bg-zinc-100 focus:border-marque-300 focus:bg-white focus:ring-4 focus:ring-marque-100 disabled:opacity-60";
 
 export function Saisie(props: React.ComponentProps<"input">) {

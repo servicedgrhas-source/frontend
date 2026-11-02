@@ -55,30 +55,16 @@ export default function Connexion() {
                   Unité
                   <span className="relative">
                     {" · Travail · "}
-                    <span
-  className="absolute inset-x-0 -bottom-1 h-px opacity-50"
-  style={{
-    backgroundImage:
-      "repeating-linear-gradient(to right, white 0, white 12px, transparent 12px, transparent 18px)",
-  }}
-  aria-hidden
-/>
+                    <span className="barres-devise absolute inset-x-0 -bottom-1.5" aria-hidden />
                   </span>
                   Progrès
                 </div>
               </div>
               <div className="h-11 w-0.5 shrink-0 rounded-full bg-white/70" aria-hidden />
-             <div className="text-center text-[10px] leading-snug font-medium uppercase text-white/70">
-  Ministère de l’Enseignement Préscolaire, Primaire, Secondaire et de l’Alphabétisation
-  <div
-    className="mx-auto mt-1.5 h-px w-24 opacity-50"
-    style={{
-      backgroundImage:
-        "repeating-linear-gradient(to right, white 0, white 12px, transparent 12px, transparent 18px)",
-    }}
-    aria-hidden
-  />
-</div>
+              <div className="text-center text-[10px] leading-snug font-medium uppercase text-white/70">
+                Ministère de l’Enseignement Préscolaire, Primaire, Secondaire et de l’Alphabétisation
+                <div className="barres-devise mx-auto mt-1.5 w-24" aria-hidden />
+              </div>
             </div>
           </div>
           <div className="text-center">
