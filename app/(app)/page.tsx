@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeftRight, ArrowRight, CheckCircle2, ClipboardCheck, FileText, HandHeart, Layers, ShieldCheck, Stamp, TriangleAlert, UserRound, Users } from "lucide-react";
+import { ArrowLeftRight, ArrowRight, CheckCircle2, ClipboardCheck, FileText, HandHeart, Layers, ShieldCheck, TriangleAlert, UserRound, Users, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { RechercheGlobale } from "@/components/recherche-globale";
@@ -69,14 +69,12 @@ function TableauDeBordDgrhas() {
   const aujourdhui = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const totalTextes = t.lots.reduce((s, l) => s + l.agents, 0);
   const moisCourant = new Date().toLocaleDateString("fr-FR", { month: "long" });
-  const bourse = t.paiementsDuMois.find((x) => x.population === "VOLONTAIRE");
-  const paiement = !t.registre.volontaires
-    ? "registre vide"
-    : !bourse
-      ? `bourse de ${moisCourant} à préparer`
-      : bourse.statut === "VALIDE"
-        ? `bourse de ${moisCourant} validée`
-        : `bourse de ${moisCourant} en projet`;
+  /** Où en est le paiement du mois de chaque liste (volontaires, communautaires). */
+  const paiement = (population: "VOLONTAIRE" | "COMMUNAUTAIRE", n: number) => {
+    const etat = t.paiementsDuMois.find((x) => x.population === population);
+    const quoi = population === "VOLONTAIRE" ? "bourse" : "paiement";
+    return !n ? "registre vide" : !etat ? `${quoi} de ${moisCourant} à préparer` : etat.statut === "VALIDE" ? `${quoi} de ${moisCourant} validé${quoi === "bourse" ? "e" : ""}` : `${quoi} de ${moisCourant} en projet`;
+  };
   const totalAffectes = t.lots.reduce((s, l) => s + l.affectes, 0);
 
   return (
@@ -128,16 +126,16 @@ function TableauDeBordDgrhas() {
           />
           {/* Le registre (qui sert à payer la bourse) fait foi ; tant qu'il est vide, les volontaires et
               communautaires de la base du personnel sont montrés, pour ne pas afficher 0 à tort */}
-          {t.registre.volontaires || t.registre.communautaires || !(t.personnel.parStatut.VOLONTAIRE || t.personnel.parStatut.COMMUNAUTAIRE) ? (
-            <Chiffre href="/enrolement/volontaires" icone={<HandHeart />} ton="vert" libelle="Volontaires en poste" valeur={nf.format(t.registre.volontaires)} detail={`${nf.format(t.registre.communautaires)} communautaires · ${paiement}`} />
+          {t.registre.volontaires || !t.personnel.parStatut.VOLONTAIRE ? (
+            <Chiffre href="/enrolement/volontaires" icone={<HandHeart />} ton="vert" libelle="Volontaires en poste" valeur={nf.format(t.registre.volontaires)} detail={`Bourse payée chaque mois · ${paiement("VOLONTAIRE", t.registre.volontaires)}`} />
           ) : (
             <Chiffre
               href="/personnel/agents?statut=VOLONTAIRE"
               icone={<HandHeart />}
               ton="vert"
               libelle="Volontaires dans la base du personnel"
-              valeur={nf.format(t.personnel.parStatut.VOLONTAIRE ?? 0)}
-              detail={`${nf.format(t.personnel.parStatut.COMMUNAUTAIRE ?? 0)} communautaires · registre de la bourse encore vide`}
+              valeur={nf.format(t.personnel.parStatut.VOLONTAIRE)}
+              detail="Registre de la bourse encore vide"
             />
           )}
           <Chiffre
@@ -155,14 +153,19 @@ function TableauDeBordDgrhas() {
               .filter(Boolean)
               .join(" · ")}
           />
-          <Chiffre
-            href="/recommandations"
-            icone={<Stamp />}
-            ton={t.recommandations.enAttente ? "rouge" : "gris"}
-            libelle="Recommandations en attente"
-            valeur={t.recommandations.enAttente}
-            detail={t.recommandations.enAttente ? `${t.recommandations.avisDirecteur} chez le directeur · ${t.recommandations.decisionDg} chez le DG` : "Affectations, mutations, enrôlements"}
-          />
+          {/* Les communautaires actuels, à la place des recommandations (demandé le 04/11/2026) */}
+          {t.registre.communautaires || !t.personnel.parStatut.COMMUNAUTAIRE ? (
+            <Chiffre href="/enrolement/volontaires" icone={<UsersRound />} ton="vert" libelle="Communautaires en poste" valeur={nf.format(t.registre.communautaires)} detail={`Payés chaque mois · ${paiement("COMMUNAUTAIRE", t.registre.communautaires)}`} />
+          ) : (
+            <Chiffre
+              href="/personnel/agents?statut=COMMUNAUTAIRE"
+              icone={<UsersRound />}
+              ton="vert"
+              libelle="Communautaires dans la base du personnel"
+              valeur={nf.format(t.personnel.parStatut.COMMUNAUTAIRE)}
+              detail="Registre des communautaires encore vide"
+            />
+          )}
         </div>
 
         <Carte

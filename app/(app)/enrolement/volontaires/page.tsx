@@ -43,6 +43,9 @@ interface Rapport {
   sansDepartement: Liste30;
   montantsDifferents: Liste30;
   enPosteRetrouves: Liste30;
+  /** Absents des rapports d'avant le 04/11/2026. */
+  aVerifier?: Liste30;
+  sortis?: number;
   autreNote: Liste30;
   relies: Liste30;
   agesHorsLimites: Liste30;
@@ -148,6 +151,12 @@ function Reprise({ apres, ouvertParDefaut, population }: { apres: () => void; ou
       <Alerte ton={r.essai ? "bleu" : "vert"}>
         {r.essai ? "Essai : rien n’est enregistré. " : "Import terminé. "}
         <strong>{nf.format(r.lues)}</strong> personnes lues, <strong>{nf.format(r.ajoutes)}</strong> {r.essai ? "seraient ajoutées" : "ajoutées"} au registre
+        {r.type === "SORTI" && (
+          <>
+            {" "}
+            · <strong>{nf.format(r.sortis ?? 0)}</strong> fiche(s) en poste {r.essai ? "seraient sorties" : "sorties"}
+          </>
+        )}
         {r.type === "EN_POSTE" && (
           <>
             {" "}
@@ -157,7 +166,10 @@ function Reprise({ apres, ouvertParDefaut, population }: { apres: () => void; ou
         .
       </Alerte>
       {bloc("en double dans le fichier (même personne probable) : les deux lignes sont enregistrées, et bloquées à la bourse (« Inscrit deux fois ») tant qu’on n’a pas tranché. Pour corriger : Paiement mensuel › contrôle « Inscrit deux fois » › cliquer sur le nom", r.doublonsDansFichier, "rouge")}
-      {bloc("encore en poste dans le registre : la bourse les signalera (« Déjà recruté »)", r.enPosteRetrouves, "rouge")}
+      {r.type === "SORTI" && r.sortis !== undefined
+        ? bloc("retrouvés en poste dans le registre : leur fiche sort, avec ce motif (pas de nouvelle fiche)", r.enPosteRetrouves, "bleu")
+        : bloc("encore en poste dans le registre : la bourse les signalera (« Déjà recruté »)", r.enPosteRetrouves, "rouge")}
+      {bloc("ressemblent à une fiche en poste sans certitude (plusieurs fiches, ou nom différent sans date de naissance) : rien n’est fermé, à sortir à la main depuis la fiche", r.aVerifier, "rouge")}
       {bloc("catégorie non reconnue (bourse à 0 tant que la fiche n’est pas corrigée)", r.sansCategorie)}
       {bloc("département non reconnu", r.sansDepartement)}
       {bloc("montant du fichier différent du barème", r.montantsDifferents)}
@@ -169,8 +181,8 @@ function Reprise({ apres, ouvertParDefaut, population }: { apres: () => void; ou
     </div>
   );
 
-  const bloc = (titre: string, l: Liste30, ton: "jaune" | "rouge" | "bleu" | "gris" = "jaune") =>
-    l.n > 0 && (
+  const bloc = (titre: string, l: Liste30 | undefined, ton: "jaune" | "rouge" | "bleu" | "gris" = "jaune") =>
+    !!l && l.n > 0 && (
       <details className="rounded-2xl bg-zinc-50 px-4 py-2.5 text-[12px]">
         <summary className="cursor-pointer">
           <Badge ton={ton}>{nf.format(l.n)}</Badge> {titre}

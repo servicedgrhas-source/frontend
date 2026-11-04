@@ -46,9 +46,8 @@ function Formulaire() {
   const [departements, setDepartements] = useState<{ id: number; nom: string }[]>([]);
   const [erreur, setErreur] = useState<string | null>(null);
   // Étape 1
-  const [sansMatricule, setSansMatricule] = useState(false);
-  const [matricule, setMatricule] = useState("");
-  const [nom, setNom] = useState("");
+  // Un seul champ : le matricule solde ou les nom et prénoms (le système reconnaît lequel)
+  const [identifiant, setIdentifiant] = useState("");
   const [naissance, setNaissance] = useState("");
   const [reconnu, setReconnu] = useState<Reconnu | null>(null);
   const [cherche, setCherche] = useState(false);
@@ -82,7 +81,7 @@ function Formulaire() {
         await appelPublic<Reconnu>("/prestations/identifier", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(sansMatricule ? { nomComplet: nom, dateNaissance: naissance } : { matricule, dateNaissance: naissance }),
+          body: JSON.stringify({ identifiant, dateNaissance: naissance }),
         }),
       );
     } catch (e) {
@@ -180,25 +179,22 @@ function Formulaire() {
             }}
           >
             <p className="text-[13px] text-zinc-500">Le système retrouve votre fiche dans la base du personnel : votre identité, votre grade et votre poste sont repris de là.</p>
-            {sansMatricule ? (
-              <label className="block">
-                <span className="mb-1.5 block text-[14px] font-medium">Nom et prénoms (comme sur vos papiers)</span>
-                <input className={CHAMP} value={nom} onChange={(e) => setNom(e.target.value)} autoComplete="name" />
-              </label>
-            ) : (
-              <label className="block">
-                <span className="mb-1.5 block text-[14px] font-medium">Matricule solde</span>
-                <input className={`${CHAMP} uppercase`} value={matricule} onChange={(e) => setMatricule(e.target.value)} autoCapitalize="characters" />
-              </label>
-            )}
-            <button type="button" className="text-[13px] text-marque-700 underline" onClick={() => setSansMatricule(!sansMatricule)}>
-              {sansMatricule ? "J’ai un matricule solde" : "Je n’ai pas de matricule solde"}
-            </button>
+            <label className="block">
+              <span className="mb-1.5 block text-[14px] font-medium">Votre matricule solde, ou vos nom et prénoms</span>
+              <input
+                className={`${CHAMP} uppercase`}
+                value={identifiant}
+                onChange={(e) => setIdentifiant(e.target.value)}
+                autoCapitalize="characters"
+                placeholder="Ex. 123456X, ou NOM Prénom"
+              />
+              <span className="mt-1 block text-[12px] text-zinc-500">Le nom peut s’écrire dans n’importe quel ordre, avec ou sans accents.</span>
+            </label>
             <label className="block">
               <span className="mb-1.5 block text-[14px] font-medium">Date de naissance</span>
               <input className={CHAMP} type="date" value={naissance} onChange={(e) => setNaissance(e.target.value)} />
             </label>
-            <button disabled={cherche || !naissance || (sansMatricule ? nom.trim().length < 5 : matricule.trim().length < 3)} className={BOUTON}>
+            <button disabled={cherche || !naissance || identifiant.trim().length < 3} className={BOUTON}>
               {cherche ? "Recherche…" : "Retrouver ma fiche"}
             </button>
           </form>
