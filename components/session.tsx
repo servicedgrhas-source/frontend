@@ -313,14 +313,7 @@ export function Coquille({ children }: { children: ReactNode }) {
                 </Alerte>
               </div>
             )}
-            {p.role === "VISITEUR" && (
-              <div className="no-print mb-5">
-                <Alerte ton="bleu">
-                  <strong>Compte visiteur</strong> : consultation seule. Vous ne pouvez rien enregistrer, ni imprimer, ni télécharger.
-                  {p.finAcces && <> Votre accès prend fin le <strong>{p.finAcces.split("-").reverse().join("/")}</strong>.</>}
-                </Alerte>
-              </div>
-            )}
+            {/* Pas de bandeau pour un visiteur (DG, 04/11/2026) : la lecture seule s'applique sans le dire */}
             {p.role !== "VISITEUR" && niveauPage(chemin, p) === "LECTURE" && (
               <div className="no-print mb-5">
                 <Alerte ton="bleu">
