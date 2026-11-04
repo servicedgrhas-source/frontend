@@ -93,7 +93,7 @@ function texteBilan(b: Bilan) {
 
 export default function ReglesEtGrades() {
   const { profil } = useSession();
-  const { donnees: e, erreur, recharger } = useApi<Etat>(peut.parametrer(profil.role) ? "/configuration" : null);
+  const { donnees: e, erreur, recharger } = useApi<Etat>(peut.parametrer(profil.role) || accesDonne(profil) ? "/configuration" : null);
   const [message, setMessage] = useState<{ ton: "vert" | "rouge"; texte: string } | null>(null);
   const [assistant, setAssistant] = useState<{ regle: Regle | null; prerempli?: string } | null>(null);
   const [gradeEdite, setGradeEdite] = useState<Grade | "nouveau" | null>(null);

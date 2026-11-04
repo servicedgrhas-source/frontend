@@ -5,6 +5,7 @@ import { FicheDossier } from "@/components/fiche-dossier";
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, Carte, Chargement, Modale, Saisie, Tableau, Vide, ZoneFichier } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { dateCourte, peut } from "@/lib/libelles";
 
 interface Resume {
@@ -47,8 +48,8 @@ const nf = new Intl.NumberFormat("fr-FR");
 export function NotesSignees() {
   const { profil } = useSession();
   const responsable = profil.role === "CHEF_SERVICE" || peut.valider(profil.role);
-  const resume = useApi<Resume>(peut.traiter(profil.role) ? "/controle-affectations" : null);
-  const doubles = useApi<Double[]>(peut.traiter(profil.role) ? "/controle-affectations/doubles" : null);
+  const resume = useApi<Resume>(peut.traiter(profil.role) || accesDonne(profil) ? "/controle-affectations" : null);
+  const doubles = useApi<Double[]>(peut.traiter(profil.role) || accesDonne(profil) ? "/controle-affectations/doubles" : null);
   const [fichier, setFichier] = useState<File | null>(null);
   const [analyse, setAnalyse] = useState<Rapport | null>(null);
   const [envoi, setEnvoi] = useState(false);
@@ -56,7 +57,7 @@ export function NotesSignees() {
   const [ouvert, setOuvert] = useState<string | null>(null);
   const [recherche, setRecherche] = useState("");
 
-  if (!peut.traiter(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
 
   async function analyser(f: File) {
     const fd = new FormData();

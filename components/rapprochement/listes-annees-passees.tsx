@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useSession } from "@/components/session";
 import { Aide, Alerte, Annonce, Bouton, BoutonIcone, Carte, Champ, Chargement, Modale, Saisie, Tableau, Vide, ZoneFichier } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { dateCourte, peut } from "@/lib/libelles";
 
 interface Source {
@@ -27,7 +28,7 @@ export function ListesAnneesPassees() {
   const [suppression, setSuppression] = useState<Source | null>(null);
   const responsable = profil.role === "CHEF_SERVICE" || peut.valider(profil.role);
 
-  if (!peut.traiter(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
+  if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
 
   async function importer(f: File) {
     const fd = new FormData();
