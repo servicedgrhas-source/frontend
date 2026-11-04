@@ -71,12 +71,7 @@ export default function FicheDemandePrestation() {
       </div>
 
       {d.etat === "RETIREE" && <Alerte ton="jaune">Demande retirée : {d.motifRetrait}</Alerte>}
-      {d.etat === "ACCORDEE" && !d.retour && (
-        <Alerte ton="vert">
-          Demande accordée. L’acte (<strong>{def?.acte.toLowerCase()}</strong>) est prêt : imprimez-le, faites-le signer ({def?.signataire.replace(/^Le /, "le ")}), puis remettez-le à
-          l’agent. L’agent peut aussi le voir sur le portail avec son numéro et son code.
-        </Alerte>
-      )}
+      {d.etat === "ACCORDEE" && !d.retour && <ActeSigne d={d} recharger={f.recharger} />}
       {d.retour && <RetourDestinataire d={d} recharger={f.recharger} gerer={peut.traiter(profil.role)} />}
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -345,6 +340,58 @@ function RetourDestinataire({ d, recharger, gerer }: { d: FichePrestation; recha
           </div>
         </div>
       </Modale>
+    </Carte>
+  );
+}
+
+/**
+ * L'acte d'une demande accordée (DG, 03/11/2026) : on l'imprime, on le fait signer, on le scanne
+ * et on le dépose ici. L'agent ne voit et n'imprime sur le portail que cet acte signé.
+ */
+function ActeSigne({ d, recharger }: { d: FichePrestation; recharger: () => void }) {
+  const def = d.definition;
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const deposer = async (f: File | undefined) => {
+    if (!f) return;
+    setErreur(null);
+    setEnvoi(true);
+    const fd = new FormData();
+    fd.append("fichiers", f);
+    try {
+      await api.post(`/demandes-prestation/${d.id}/acte-signe`, fd);
+      recharger();
+    } catch (e) {
+      setErreur((e as Error).message);
+    } finally {
+      setEnvoi(false);
+    }
+  };
+  const s = d.acteSigne;
+  return (
+    <Carte titre="L’acte signé">
+      <div className="space-y-3 text-[13px]">
+        {erreur && <Alerte>{erreur}</Alerte>}
+        {s ? (
+          <Alerte ton="vert">
+            Acte signé déposé par {s.ajoutePar ?? "—"} le {jour(s.creeLe)}. L’agent peut le voir et l’imprimer sur le portail avec son numéro et son code.{" "}
+            <button type="button" className="font-semibold underline" onClick={() => api.ouvrirFichier(`/demandes-prestation/${d.id}/pieces/${s.id}`).catch((e: Error) => setErreur(e.message))}>
+              Ouvrir le scan
+            </button>
+          </Alerte>
+        ) : (
+          <Alerte ton="jaune">
+            Demande accordée. Imprimez l’acte (<strong>{def?.acte.toLowerCase()}</strong>), faites-le signer ({def?.signataire.replace(/^Le /, "le ")}), scannez-le et déposez-le ici.
+            Tant qu’il n’est pas déposé, le portail dit à l’agent que son acte est à la signature.
+          </Alerte>
+        )}
+        {d.peutDeposerActeSigne && (
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-zinc-200 bg-white px-4 py-2 text-[13px] font-medium hover:border-marque-300">
+            <FileUp className="size-4" /> {envoi ? "Envoi…" : s ? "Remplacer le scan de l’acte signé" : "Déposer le scan de l’acte signé (PDF ou photo)"}
+            <input type="file" accept="application/pdf,image/*" className="hidden" disabled={envoi} onChange={(e) => deposer(e.target.files?.[0])} />
+          </label>
+        )}
+      </div>
     </Carte>
   );
 }

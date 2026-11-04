@@ -60,6 +60,20 @@ const VIDE: Formulaire = {
 
 const ETAPES = ["Demande", "Vous", "Votre poste", "Pièces", "Envoi"];
 
+/** Ce que la fiche du personnel dit de l'agent reconnu (portail/prestations/identifier). */
+interface FicheReconnue {
+  nomComplet: string;
+  genre: "M" | "F";
+  grade: string | null;
+  echelon: string | null;
+  statut: string;
+  lieuService: string | null;
+  departement: string | null;
+  departementId: number | null;
+  structureId: number | null;
+  datePriseService: string | null;
+}
+
 /** Message de ce qui manque → étape et champ du formulaire où on le remplit. */
 const CHAMPS: [RegExp, number, string][] = [
   [/votre demande\./i, 0, "type"],
@@ -95,6 +109,44 @@ export default function DemandeMutationPortail() {
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [fini, setFini] = useState<{ numero: number; code: string; etape: string } | null>(null);
+  // Reconnaissance par la fiche du personnel, comme les autres démarches (DG, 03/11/2026)
+  const [identifiant, setIdentifiant] = useState("");
+  const [naissance, setNaissance] = useState("");
+  const [reconnu, setReconnu] = useState<FicheReconnue | null>(null);
+  const [recherche, setRecherche] = useState(false);
+  const [erreurIdent, setErreurIdent] = useState<string | null>(null);
+  async function reconnaitre() {
+    setRecherche(true);
+    setErreurIdent(null);
+    try {
+      const r = await appelPublic<{ agent: FicheReconnue }>("/prestations/identifier", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifiant, dateNaissance: naissance }),
+      });
+      const a = r.agent;
+      setReconnu(a);
+      // La fiche remplit la demande : nom, genre, grade, échelon, statut, poste actuel
+      setF((x) => ({
+        ...x,
+        nomComplet: a.nomComplet,
+        genre: a.genre,
+        grade: a.grade ?? "",
+        echelon: (a.echelon ?? "").replace(/\D/g, ""),
+        matricule: /\d/.test(identifiant) ? identifiant.trim() : x.matricule,
+        typeAgent: a.statut === "FONCTIONNAIRE" || a.statut === "CONTRACTUEL" ? "FONCTIONNAIRE" : "FINALISTE",
+        departementOrigineId: a.departementId ? String(a.departementId) : x.departementOrigineId,
+        structureOrigineId: a.structureId ? String(a.structureId) : x.structureOrigineId,
+        lieuService: a.lieuService ?? x.lieuService,
+        datePriseService: a.datePriseService ?? x.datePriseService,
+      }));
+    } catch (e) {
+      setReconnu(null);
+      setErreurIdent((e as Error).message);
+    } finally {
+      setRecherche(false);
+    }
+  }
 
   useEffect(() => {
     appelPublic<ReferencesPortail>("/references")
@@ -118,7 +170,7 @@ export default function DemandeMutationPortail() {
   /** Ce qui manque pour passer à l'étape suivante. */
   const bloquant = (() => {
     if (etape === 0) return !f.typePrestation ? "Choisissez votre demande." : null;
-    if (etape === 1) return f.nomComplet.trim().length < 3 ? "Écrivez votre nom et vos prénoms." : !f.telephone.trim() ? "Laissez un numéro de téléphone pour être joint." : null;
+    if (etape === 1) return !reconnu ? "Faites-vous reconnaître : votre matricule solde (ou vos nom et prénoms) et votre date de naissance." : !f.telephone.trim() ? "Laissez un numéro de téléphone pour être joint." : null;
     if (etape === 2) {
       if (f.lieuTravail === "DEPARTEMENT" && !f.departementOrigineId) return "Choisissez votre département actuel.";
       if (f.lieuTravail === "CENTRALE" && !f.structureOrigineId) return "Choisissez votre service.";
@@ -257,32 +309,50 @@ export default function DemandeMutationPortail() {
         {etape === 1 && (
           <>
             <h2 className="text-[16px] font-semibold">Vous</h2>
-            <Bloc champ="nom" libelle="Nom et prénoms *">
-              <input className={GRANDS} value={f.nomComplet} onChange={(e) => maj("nomComplet", e.target.value)} autoComplete="name" placeholder="Ex. MOUANDA Jean Paul" />
-            </Bloc>
-            <Bloc libelle="Vous êtes">
-              <Choix valeur={f.genre} changer={(v) => maj("genre", v)} options={[["M", "Un homme"], ["F", "Une femme"]]} />
-            </Bloc>
-            <div className="grid grid-cols-2 gap-3">
-              <Bloc libelle="Grade">
-                <input className={GRANDS} value={f.grade} onChange={(e) => maj("grade", e.target.value)} placeholder="Ex. PCEG" />
-              </Bloc>
-              <Bloc libelle="Échelon">
-                <input className={GRANDS} inputMode="numeric" value={f.echelon} onChange={(e) => maj("echelon", e.target.value.replace(/\D/g, "").slice(0, 2))} />
-              </Bloc>
-            </div>
-            <Bloc libelle="Matricule solde" aide="Sur votre bulletin de solde ; vide si vous n’en avez pas encore">
-              <input className={GRANDS} value={f.matricule} onChange={(e) => maj("matricule", e.target.value)} />
-            </Bloc>
-            <Bloc libelle="Vous êtes">
-              <Choix valeur={f.typeAgent} changer={(v) => maj("typeAgent", v)} options={[["FONCTIONNAIRE", "Fonctionnaire"], ["FINALISTE", "Finaliste"]]} />
-            </Bloc>
-            <Bloc libelle="Fonction">
-              <Choix valeur={f.statutAgent} changer={(v) => maj("statutAgent", v)} options={[["ENSEIGNANT", "Enseignant"], ["PERSONNEL_ADMINISTRATIF", "Personnel administratif"]]} />
-            </Bloc>
-            <Bloc champ="telephone" libelle="Téléphone *" aide="Pour vous joindre si une pièce manque">
-              <input className={GRANDS} type="tel" inputMode="tel" autoComplete="tel" value={f.telephone} onChange={(e) => maj("telephone", e.target.value)} placeholder="Ex. 06 000 00 00" />
-            </Bloc>
+            {!reconnu ? (
+              <>
+                <p className="text-[13px] text-zinc-600">Le système retrouve votre fiche du personnel : vous n’avez rien d’autre à écrire sur vous.</p>
+                <Bloc champ="nom" libelle="Votre matricule solde, ou vos nom et prénoms *" aide="Comme sur votre bulletin de solde ou vos papiers, dans n’importe quel ordre">
+                  <input className={GRANDS} value={identifiant} onChange={(e) => setIdentifiant(e.target.value)} autoComplete="name" placeholder="Ex. 123456 X, ou MOUANDA Jean Paul" />
+                </Bloc>
+                <Bloc libelle="Votre date de naissance *">
+                  <input className={GRANDS} type="date" value={naissance} onChange={(e) => setNaissance(e.target.value)} />
+                </Bloc>
+                {erreurIdent && <Message ton="rouge">{erreurIdent}</Message>}
+                <button
+                  type="button"
+                  disabled={recherche || identifiant.trim().length < 3 || !naissance}
+                  onClick={reconnaitre}
+                  className="w-full rounded-2xl bg-nuit px-5 py-3.5 text-[15px] font-semibold text-white disabled:opacity-40"
+                >
+                  {recherche ? "Recherche…" : "Retrouver ma fiche"}
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="rounded-2xl bg-marque-50 p-4 text-[14px]">
+                  <div className="text-[12px] text-marque-700">Votre fiche du personnel</div>
+                  <div className="mt-1 text-[16px] font-semibold">{reconnu.nomComplet}</div>
+                  <div className="text-zinc-600">
+                    {[reconnu.grade, reconnu.echelon && `${reconnu.echelon}${reconnu.echelon === "1" ? "er" : "e"} échelon`].filter(Boolean).join(", ")}
+                  </div>
+                  <div className="text-zinc-600">{[reconnu.lieuService, reconnu.departement].filter(Boolean).join(" · ")}</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReconnu(null);
+                      setF((x) => ({ ...VIDE, typePrestation: x.typePrestation, telephone: x.telephone }));
+                    }}
+                    className="mt-2 text-[13px] text-marque-700 underline"
+                  >
+                    Ce n’est pas moi : recommencer
+                  </button>
+                </div>
+                <Bloc champ="telephone" libelle="Téléphone *" aide="Pour vous joindre si une pièce manque">
+                  <input className={GRANDS} type="tel" inputMode="tel" autoComplete="tel" value={f.telephone} onChange={(e) => maj("telephone", e.target.value)} placeholder="Ex. 06 000 00 00" />
+                </Bloc>
+              </>
+            )}
           </>
         )}
 

@@ -34,7 +34,7 @@ function Impression() {
       <StyleImpressionA4 />
       <div className="no-print mx-auto mb-4 flex w-[210mm] items-center justify-between gap-3">
         <span className="text-sm text-zinc-700">
-          {acte ? `${a.donnees!.titre} — demande ${a.donnees!.reference} (modèle proposé, en attendant le modèle officiel)` : `Formulaire de la demande ${f.donnees!.numero}`}
+          {acte ? `${a.donnees!.titre} — demande ${a.donnees!.reference}${a.donnees!.officiel || a.donnees!.transmission ? " (modèle officiel de la DGRHAS)" : " (modèle proposé, en attendant le modèle officiel)"}` : `Formulaire de la demande ${f.donnees!.numero}`}
         </span>
         <Bouton variante="principal" onClick={() => window.print()}>
           Imprimer / Enregistrer en PDF
@@ -120,8 +120,14 @@ function Formulaire({ d }: { d: FichePrestation }) {
             ["GRADE / CATÉGORIE / ÉCHELLE / ÉCHELON", [a.grade, a.categorie, a.echelle, a.echelon].map((x) => x ?? "—").join(" / ")],
             ["LIEU DE SERVICE", `${a.lieuService ?? ""}${a.ville ? `   —   Ville/district ou arrond. : ${a.ville}` : ""}`],
             ["OBJET", `${d.objet}${precisions.length ? ` (${precisions.map(([l, v]) => `${l} : ${v}`).join(" ; ")})` : ""}`],
-            ["PIÈCES JOINTES", d.pieces.length ? [...new Set(d.pieces.map((p) => p.libelle))].join(" ; ") : "—"],
-            ["NIVEAU DE DÉCISION (DESTINATAIRE FINAL)", def?.niveauDecision ?? ""],
+            ["PIÈCES JOINTES", d.pieces.some((p) => p.libelle !== "Acte signé (scanné)") ? [...new Set(d.pieces.filter((p) => p.libelle !== "Acte signé (scanné)").map((p) => p.libelle))].join(" ; ") : "—"],
+            // Le décideur, le signataire et le destinataire final ne sont pas toujours les mêmes (DG, 03/11/2026)
+            ["NIVEAU DE DÉCISION", def?.niveauDecision ?? ""],
+            ["SIGNATAIRE DE L’ACTE", def?.signataire ?? ""],
+            [
+              "DESTINATAIRE FINAL",
+              /budget/i.test(def?.acte ?? "") ? "Direction générale du budget" : /fonction publique/i.test(def?.acte ?? "") ? "Direction générale de la Fonction publique" : (def?.niveauDecision ?? ""),
+            ],
           ].map(([l, v]) => (
             <tr key={l}>
               <td className={`${cellule} w-[34%] font-bold`}>{l}</td>

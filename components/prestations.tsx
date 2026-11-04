@@ -246,6 +246,7 @@ export function ActeModuleImprime({ a, a4 = true }: { a: ActeModule; a4?: boolea
   const classe = a4 ? "page-a4" : "rounded-2xl bg-white p-5 text-[13px] shadow-doux print:shadow-none";
   const decret = a.entete === "PRIMATURE";
   if (a.transmission) return <LettreTransmissionImprimee l={a.transmission} a4={a4} />;
+  if (a.officiel) return <ActeOfficielImprime a={a} a4={a4} />;
   if (a.forme === "LETTRE" && a.lettre) return <LettreImprimee a={a} classe={classe} a4={a4} />;
   return (
     <div className={classe} style={a4 ? ({ "--marge-haut": "14mm", "--marge-cote": "18mm" } as CSSProperties) : undefined}>
@@ -337,6 +338,91 @@ export function ActeModuleImprime({ a, a4 = true }: { a: ActeModule; a4?: boolea
   );
 }
 
+/**
+ * Acte d'après un modèle officiel de la DGRHAS (photo de l'autorisation de tutelle, 04/11/2026) :
+ * l'en-tête jusqu'au service, le n° et son suffixe, le titre et son sous-titre, le texte, « Fait à
+ * Brazzaville, le » et le nom du Directeur général, les ampliations comptées, « PJ : … » et
+ * l'adresse en pied de page.
+ */
+function ActeOfficielImprime({ a, a4 }: { a: ActeModule; a4: boolean }) {
+  const o = a.officiel!;
+  const ampl = a.ampliationsComptees ?? a.ampliations.map((libelle) => ({ libelle, nombre: 1 }));
+  const total = ampl.reduce((n, x) => n + x.nombre, 0);
+  return (
+    <div className={a4 ? "page-a4 text-black" : "rounded-2xl bg-white p-5 text-[13px] shadow-doux print:shadow-none"} style={a4 ? ({ "--marge-haut": "14mm", "--marge-cote": "18mm" } as CSSProperties) : undefined}>
+      <div className="flex justify-between gap-4 text-[9.5pt]">
+        <div className="w-[60%] text-center font-semibold leading-tight">
+          <div>MINISTERE DE L’ENSEIGNEMENT PRESCOLAIRE,</div>
+          <div>PRIMAIRE, SECONDAIRE ET DE L’ALPHABETISATION</div>
+          <div className="leading-none">*******************</div>
+          <div>CABINET</div>
+          <div className="leading-none">*******************</div>
+          <div>DIRECTION GENERALE DES RESSOURCES HUMAINES</div>
+          <div>ET DE L’ADMINISTRATION SCOLAIRE</div>
+          <div className="leading-none">*******************</div>
+          {o.services.map((x) => (
+            <div key={x}>
+              <div>{x}</div>
+              <div className="leading-none">*******************</div>
+            </div>
+          ))}
+          <div className="mt-1 whitespace-nowrap">N°______________/{o.suffixeNumero}</div>
+        </div>
+        <div className="w-[34%] text-center leading-tight">
+          <div className="font-semibold">REPUBLIQUE DU CONGO</div>
+          <div>Unité-Travail-Progrès</div>
+          <div className="leading-none">**********</div>
+        </div>
+      </div>
+
+      <div className="mt-10 mb-6 text-center">
+        <div className="text-[15pt] font-bold uppercase tracking-wide">{a.titre}</div>
+        {o.sousTitre && <div className="text-[9pt] italic">{o.sousTitre}</div>}
+      </div>
+
+      <div className="space-y-4 text-justify text-[12pt] leading-relaxed">
+        {a.articles.map((t, i) => (
+          <p key={i}>{t}</p>
+        ))}
+      </div>
+
+      <div className="mt-8 flex justify-end text-[12pt]" style={{ breakInside: "avoid" }}>
+        <div className="w-[48%] text-center">
+          <div>Fait à {a.lieu}, le</div>
+          <div className="h-[24mm]" />
+          <div className="font-bold">{o.signataireNom ?? ""}</div>
+        </div>
+      </div>
+
+      <div className="mt-4 w-[55mm] text-[10pt]">
+        <div className="font-bold underline">Ampliations</div>
+        {ampl.map((x, i) => (
+          <div key={x.libelle} className="flex items-end gap-1">
+            <span>{x.libelle}</span>
+            <span className="mb-[3px] flex-1 border-b border-dotted border-black" />
+            <span>
+              {x.nombre}
+              {i === ampl.length - 1 ? `/${String(total).padStart(2, "0")}` : ""}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {a4 && (
+        <div className="absolute right-[18mm] bottom-[8mm] left-[18mm] text-[8pt]">
+          {o.pj && (
+            <div>
+              <strong>PJ :</strong> {o.pj}
+            </div>
+          )}
+          <div className="mt-1 border-t border-black pt-0.5 font-semibold">{o.adresse}</div>
+          <div className="mt-1 text-center text-[7pt] italic text-zinc-600">{GENERE_PAR}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** En bas de page, à la place du lien du portail (DG, 03/11/2026). */
 export function MentionGenere({ fixe = true }: { fixe?: boolean }) {
   return (
@@ -397,7 +483,8 @@ export function LettreTransmissionImprimee({ l, a4 = true }: { l: LettreTransmis
         <div>
           <span className="font-bold underline">Objet : {l.objet[0]}</span>
         </div>
-        <div className="pl-[4.2em] font-bold">{l.objet[1]}</div>
+        {/* Comme les modèles : seule la première ligne de l'objet est en gras et soulignée */}
+        <div className="pl-[4.2em]">{l.objet[1]}</div>
       </div>
 
       <div className="mt-6 space-y-4 text-justify text-[11.5pt] leading-relaxed">

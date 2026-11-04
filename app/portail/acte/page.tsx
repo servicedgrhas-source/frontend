@@ -4,8 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { type ActePrestation, ActeImprime } from "@/components/acte-prestation";
-import { ActeModuleImprime } from "@/components/prestations";
-import type { ActeModule } from "@/lib/prestations";
+import { API_URL } from "@/lib/api";
 import { appelPublic } from "@/lib/portail";
 
 /** L'agent voit et imprime l'acte de sa demande accordée (numéro et code de suivi). */
@@ -24,7 +23,8 @@ function Acte() {
   const [a, setA] = useState<ActePrestation | null>(null);
   // « P-12 » : acte d'une demande de prestation (module à part)
   const prestation = /^P/i.test(numero);
-  const [m, setM] = useState<ActeModule | null>(null);
+  // Prestation : le scan de l'acte signé, déposé par la DGRHAS (pas d'acte avant la signature)
+  const [m, setM] = useState<{ url: string; image: boolean } | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   // Lien incomplet : rien à demander au serveur
   const manque = !numero || !code;
@@ -32,9 +32,13 @@ function Acte() {
     if (manque) return;
     const q = `?numero=${encodeURIComponent(numero)}&code=${encodeURIComponent(code)}`;
     if (prestation)
-      appelPublic<ActeModule>(`/prestations/acte${q}`)
-        .then(setM)
-        .catch((e: Error) => setErreur(e.message));
+      fetch(`${API_URL}/portail/prestations/acte${q}`)
+        .then(async (r) => {
+          if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { message?: string } | null)?.message ?? "Acte indisponible pour le moment.");
+          const b = await r.blob();
+          setM({ url: URL.createObjectURL(b), image: b.type.startsWith("image/") });
+        })
+        .catch((e: Error) => setErreur(e.message === "Failed to fetch" ? "Connexion impossible. Vérifiez votre accès à Internet et réessayez." : e.message));
     else
       appelPublic<ActePrestation>(`/acte${q}`)
         .then(setA)
@@ -52,11 +56,13 @@ function Acte() {
       {!a && !m && !erreur && !manque && <p className="py-10 text-center text-zinc-400">Chargement…</p>}
       {m && (
         <>
-          <ActeModuleImprime a={m} a4={false} />
-          <button type="button" onClick={() => window.print()} className="w-full rounded-2xl bg-marque-500 px-5 py-4 text-[15px] font-semibold text-white print:hidden">
-            Imprimer ou enregistrer en PDF
-          </button>
-          <p className="text-center text-[12px] text-zinc-500 print:hidden">C’est l’acte préparé par l’administration. L’original signé ({m.signataire.replace(/^Le /, "le ")}) vous est remis par votre structure.</p>
+          <div className="overflow-hidden rounded-2xl bg-white shadow-doux">
+            {m.image ? <img src={m.url} alt="Votre acte signé" className="w-full" /> : <iframe src={m.url} title="Votre acte signé" className="h-[75vh] w-full" />}
+          </div>
+          <a href={m.url} download="acte-signe" className="block w-full rounded-2xl bg-marque-500 px-5 py-4 text-center text-[15px] font-semibold text-white print:hidden">
+            Télécharger mon acte signé
+          </a>
+          <p className="text-center text-[12px] text-zinc-500 print:hidden">C’est la copie scannée de votre acte signé. Vous pouvez l’imprimer depuis le fichier téléchargé.</p>
         </>
       )}
       {a && (

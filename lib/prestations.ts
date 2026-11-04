@@ -95,6 +95,16 @@ export interface ActeModule {
   lieu: string;
   decisionLe: string | null;
   demande: { date: string };
+  /** Modèle officiel (autorisation de tutelle) : ampliations avec le nombre d'exemplaires. */
+  ampliationsComptees: { libelle: string; nombre: number }[] | null;
+  officiel: {
+    services: string[];
+    suffixeNumero: string;
+    sousTitre: string | null;
+    pj: string | null;
+    adresse: string | null;
+    signataireNom: string | null;
+  } | null;
   /** Soit-transmis écrit comme les modèles de la DGRHAS (une demande). */
   transmission: LettreTransmission | null;
   retour: RetourPrestation | null;
@@ -171,6 +181,9 @@ export interface FichePrestation {
   decisionLe: string | null;
   motifRetrait: string | null;
   retour: RetourPrestation | null;
+  /** Le scan de l'acte signé : l'agent ne voit et n'imprime que lui (DG, 03/11/2026). */
+  acteSigne: { id: string; nomOrigine: string; ajoutePar: string | null; creeLe: string } | null;
+  peutDeposerActeSigne: boolean;
   circuit: EtapeCircuit[];
   etapeCourante: number | null;
   pieces: { id: string; libelle: string; nomOrigine: string; taille: number; mime: string; ajoutePar: string | null; creeLe: string }[];

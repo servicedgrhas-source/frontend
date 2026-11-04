@@ -14,6 +14,8 @@ interface Suivi {
   decisionMotivation: string | null;
   /** Prestation accordée : l'acte s'imprime depuis le portail. */
   acteDisponible?: boolean;
+  /** Accordée, mais l'acte n'est pas encore signé et scanné. */
+  acteEnSignature?: boolean;
   /** Demande transmise au Budget ou à la Fonction publique : ce que le service en a fait. */
   retour?: { service: string; etat: "EN_ATTENTE" | "TRAITE" | "NON_TRAITE"; note: string | null } | null;
   etapes: { sigle: string; nom: string; etat: "FAIT" | "EN_COURS" | "A_VENIR"; date: string | null }[];
@@ -38,6 +40,7 @@ interface SuiviPrestation {
   decisionMotivation: string | null;
   motifRetrait: string | null;
   acteDisponible: boolean;
+  acteEnSignature: boolean;
   retour: Suivi["retour"];
   etapes: { sigle: string; nom: string; etat: "FAITE" | "EN_COURS" | "A_VENIR"; le: string | null }[];
 }
@@ -48,6 +51,7 @@ const depuisPrestation = (p: SuiviPrestation): Suivi => ({
   decision: p.etat === "ACCORDEE" || p.etat === "REJETEE" || p.etat === "EN_INSTANCE" ? p.etat : null,
   decisionMotivation: p.etat === "RETIREE" ? `Demande retirée : ${p.motifRetrait ?? ""}` : p.decisionMotivation,
   acteDisponible: p.acteDisponible,
+  acteEnSignature: p.acteEnSignature,
   retour: p.retour,
   etapes: p.etapes.map((e) => ({ sigle: e.sigle, nom: e.nom, etat: e.etat === "FAITE" ? "FAIT" : e.etat, date: e.le })),
 });
@@ -147,9 +151,14 @@ function Suivi() {
               )}
             </div>
           )}
+          {suivi.acteEnSignature && (
+            <p className="rounded-2xl bg-or-100 px-4 py-3 text-[13px] text-or-700">
+              Votre acte est à la signature. Dès que la DGRHAS aura déposé l’acte signé, vous pourrez le voir et l’imprimer ici.
+            </p>
+          )}
           {suivi.acteDisponible && (
             <Link href={`/portail/acte?numero=${encodeURIComponent(String(suivi.numero))}&code=${encodeURIComponent(code)}`} className="flex items-center justify-center gap-2 rounded-2xl bg-marque-500 px-5 py-4 text-[15px] font-semibold text-white">
-              <FileText className="size-4" /> Voir et imprimer mon acte
+              <FileText className="size-4" /> Voir et imprimer mon acte signé
             </Link>
           )}
           <ol className="space-y-3">
