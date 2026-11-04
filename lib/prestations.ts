@@ -147,7 +147,7 @@ export const ETAT_RETOUR: Record<RetourPrestation["etat"], { libelle: string; to
 };
 
 /** Mention en bas des documents produits par le système (DG, 03/11/2026). */
-export const GENERE_PAR = "Document généré par le Système intégré de gestion des ressources humaines et de l’administration scolaire (SIGRHAS-MEPPSA)";
+export const GENERE_PAR = "Document généré par le Système d’Information de gestion des ressources humaines et de l’administration scolaire (SIGRHAS-MEPPSA)";
 
 /** Une demande de prestation, telle que la renvoie GET /demandes-prestation/:id. */
 export interface FichePrestation {
