@@ -24,7 +24,7 @@ interface ConfigDroits {
 type Reglages = Pick<ConfigDroits, "roles" | "utilisateurs" | "rolesPerso" | "attributions">;
 
 /** Rôles qui ne servent pas de départ à un rôle créé (ils voient tout, ou ce sont des écoles). */
-const BASES_INTERDITES: Role[] = ["ADMIN", "DG", "STRUCTURE"];
+const BASES_INTERDITES: Role[] = ["ADMIN", "DG", "STRUCTURE", "VISITEUR"];
 /** Recherche sans accents ni majuscules (« Ngoma » trouve « NGOMA »). */
 const simple = (t: string) =>
   t
@@ -141,7 +141,9 @@ export default function Droits() {
 
   /** Rubriques du menu tel qu'il est rangé, une seule fois chacune, par domaine. */
   const vues = new Set<string>();
-  const domaines = ESPACES.map((e) => ({
+  // Le tableau de bord (hors des domaines du menu) se règle aussi, surtout pour les visiteurs
+  const accueil = { cle: "accueil", titre: "Accueil", rubriques: [{ href: "/", libelle: "Tableau de bord" }] } as unknown as (typeof ESPACES)[number];
+  const domaines = [accueil, ...ESPACES].map((e) => ({
     e,
     rubriques: e.rubriques.filter((r) => {
       const h = r.href.split("?")[0];
@@ -154,6 +156,8 @@ export default function Droits() {
   /** La rubrique est-elle visible pour ce rôle, sans aucun réglage ? */
   const origineVisible = (visible: ((p: Profil) => boolean) | undefined, origine: string) => {
     if (!roleCible) return false;
+    // Un visiteur ne voit rien d'origine : seulement ce qu'on lui ouvre en lecture
+    if (roleCible === "VISITEUR") return false;
     if (roleCible === "STRUCTURE" && !ORIGINES_STRUCTURE.includes(origine)) return false;
     return !visible || visible({ ...profil, role: roleCible, droits: undefined });
   };
@@ -175,7 +179,7 @@ export default function Droits() {
     if (n === "MASQUE") return { niveau: "AUCUN", source };
     // Une rubrique non ouvrable ne s'ouvre pas au-delà de l'origine
     if (fermeOnly && !dOrigine) return { niveau: "AUCUN", source: "origine" };
-    return { niveau: n === "LECTURE" ? "LECTURE" : "MODIFICATION", source };
+    return { niveau: n === "LECTURE" || roleCible === "VISITEUR" ? "LECTURE" : "MODIFICATION", source };
   };
   const lignes = domaines.flatMap(({ e, rubriques }) =>
     rubriques.map((r) => {
@@ -494,6 +498,11 @@ export default function Droits() {
           actions={<span className="text-[12px] text-zinc-500">{nbReglages ? `${nbReglages} rubrique(s) réglée(s)` : "Aucun réglage : tout est comme d’origine"}</span>}
         >
           <div className="space-y-6">
+            {roleCible === "VISITEUR" && (
+              <Alerte ton="bleu">
+                Compte visiteur : il ne voit que les rubriques mises en « Lecture seule », et rien d’autre. Il ne peut rien enregistrer, ni imprimer, ni télécharger (Excel, Word, PDF, pièces jointes) : le serveur le refuse, même par une adresse directe.
+              </Alerte>
+            )}
             {domaines.map(({ e, rubriques }) => (
               <div key={e.cle}>
                 <h3 className="mb-2 text-[13px] font-semibold tracking-wide text-zinc-500 uppercase">{e.titre}</h3>
@@ -531,7 +540,7 @@ export default function Droits() {
                           >
                             {sans}
                           </button>
-                          {CHOIX.map((x) => {
+                          {CHOIX.filter((x) => roleCible !== "VISITEUR" || x.v !== "MODIFICATION").map((x) => {
                             const interdit = fermeOnly && !dOrigine && x.v !== "MASQUE";
                             return (
                               <button

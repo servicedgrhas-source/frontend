@@ -8,6 +8,7 @@ import { TableauDeBordCircuit } from "@/components/tableau-circuit";
 import { useSession } from "@/components/session";
 import { Alerte, Bouton, Carte, Chargement, Chiffre, Pastille, Progression } from "@/components/ui";
 import { useApi } from "@/lib/api";
+import { ESPACES, rubriquesVisibles } from "@/lib/espaces";
 import { dateCourte, peut, romain } from "@/lib/libelles";
 import type { StatutNote } from "@/lib/types";
 
@@ -52,6 +53,8 @@ const ROLES_CIRCUIT_SEUL = ["DDEPPSA", "CABINET", "SECRETARIAT"];
 
 export default function TableauDeBord() {
   const { profil } = useSession();
+  // Visiteur sans le tableau de bord : un accueil qui mène à ses rubriques
+  if (profil.role === "VISITEUR" && profil.droits?.["/"] !== "LECTURE") return <AccueilVisiteur />;
   return ROLES_CIRCUIT_SEUL.includes(profil.role) ? <TableauDeBordCircuit /> : <TableauDeBordDgrhas />;
 }
 
@@ -421,6 +424,43 @@ function Histogramme({ lots }: { lots: TableauBord["lots"] }) {
         <span className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-marque-200" /> Textes reçus</span>
         <span className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-marque-500" /> Dont affectés</span>
       </div>
+    </div>
+  );
+}
+
+/** Accueil d'un compte visiteur : les rubriques que le DG lui a ouvertes, en lecture seule. */
+function AccueilVisiteur() {
+  const { profil } = useSession();
+  const vues = new Set<string>();
+  const domaines = ESPACES.map((e) => ({
+    e,
+    rubriques: rubriquesVisibles(e, profil).filter((r) => !vues.has(r.href) && !!vues.add(r.href)),
+  })).filter((d) => d.rubriques.length);
+  return (
+    <div className="max-w-3xl space-y-6">
+      <div>
+        <h1 className="text-[28px] font-semibold tracking-tight">Bonjour, {profil.nom.split(" ")[0]}</h1>
+        <p className="mt-0.5 text-sm text-zinc-500">Voici les rubriques que la DGRHAS vous a ouvertes en consultation.</p>
+      </div>
+      {domaines.length ? (
+        domaines.map(({ e, rubriques }) => (
+          <Carte key={e.cle} titre={e.titre}>
+            <div className="divide-y divide-zinc-100">
+              {rubriques.map((r) => (
+                <Link key={r.href} href={r.href} className="flex items-center gap-3 py-3 hover:text-marque-700">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-medium">{r.libelle}</p>
+                    {r.explication && <p className="text-[12px] text-zinc-500">{r.explication}</p>}
+                  </div>
+                  <ArrowRight className="size-4 shrink-0 text-zinc-400" />
+                </Link>
+              ))}
+            </div>
+          </Carte>
+        ))
+      ) : (
+        <Alerte ton="jaune">Aucune rubrique ne vous est encore ouverte. Demandez à la DGRHAS de vous en ouvrir.</Alerte>
+      )}
     </div>
   );
 }

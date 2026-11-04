@@ -703,6 +703,11 @@ export const niveauRubrique = (href: string, p: Profil) => p.droits?.[href.split
  */
 export const rubriquesVisibles = (e: Espace, p: Profil) =>
   e.rubriques.filter((r) => {
+    // Un visiteur ne voit que ce que le DG lui ouvre
+    if (p.role === "VISITEUR") {
+      const n = niveauRubrique(r.href, p);
+      return (n === "LECTURE" || n === "MODIFICATION") && !NON_OUVRABLES.includes(r.href);
+    }
     if (p.role === "STRUCTURE" && !ORIGINES_STRUCTURE.includes(r.origine ?? e.cle)) return false;
     const n = niveauRubrique(r.href, p);
     if (n === "MASQUE") return false;
@@ -723,6 +728,13 @@ function rubriquePage(chemin: string) {
 
 /** Réglage du DG qui vaut pour une page. */
 export function niveauPage(chemin: string, p: Profil) {
+  if (p.role === "VISITEUR") {
+    // Visiteur : une rubrique qu'on ne lui a pas ouverte est fermée
+    const h = rubriquePage(chemin);
+    if (!h) return undefined;
+    const n = p.droits?.[h];
+    return (n === "LECTURE" || n === "MODIFICATION") && !NON_OUVRABLES.includes(h) ? "LECTURE" : "MASQUE";
+  }
   const h = p.droits ? rubriquePage(chemin) : null;
   return h ? p.droits?.[h] : undefined;
 }

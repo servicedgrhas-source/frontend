@@ -12,6 +12,7 @@ export const ROLES: Record<Role, string> = {
   CABINET: "Cabinet du Ministre",
   SECRETARIAT: "Chef du secrétariat du DG (impression des dossiers et des notes)",
   STRUCTURE: "Responsable de structure (école, inspection, service…)",
+  VISITEUR: "Visiteur (consultation seule, sans impression)",
 };
 
 export const STATUT_NOTE: Record<StatutNote, { libelle: string; ton: Ton; aide: string }> = {

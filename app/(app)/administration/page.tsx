@@ -23,7 +23,13 @@ interface Utilisateur {
   codeCreeLe?: string | null;
   /** Trop d'essais de connexion ratés : bloqué jusqu'à cette heure. */
   bloqueJusqua?: string | null;
+  /** Dernier jour d'accès (visiteurs surtout), sinon sans fin. */
+  finAcces?: string | null;
 }
+
+const dateFr = (d: string) => d.split("-").reverse().join("/");
+/** L'accès s'arrête le soir du dernier jour. */
+const accesTermine = (u: Utilisateur) => !!u.finAcces && u.finAcces < new Date().toLocaleDateString("en-CA");
 
 const estBloque = (u: Utilisateur) => !!u.bloqueJusqua && new Date(u.bloqueJusqua).getTime() > Date.now();
 
@@ -140,6 +146,11 @@ export default function Utilisateurs() {
                   </td>
                   <td>
                     {u.actif ? <Badge ton="vert">Actif</Badge> : <Badge ton="rouge">Désactivé</Badge>}
+                    {u.finAcces && (
+                      <div className="mt-1">
+                        {accesTermine(u) ? <Badge ton="rouge">Accès terminé le {dateFr(u.finAcces)}</Badge> : <Badge ton="jaune">Accès jusqu’au {dateFr(u.finAcces)}</Badge>}
+                      </div>
+                    )}
                     {estBloque(u) && (
                       <div className="mt-1">
                         <Badge ton="rouge">
@@ -275,6 +286,7 @@ function EditionUtilisateur({ u, fermer, apres }: { u: Utilisateur | null; ferme
     structureId: u?.structureId?.toString() ?? "",
     motDePasse: "",
     actif: u?.actif ?? true,
+    finAcces: u?.finAcces ?? "",
   });
   const [erreur, setErreur] = useState<string | null>(null);
 
@@ -284,6 +296,7 @@ function EditionUtilisateur({ u, fermer, apres }: { u: Utilisateur | null; ferme
       departementId: f.departementId ? Number(f.departementId) : null,
       structureId: f.structureId ? Number(f.structureId) : null,
       motDePasse: f.motDePasse || undefined,
+      finAcces: f.finAcces || null,
     };
     try {
       if (u) {
@@ -337,6 +350,20 @@ function EditionUtilisateur({ u, fermer, apres }: { u: Utilisateur | null; ferme
             vide="— Aucune (selon le rôle) —"
             options={(structures.donnees ?? []).map((s) => ({ valeur: s.id, libelle: `${s.sigle}${s.nom !== s.sigle ? ` – ${s.nom}` : ""}` }))}
           />
+        </Champ>
+        {f.role === "VISITEUR" && (
+          <div className="col-span-2">
+            <Alerte ton="bleu">
+              Un visiteur consulte seulement, sans rien enregistrer, imprimer ni télécharger. Il ne voit aucune rubrique tant que vous ne lui en ouvrez pas en « Lecture seule » dans Administration › Droits par rubrique.
+            </Alerte>
+          </div>
+        )}
+        <Champ
+          libelle="Fin d’accès (facultatif)"
+          aide={f.role === "VISITEUR" ? "Dernier jour où il peut se connecter (fin de mission, d’audit…). Vide : sans fin." : "Dernier jour où ce compte peut se connecter. Vide : sans fin."}
+          className="col-span-2"
+        >
+          <Saisie type="date" value={f.finAcces} onChange={(e) => setF({ ...f, finAcces: e.target.value })} />
         </Champ>
         <Champ libelle={u ? "Nouveau mot de passe (facultatif)" : "Mot de passe"} aide="8 caractères minimum" className="col-span-2">
           <Saisie type="password" autoComplete="new-password" value={f.motDePasse} onChange={(e) => setF({ ...f, motDePasse: e.target.value })} />

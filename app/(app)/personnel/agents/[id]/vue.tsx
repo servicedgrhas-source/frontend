@@ -28,6 +28,7 @@ import { ModaleDoublons } from "@/components/doublons";
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, BoutonIcone, Bouton, Carte, Champ, Chargement, EnTete, Liste, Modale, Saisie, SaisieDate, Segments, Zone, useConfirmation } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 interface Fiche {
@@ -96,7 +97,7 @@ export function VueFiche() {
   const viaRecensement = !nouveau && params.get("recensement") === "1";
 
   const c = config.donnees?.configuration;
-  if (!peutRecenser(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS, aux DDEPPSA et aux chefs d’établissement.</Alerte>;
+  if (!peutRecenser(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS, aux DDEPPSA et aux chefs d’établissement.</Alerte>;
   if (fiche.erreur) return <Alerte>{fiche.erreur}</Alerte>;
   if (!c || !structures.donnees || (!nouveau && !fiche.donnees)) return <Chargement />;
   return (

@@ -21,7 +21,8 @@ export type Role =
   | "CABINET"
   | "BUREAU_ETUDES"
   | "SECRETARIAT"
-  | "STRUCTURE";
+  | "STRUCTURE"
+  | "VISITEUR";
 
 export interface Profil {
   id: string;
@@ -39,7 +40,12 @@ export interface Profil {
   droits?: Record<string, NiveauDroit>;
   /** Nom du rôle créé par le DG et donné à ce compte (« Secrétariat DRSC »). */
   rolePerso?: string | null;
+  /** Dernier jour d'accès (comptes visiteurs surtout), sinon sans fin. */
+  finAcces?: string | null;
 }
+
+/** Compte visiteur : consultation seulement, sans impression ni téléchargement (DG, 04/11/2026). */
+export const MESSAGE_VISITEUR = "Compte visiteur : la consultation est permise, pas l’impression ni le téléchargement.";
 
 /** Masquée, lecture seule, ou ouverte (même au-delà du rôle). */
 export type NiveauDroit = "MASQUE" | "LECTURE" | "MODIFICATION";
@@ -55,16 +61,22 @@ export function lireSession(): { jeton: string | null; profil: Profil | null } {
   }
 }
 
+/** Le profil de cet onglet a changé (connexion, déconnexion, profil relu). */
+export const PROFIL_CHANGE = "dgrhas:profil";
+const signalerProfil = () => typeof window !== "undefined" && window.dispatchEvent(new Event(PROFIL_CHANGE));
+
 export function ouvrirSession(jeton: string, profil: Profil) {
   viderMemoire();
   localStorage.setItem(CLE_JETON, jeton);
   localStorage.setItem(CLE_PROFIL, JSON.stringify(profil));
+  signalerProfil();
 }
 
 /** Profil relu sur le serveur : gardé à jour pour les autres onglets et les pages d'impression. */
 export function memoriserProfil(profil: Profil) {
   try {
     localStorage.setItem(CLE_PROFIL, JSON.stringify(profil));
+    signalerProfil();
   } catch {
     /* stockage indisponible */
   }
@@ -118,6 +130,7 @@ export function fermerSession() {
   } catch {
     /* stockage indisponible */
   }
+  signalerProfil();
 }
 
 /** Message affiché quand le serveur ne répond pas (réseau coupé, serveur arrêté ou en panne). */
@@ -207,7 +220,9 @@ async function envoyer<T>(
 
 /** Fichier téléchargé avec la session (mêmes règles que les autres appels : 401, nouveau jeton). */
 async function fichier(chemin: string, init: RequestInit = {}): Promise<Blob> {
-  const { jeton } = lireSession();
+  const { jeton, profil } = lireSession();
+  // Le serveur le refuse aussi : ici, le message arrive tout de suite
+  if (profil?.role === "VISITEUR") throw new ErreurApi(MESSAGE_VISITEUR, 403);
   let rep: Response;
   try {
     rep = await fetch(`${API_URL}${chemin}`, {

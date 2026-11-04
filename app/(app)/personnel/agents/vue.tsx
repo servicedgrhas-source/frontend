@@ -11,6 +11,7 @@ import { FichesAValider } from "@/components/rattachement";
 import { useSession } from "@/components/session";
 import { Alerte, Bouton, Carte, Chargement, EnTete, Liste, Saisie, Tableau, Vide, cx } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
+import { accesDonne } from "@/lib/espaces";
 
 interface Ligne {
   id: number;
@@ -57,7 +58,7 @@ export function VueAgents() {
   const enAnomalies = !!f.anomalies || !!f.controle;
   const tableau = useApi<{ controles: { code: string; libelle: string; n: number }[] }>("/recensement/tableau");
   const c = config.donnees?.configuration;
-  if (!peutRecenser(profil.role)) return <Alerte>Accès réservé aux agents de la DGRHAS, aux DDEPPSA et aux chefs d’établissement.</Alerte>;
+  if (!peutRecenser(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS, aux DDEPPSA et aux chefs d’établissement.</Alerte>;
 
   const aller = (p: Partial<typeof f>) => router.replace(`/personnel/agents${qs({ ...f, page: 1, ...p })}`);
   const filtreManque = f.manque.startsWith("piece:") ? c?.pieces.find((x) => `piece:${x.code}` === f.manque)?.libelle : c?.champs.find((x) => x.code === f.manque)?.libelle;

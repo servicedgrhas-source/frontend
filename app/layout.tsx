@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { GardeVisiteur } from "@/components/garde-visiteur";
 import "./globals.css";
 
 // Poppins hébergée avec l'application : sans réseau vers Google au démarrage, Next prenait une police
@@ -25,7 +26,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr" className={`${poppins.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {/* Compte visiteur : ni impression ni téléchargement (DG, 04/11/2026) */}
+        <GardeVisiteur />
+        {children}
+      </body>
     </html>
   );
 }
