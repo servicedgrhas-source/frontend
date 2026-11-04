@@ -134,7 +134,7 @@ export function fermerSession() {
 }
 
 /** Message affiché quand le serveur ne répond pas (réseau coupé, serveur arrêté ou en panne). */
-const SERVEUR_INJOIGNABLE =
+export const SERVEUR_INJOIGNABLE =
   "Impossible de joindre le serveur. Vérifiez votre connexion internet et réessayez. Si le problème persiste, contactez le support de la Direction Générale des Ressources Humaines et de l’Administration Scolaire.";
 
 export class ErreurApi extends Error {

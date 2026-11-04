@@ -418,7 +418,6 @@ function FicheEcole() {
                       )}
                     </td>
                     <td className="space-x-1 text-right">
-                      {a.enseignant && <Badge ton="vert">enseignant</Badge>}
                       {!a.enPoste && <Badge ton="gris">pas en poste</Badge>}
                     </td>
                   </tr>

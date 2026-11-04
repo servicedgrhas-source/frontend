@@ -208,7 +208,7 @@ export function Coquille({ children }: { children: ReactNode }) {
       router.replace("/a-traiter");
   }, [session, chemin, router]);
 
-  if (erreur) return <div className="p-8 text-rouge-600">{erreur}</div>;
+  if (erreur) return <div className="p-8"><Alerte>{erreur}</Alerte></div>;
   if (!session) return <Chargement texte="Ouverture de la session…" />;
 
   const deconnexion = () => {

@@ -7,14 +7,17 @@ import {
   FileSpreadsheet,
   Info,
   Loader2,
+  RefreshCw,
   TriangleAlert,
   Upload,
+  WifiOff,
   X,
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { SERVEUR_INJOIGNABLE } from "@/lib/api";
 import type { Ton } from "@/lib/libelles";
 
 export function cx(...c: (string | false | null | undefined)[]) {
@@ -503,6 +506,8 @@ export function Alerte({
   ton?: Ton;
   children: ReactNode;
 }) {
+  // Serveur injoignable : une vraie page, partout où le message arrive
+  if (children === SERVEUR_INJOIGNABLE) return <ServeurInjoignable />;
   return (
     <div
       className={cx(
@@ -512,6 +517,49 @@ export function Alerte({
     >
       <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
       <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * Le serveur ne répond pas (réseau coupé, serveur arrêté ou en redémarrage) : une page claire,
+ * avec ce qu'il faut faire et un bouton pour réessayer.
+ */
+export function ServeurInjoignable() {
+  const [essai, setEssai] = useState(false);
+  return (
+    <div className="flex min-h-[70vh] w-full items-center justify-center px-4 py-10">
+      <div className="w-full max-w-lg rounded-[28px] bg-white px-8 py-10 text-center shadow-doux">
+        <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-rouge-100 text-rouge-600">
+          <WifiOff className="size-8" aria-hidden />
+        </div>
+        <h1 className="mt-5 text-[20px] font-semibold tracking-tight text-encre">Connexion au serveur impossible</h1>
+        <p className="mt-2 text-[14px] leading-relaxed text-zinc-600">Le système ne répond pas pour le moment. Rien de ce que vous avez déjà enregistré n’est perdu.</p>
+        <ul className="mx-auto mt-5 max-w-sm space-y-2 text-left text-[13px] text-zinc-600">
+          <li className="flex gap-2">
+            <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-marque-500" />
+            Vérifiez votre connexion internet (Wi-Fi, données mobiles).
+          </li>
+          <li className="flex gap-2">
+            <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-marque-500" />
+            Patientez une minute, puis réessayez : le serveur redémarre peut-être.
+          </li>
+          <li className="flex gap-2">
+            <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-marque-500" />
+            Si le problème persiste, contactez le support de la Direction Générale des Ressources Humaines et de l’Administration Scolaire.
+          </li>
+        </ul>
+        <button
+          type="button"
+          onClick={() => {
+            setEssai(true);
+            window.location.reload();
+          }}
+          className="mt-7 inline-flex items-center gap-2 rounded-full bg-marque-600 px-6 py-2.5 text-[14px] font-semibold text-white transition hover:bg-marque-700"
+        >
+          <RefreshCw className={cx("size-4", essai && "animate-spin")} aria-hidden /> Réessayer
+        </button>
+      </div>
     </div>
   );
 }
