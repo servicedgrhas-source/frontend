@@ -696,7 +696,8 @@ export function ModifierIntroduction({
           {memoire === "demande" ? "Il est gardé avec la demande : on le retrouve à la prochaine impression." : "Il vaut pour cette impression (plusieurs demandes)."} La demande
           et le nom de l’intéressé restent en gras là où ils sont écrits.
         </p>
-        <Zone rows={8} value={t} onChange={(e) => setT(e.target.value)} />
+        {/* Toute la largeur de la fenêtre, assez haut pour lire le paragraphe entier (retour du 05/11/2026) */}
+        <Zone rows={10} className="block min-h-[45vh] w-full text-[15px] leading-relaxed" value={t} onChange={(e) => setT(e.target.value)} />
         <div className="flex flex-wrap justify-end gap-2">
           {modifie && (
             <Bouton disabled={enCours} onClick={() => faire("")}>
