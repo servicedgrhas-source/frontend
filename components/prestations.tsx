@@ -366,7 +366,10 @@ function ActeOfficielImprime({ a, a4 }: { a: ActeModule; a4: boolean }) {
               <div className="leading-none">*******************</div>
             </div>
           ))}
-          <div className="mt-1 whitespace-nowrap">N°______________/{o.suffixeNumero}</div>
+          <div className="mt-1 whitespace-nowrap">
+            N°
+            <LigneNumero />/{o.suffixeNumero}
+          </div>
         </div>
         <div className="w-[34%] text-center leading-tight">
           <div className="font-semibold">REPUBLIQUE DU CONGO</div>
@@ -422,6 +425,12 @@ function ActeOfficielImprime({ a, a4 }: { a: ActeModule; a4: boolean }) {
     </div>
   );
 }
+
+/**
+ * La place du n° après « N° » : une ligne continue (retour du 05/11/2026). Des « _ » tapés
+ * s'affichent en tirets séparés selon la police.
+ */
+const LigneNumero = () => <span className="mx-0.5 inline-block w-[34mm] translate-y-[1px] border-b border-black align-baseline" />;
 
 /** En bas de page, à la place du lien du portail (DG, 03/11/2026). */
 export function MentionGenere({ fixe = true }: { fixe?: boolean }) {
@@ -507,7 +516,10 @@ export function LettreTransmissionImprimee({ l, a4 = true, corps }: { l: LettreT
           <Barre n={10} />
           <div className="mt-1">SERVICE DU SUIVI DES CARRIERES</div>
           <Barre n={10} />
-          <div className="mt-2 whitespace-nowrap text-left">N°______________/{l.suffixeNumero}</div>
+          <div className="mt-2 whitespace-nowrap text-left">
+            N°
+            <LigneNumero />/{l.suffixeNumero}
+          </div>
         </div>
         <div className="w-[40%] text-center leading-tight">
           <div>REPUBLIQUE DU CONGO</div>
