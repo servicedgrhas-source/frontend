@@ -14,6 +14,8 @@ interface Suivi {
   decisionMotivation: string | null;
   /** Prestation accordée : l'acte s'imprime depuis le portail. */
   acteDisponible?: boolean;
+  /** Demande transmise au Budget ou à la Fonction publique : ce que le service en a fait. */
+  retour?: { service: string; etat: "EN_ATTENTE" | "TRAITE" | "NON_TRAITE"; note: string | null } | null;
   etapes: { sigle: string; nom: string; etat: "FAIT" | "EN_COURS" | "A_VENIR"; date: string | null }[];
 }
 
@@ -36,6 +38,7 @@ interface SuiviPrestation {
   decisionMotivation: string | null;
   motifRetrait: string | null;
   acteDisponible: boolean;
+  retour: Suivi["retour"];
   etapes: { sigle: string; nom: string; etat: "FAITE" | "EN_COURS" | "A_VENIR"; le: string | null }[];
 }
 const depuisPrestation = (p: SuiviPrestation): Suivi => ({
@@ -45,6 +48,7 @@ const depuisPrestation = (p: SuiviPrestation): Suivi => ({
   decision: p.etat === "ACCORDEE" || p.etat === "REJETEE" || p.etat === "EN_INSTANCE" ? p.etat : null,
   decisionMotivation: p.etat === "RETIREE" ? `Demande retirée : ${p.motifRetrait ?? ""}` : p.decisionMotivation,
   acteDisponible: p.acteDisponible,
+  retour: p.retour,
   etapes: p.etapes.map((e) => ({ sigle: e.sigle, nom: e.nom, etat: e.etat === "FAITE" ? "FAIT" : e.etat, date: e.le })),
 });
 
@@ -132,6 +136,15 @@ function Suivi() {
             <div className={`rounded-2xl px-4 py-3 text-[14px] font-semibold ${DECISION[suivi.decision].fond}`}>
               {DECISION[suivi.decision].texte}
               {suivi.decisionMotivation && <p className="mt-1 text-[13px] font-normal">{suivi.decisionMotivation}</p>}
+              {suivi.retour && (
+                <p className="mt-1 text-[13px] font-normal">
+                  {suivi.retour.etat === "EN_ATTENTE"
+                    ? `Votre dossier a été transmis à la ${suivi.retour.service}. La DGRHAS attend son retour : revenez voir ici.`
+                    : suivi.retour.etat === "TRAITE"
+                      ? `La ${suivi.retour.service} a traité votre dossier.`
+                      : `La ${suivi.retour.service} n’a pas traité votre dossier${suivi.retour.note ? ` : ${suivi.retour.note}` : ""}. Rapprochez-vous de la DGRHAS.`}
+                </p>
+              )}
             </div>
           )}
           {suivi.acteDisponible && (

@@ -1,13 +1,13 @@
 "use client";
 
-import { ArrowRight, Clock3, FilePlus2, Search } from "lucide-react";
+import { ArrowRight, Clock3, FilePlus2, Printer, Search } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Alerte, Badge, Bouton, Chargement, EnTete, Liste, Saisie, Segments, Vide } from "@/components/ui";
 import { qs, useApi } from "@/lib/api";
-import { ETAT_PRESTATION, type DefinitionPrestation, type EtatPrestation } from "@/lib/prestations";
+import { ETAT_PRESTATION, ETAT_RETOUR, type DefinitionPrestation, type EtatPrestation, type RetourPrestation } from "@/lib/prestations";
 
-type Onglet = "aTraiter" | "aSuivre" | "toutes";
+type Onglet = "aTraiter" | "aSuivre" | "toutes" | "transmissions";
 
 interface Ligne {
   id: string;
@@ -25,6 +25,9 @@ interface Ligne {
   etapes: number;
   depuis: number | null;
   creeLe: string;
+  /** Accordée, et son acte est un soit-transmis : on peut la réunir à d'autres du même type. */
+  transmissible: boolean;
+  retour: RetourPrestation["etat"] | null;
 }
 
 interface Reponse {
@@ -37,6 +40,11 @@ const ONGLETS: { valeur: Onglet; libelle: string; aide: string }[] = [
   { valeur: "aTraiter", libelle: "À traiter", aide: "Le dossier est chez vous : c’est à vous de viser et de donner votre avis (ou de décider)." },
   { valeur: "aSuivre", libelle: "À suivre", aide: "Le dossier est en route ailleurs dans le circuit : vous le suivez, sans rien à faire pour l’instant." },
   { valeur: "toutes", libelle: "Toutes", aide: "Toutes les demandes que vous pouvez voir, y compris celles déjà décidées." },
+  {
+    valeur: "transmissions",
+    libelle: "À transmettre",
+    aide: "Accordées, à envoyer au Budget ou à la Fonction publique par soit-transmis, sans retour du service destinataire. Cochez celles du même type pour un seul envoi.",
+  },
 ];
 
 /**
@@ -57,6 +65,18 @@ export default function Prestations() {
   const r = useApi<Reponse>(`/demandes-prestation${qs({ onglet, type, etat: onglet === "toutes" ? etat : "", recherche })}`);
   const d = r.donnees;
   const aide = ONGLETS.find((o) => o.valeur === onglet)!.aide;
+  // Soit-transmis collectif (DG, 03/11/2026) : des demandes du même type, accordées
+  const [coches, setCoches] = useState<Set<string>>(new Set());
+  useEffect(() => setCoches(new Set()), [onglet, type, recherche]);
+  const choisies = (d?.lignes ?? []).filter((l) => coches.has(l.id));
+  const typesChoisis = new Set(choisies.map((l) => l.type));
+  const basculer = (id: string) =>
+    setCoches((c) => {
+      const n = new Set(c);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
 
   return (
     <div className="space-y-5">
@@ -76,7 +96,8 @@ export default function Prestations() {
         <Segments
           valeur={onglet}
           changer={setOnglet}
-          options={ONGLETS.map((o) => ({
+          // « À transmettre » : la DGRHAS seulement (les autres comptes n'en ont aucune)
+          options={ONGLETS.filter((o) => o.valeur !== "transmissions" || !!d?.compte.transmissions || onglet === "transmissions").map((o) => ({
             valeur: o.valeur,
             libelle: (
               <span className="flex items-center gap-1.5">
@@ -106,6 +127,25 @@ export default function Prestations() {
         )}
       </div>
 
+      {onglet === "transmissions" && d && d.lignes.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-marque-50 px-4 py-3 text-[13px]">
+          <span className="flex-1">
+            {choisies.length
+              ? typesChoisis.size > 1
+                ? "Un soit-transmis réunit des demandes du même type : ne cochez qu’une démarche à la fois (filtre « Démarche » ci-dessus)."
+                : `${choisies.length} demande${choisies.length > 1 ? "s" : ""} cochée${choisies.length > 1 ? "s" : ""} : ${choisies[0].libelle}.`
+              : "Cochez les demandes à envoyer ensemble (le même type). Le soit-transmis sort avec le tableau des agents, comme les modèles de la DGRHAS."}
+          </span>
+          <Bouton
+            variante="principal"
+            disabled={!choisies.length || typesChoisis.size > 1}
+            onClick={() => window.open(`/impression/prestation/transmission${qs({ ids: choisies.map((l) => l.id).join(",") })}`, "_blank")}
+          >
+            <Printer /> Soit-transmis{choisies.length > 1 ? ` de ${choisies.length} demandes` : ""}
+          </Bouton>
+        </div>
+      )}
+
       {r.erreur ? (
         <Alerte>{r.erreur}</Alerte>
       ) : !d ? (
@@ -116,13 +156,18 @@ export default function Prestations() {
             ? "Rien à traiter : aucune demande de prestation n’attend votre avis."
             : onglet === "aSuivre"
               ? "Aucune demande en route ailleurs dans votre circuit."
-              : "Aucune demande pour ces filtres."}
+              : onglet === "transmissions"
+                ? "Rien à transmettre : toutes les demandes accordées ont leur retour du service destinataire."
+                : "Aucune demande pour ces filtres."}
         </Vide>
       ) : (
         <ul className="space-y-2">
           {d.lignes.map((l) => (
-            <li key={l.id}>
-              <Link href={`/prestations/${l.id}`} className="flex items-center gap-4 rounded-2xl bg-white px-4 py-3 shadow-doux transition hover:ring-1 hover:ring-marque-200">
+            <li key={l.id} className="flex items-center gap-2">
+              {onglet === "transmissions" && (
+                <input type="checkbox" className="size-4 shrink-0 accent-marque-600" aria-label={`Choisir ${l.numero}`} checked={coches.has(l.id)} onChange={() => basculer(l.id)} />
+              )}
+              <Link href={`/prestations/${l.id}`} className="flex min-w-0 flex-1 items-center gap-4 rounded-2xl bg-white px-4 py-3 shadow-doux transition hover:ring-1 hover:ring-marque-200">
                 <span className="w-14 shrink-0 text-[13px] font-semibold text-zinc-500 tabular-nums">{l.numero}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[14px] font-semibold">{l.nomComplet}</span>
@@ -145,6 +190,7 @@ export default function Prestations() {
                   ) : (
                     <Badge ton={ETAT_PRESTATION[l.etat].ton}>{ETAT_PRESTATION[l.etat].libelle}</Badge>
                   )}
+                  {l.retour && <span className={`text-[11px] ${l.retour === "NON_TRAITE" ? "text-rouge-600" : l.retour === "TRAITE" ? "text-marque-700" : "text-or-700"}`}>{ETAT_RETOUR[l.retour].libelle}</span>}
                   {l.etat === "EN_COURS" && l.depuis !== null && (
                     <span className={`flex items-center gap-1 text-[11px] ${l.depuis > 7 ? "font-medium text-rouge-600" : "text-zinc-400"}`}>
                       <Clock3 className="size-3" /> {l.depuis === 0 ? "arrivée aujourd’hui" : `depuis ${l.depuis} jour${l.depuis > 1 ? "s" : ""}`}

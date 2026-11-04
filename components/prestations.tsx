@@ -3,7 +3,7 @@
 import { ArrowRight, CheckCircle2, FileSignature, Paperclip, Scale, Users, X } from "lucide-react";
 import type { CSSProperties } from "react";
 import { Aide, Champ, Liste, Saisie, SaisieDate, Zone, cx } from "@/components/ui";
-import type { ActeModule, ChampPrestation, DefinitionPrestation } from "@/lib/prestations";
+import { GENERE_PAR, type ActeModule, type ChampPrestation, type DefinitionPrestation, type LettreTransmission } from "@/lib/prestations";
 
 /**
  * Éléments communs des demandes de prestations (application et portail) : ce qu'est la démarche
@@ -245,6 +245,7 @@ const dateLongue = (d: string | null) => (d ? new Date(d.length === 10 ? `${d}T1
 export function ActeModuleImprime({ a, a4 = true }: { a: ActeModule; a4?: boolean }) {
   const classe = a4 ? "page-a4" : "rounded-2xl bg-white p-5 text-[13px] shadow-doux print:shadow-none";
   const decret = a.entete === "PRIMATURE";
+  if (a.transmission) return <LettreTransmissionImprimee l={a.transmission} a4={a4} />;
   if (a.forme === "LETTRE" && a.lettre) return <LettreImprimee a={a} classe={classe} a4={a4} />;
   return (
     <div className={classe} style={a4 ? ({ "--marge-haut": "14mm", "--marge-cote": "18mm" } as CSSProperties) : undefined}>
@@ -291,8 +292,8 @@ export function ActeModuleImprime({ a, a4 = true }: { a: ActeModule; a4?: boolea
 
       <div className="mt-10 mb-8 text-center">
         <div className="text-[14pt] font-bold uppercase tracking-wide">{a.titre}</div>
-        <div className="mt-1 text-[10pt] text-zinc-600">
-          Réf. : demande de prestation n° {a.reference} du {dateLongue(a.demande.date)}
+        <div className="mt-1 text-[10pt]">
+          <span className="font-semibold">Référence :</span> DEMANDE DE PRESTATION n° {a.reference} du {dateLongue(a.demande.date)}
         </div>
       </div>
 
@@ -331,6 +332,117 @@ export function ActeModuleImprime({ a, a4 = true }: { a: ActeModule; a4?: boolea
           <div key={x}>- {x}</div>
         ))}
       </div>
+      {a4 && <MentionGenere />}
+    </div>
+  );
+}
+
+/** En bas de page, à la place du lien du portail (DG, 03/11/2026). */
+export function MentionGenere({ fixe = true }: { fixe?: boolean }) {
+  return (
+    <div className={cx("text-center text-[7.5pt] italic text-zinc-600", fixe ? "absolute right-[18mm] bottom-[8mm] left-[18mm]" : "mt-10")}>
+      {GENERE_PAR}
+    </div>
+  );
+}
+
+const SEP_LETTRE = <div className="leading-none">----------------------</div>;
+
+/**
+ * Soit-transmis comme les modèles Word de la DGRHAS (dossier « word », 04/11/2026) : en-tête du
+ * ministère jusqu'au service du suivi des carrières et le n°, à droite la République, la date,
+ * l'expéditeur et le destinataire ; l'objet sur deux lignes ; l'appel ; la phrase (une demande) ou
+ * le tableau des agents (plusieurs) ; la formule de politesse et le nom du signataire.
+ * La feuille s'allonge avec le tableau (plusieurs pages à l'impression).
+ */
+export function LettreTransmissionImprimee({ l, a4 = true }: { l: LettreTransmission; a4?: boolean }) {
+  const cellule = "border border-black px-1.5 py-1 align-top";
+  return (
+    <div
+      className={a4 ? "relative mx-auto mb-[8mm] box-border w-[210mm] bg-white px-[18mm] pt-[12mm] pb-[20mm] text-black shadow-doux print:mb-0 print:shadow-none" : "rounded-2xl bg-white p-5 text-[13px] shadow-doux print:shadow-none"}
+      style={a4 ? { minHeight: "296mm" } : undefined}
+    >
+      <div className="flex items-start justify-between gap-6 text-[9.5pt]">
+        <div className="w-[56%] text-center font-semibold leading-tight">
+          <div>MINISTERE DE L’ENSEIGNEMENT PRESCOLAIRE,</div>
+          <div>PRIMAIRE, SECONDAIRE ET DE L’ALPHABETISATION</div>
+          {SEP_LETTRE}
+          <div>CABINET</div>
+          {SEP_LETTRE}
+          <div>DIRECTION GENERALE DES RESSOURCES HUMAINES</div>
+          <div>ET DE L’ADMINISTRATION SCOLAIRE</div>
+          {SEP_LETTRE}
+          <div>DIRECTION DES RECRUTEMENTS</div>
+          <div>ET DU SUIVI DES CARRIERES</div>
+          {SEP_LETTRE}
+          <div>SERVICE DU SUIVI DES CARRIERES</div>
+          {SEP_LETTRE}
+          <div className="mt-1 whitespace-nowrap">N°______________/{l.suffixeNumero}</div>
+        </div>
+        <div className="w-[38%] text-center leading-tight">
+          <div className="font-semibold">REPUBLIQUE DU CONGO</div>
+          <div className="text-[9pt]">Unité-Travail-Progrès</div>
+          {SEP_LETTRE}
+          <div className="mt-6 text-left text-[11pt]">{l.lieu}, le</div>
+          <div className="mt-5 space-y-1 text-left text-[11pt] font-bold">
+            <div>{l.expediteur}</div>
+            <div className="text-center font-normal">à</div>
+            <div>{l.destinataire}</div>
+            <div className="text-center">- à {l.lieu} -</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-8 text-[11pt] leading-snug">
+        <div>
+          <span className="font-bold underline">Objet : {l.objet[0]}</span>
+        </div>
+        <div className="pl-[4.2em] font-bold">{l.objet[1]}</div>
+      </div>
+
+      <div className="mt-6 space-y-4 text-justify text-[11.5pt] leading-relaxed">
+        <p>{l.appel}</p>
+        <p className={l.collective ? "" : "font-bold"}>{l.corps}</p>
+      </div>
+
+      {l.collective && (
+        <table className="mt-3 w-full border-collapse text-[9pt]">
+          <thead>
+            <tr className="font-bold">
+              <th className={`${cellule} w-[6%] text-center`}>N°</th>
+              <th className={`${cellule} text-left`}>Noms et Prénoms</th>
+              {l.colonnes.map((c) => (
+                <th key={c.cle} className={`${cellule} text-center`}>
+                  {c.libelle}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {l.lignes.map((x) => (
+              <tr key={x.reference} style={{ breakInside: "avoid" }}>
+                <td className={`${cellule} text-center`}>{x.numero}</td>
+                <td className={cellule}>{x.nomComplet}</td>
+                {x.valeurs.map((v, i) => (
+                  <td key={i} className={`${cellule} text-center`}>
+                    {v}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <p className="mt-5 text-justify text-[11.5pt] leading-relaxed">{l.politesse}</p>
+
+      <div className="mt-6 flex justify-end text-[11.5pt]" style={{ breakInside: "avoid" }}>
+        <div className="w-[45%] text-center">
+          <div className="h-[22mm]" />
+          <div className="font-bold">{l.signataireNom ?? ""}</div>
+        </div>
+      </div>
+      {a4 && <MentionGenere />}
     </div>
   );
 }

@@ -10,7 +10,7 @@ import { useSession } from "@/components/session";
 import { Alerte, Badge, Bouton, BoutonIcone, Carte, Chargement, Champ, Liste, Modale, Saisie, useConfirmation } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { peut } from "@/lib/libelles";
-import { ETAT_PRESTATION, valeurChamp, type FichePrestation } from "@/lib/prestations";
+import { ETAT_PRESTATION, ETAT_RETOUR, valeurChamp, type FichePrestation } from "@/lib/prestations";
 
 const taille = (o: number) => (o > 1024 * 1024 ? `${(o / 1024 / 1024).toFixed(1)} Mo` : `${Math.ceil(o / 1024)} Ko`);
 const jour = (d: string | null) => (d ? new Date(d).toLocaleDateString("fr-FR") : "—");
@@ -71,12 +71,13 @@ export default function FicheDemandePrestation() {
       </div>
 
       {d.etat === "RETIREE" && <Alerte ton="jaune">Demande retirée : {d.motifRetrait}</Alerte>}
-      {d.etat === "ACCORDEE" && (
+      {d.etat === "ACCORDEE" && !d.retour && (
         <Alerte ton="vert">
           Demande accordée. L’acte (<strong>{def?.acte.toLowerCase()}</strong>) est prêt : imprimez-le, faites-le signer ({def?.signataire.replace(/^Le /, "le ")}), puis remettez-le à
           l’agent. L’agent peut aussi le voir sur le portail avec son numéro et son code.
         </Alerte>
       )}
+      {d.retour && <RetourDestinataire d={d} recharger={f.recharger} gerer={peut.traiter(profil.role)} />}
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="space-y-5">
@@ -263,5 +264,87 @@ function Retrait({ id, fermer, apres, dgrhas }: { id: string; fermer: () => void
         </div>
       </div>
     </Modale>
+  );
+}
+
+/**
+ * Retour du service destinataire (DG, 03/11/2026) : la demande accordée part au Budget ou à la
+ * Fonction publique par soit-transmis ; la DGRHAS note ce qui en revient (traité, non traité),
+ * et l'agent le voit sur le portail.
+ */
+function RetourDestinataire({ d, recharger, gerer }: { d: FichePrestation; recharger: () => void; gerer: boolean }) {
+  const r = d.retour!;
+  const [choix, setChoix] = useState<"TRAITE" | "NON_TRAITE" | "EN_ATTENTE" | null>(null);
+  const [note, setNote] = useState("");
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [enCours, setEnCours] = useState(false);
+  const ouvrir = (c: "TRAITE" | "NON_TRAITE" | "EN_ATTENTE") => {
+    setChoix(c);
+    setNote(c === r.etat ? (r.note ?? "") : "");
+    setErreur(null);
+  };
+  const enregistrer = async () => {
+    setEnCours(true);
+    setErreur(null);
+    try {
+      await api.post(`/demandes-prestation/${d.id}/retour`, { etat: choix, note });
+      setChoix(null);
+      recharger();
+    } catch (e) {
+      setErreur((e as Error).message);
+    } finally {
+      setEnCours(false);
+    }
+  };
+  return (
+    <Carte titre="Retour du service destinataire">
+      <div className="space-y-3 text-[13px]">
+        <p>
+          <Badge ton={ETAT_RETOUR[r.etat].ton}>{ETAT_RETOUR[r.etat].libelle}</Badge>
+          <span className="ml-2 text-zinc-500">({r.service})</span>
+        </p>
+        {r.etat === "EN_ATTENTE" ? (
+          <p className="text-zinc-600">
+            Demande accordée : imprimez le soit-transmis (seul, ou avec d’autres demandes du même type depuis l’onglet « À transmettre » de la liste), envoyez-le, puis notez ici ce
+            que le service destinataire a fait du dossier.
+          </p>
+        ) : (
+          <p className="text-zinc-600">
+            Noté par {r.par} le {jour(r.le)}
+            {r.note ? ` : ${r.note}` : "."}
+          </p>
+        )}
+        {gerer && (
+          <div className="flex flex-wrap gap-2">
+            {r.etat !== "TRAITE" && <Bouton onClick={() => ouvrir("TRAITE")}>Traité</Bouton>}
+            {r.etat !== "NON_TRAITE" && <Bouton onClick={() => ouvrir("NON_TRAITE")}>Non traité</Bouton>}
+            {r.etat !== "EN_ATTENTE" && <Bouton onClick={() => ouvrir("EN_ATTENTE")}>Remettre en attente</Bouton>}
+          </div>
+        )}
+      </div>
+      <Modale titre="Retour du service destinataire" ouverte={!!choix} fermer={() => setChoix(null)}>
+        <div className="space-y-3">
+          {erreur && <Alerte>{erreur}</Alerte>}
+          <p className="text-[13px]">
+            {choix === "TRAITE"
+              ? "Le service destinataire a traité le dossier (par exemple : la prise en charge est passée, la prime est payée)."
+              : choix === "NON_TRAITE"
+                ? "Le service destinataire n’a pas traité le dossier : dites ce qu’il a répondu."
+                : "Le retour noté est retiré : la demande attend de nouveau le retour du service destinataire."}
+          </p>
+          {choix !== "EN_ATTENTE" && (
+            <Champ libelle={choix === "NON_TRAITE" ? "Ce que le service a répondu *" : "Précision (facultatif)"}>
+              <Saisie value={note} onChange={(e) => setNote(e.target.value)} placeholder={choix === "TRAITE" ? "Ex. : payé sur la solde de décembre 2026" : "Ex. : pièce manquante, dossier renvoyé"} />
+            </Champ>
+          )}
+          <div className="flex justify-end gap-2">
+            <Bouton onClick={() => setChoix(null)}>Annuler</Bouton>
+            <Bouton variante="principal" disabled={enCours} onClick={enregistrer}>
+              Enregistrer
+            </Bouton>
+          </div>
+        </div>
+      </Modale>
+    </Carte>
   );
 }

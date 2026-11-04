@@ -95,7 +95,45 @@ export interface ActeModule {
   lieu: string;
   decisionLe: string | null;
   demande: { date: string };
+  /** Soit-transmis écrit comme les modèles de la DGRHAS (une demande). */
+  transmission: LettreTransmission | null;
+  retour: RetourPrestation | null;
 }
+
+/** Soit-transmis d'une ou plusieurs demandes (prestations/transmission.ts › LettreTransmission). */
+export interface LettreTransmission {
+  collective: boolean;
+  /** Deux lignes : « Transmission d’une (01) demande », « de prise en charge en solde. ». */
+  objet: [string, string];
+  appel: string;
+  corps: string;
+  colonnes: { cle: string; libelle: string }[];
+  lignes: { numero: string; nomComplet: string; valeurs: string[]; reference: string }[];
+  politesse: string;
+  destinataire: string;
+  expediteur: string;
+  signataireNom: string | null;
+  suffixeNumero: string;
+  lieu: string;
+}
+
+/** Retour du service destinataire (Budget, Fonction publique), une fois la demande transmise. */
+export interface RetourPrestation {
+  service: string;
+  etat: "EN_ATTENTE" | "TRAITE" | "NON_TRAITE";
+  note: string | null;
+  par: string | null;
+  le: string | null;
+}
+
+export const ETAT_RETOUR: Record<RetourPrestation["etat"], { libelle: string; ton: "jaune" | "vert" | "rouge" }> = {
+  EN_ATTENTE: { libelle: "En attente du retour du service destinataire", ton: "jaune" },
+  TRAITE: { libelle: "Traité par le service destinataire", ton: "vert" },
+  NON_TRAITE: { libelle: "Non traité par le service destinataire", ton: "rouge" },
+};
+
+/** Mention en bas des documents produits par le système (DG, 03/11/2026). */
+export const GENERE_PAR = "Document généré par le Système intégré de gestion des ressources humaines et de l’administration scolaire (SIGRHAS-MEPPSA)";
 
 /** Une demande de prestation, telle que la renvoie GET /demandes-prestation/:id. */
 export interface FichePrestation {
@@ -132,6 +170,7 @@ export interface FichePrestation {
   decisionPar: string | null;
   decisionLe: string | null;
   motifRetrait: string | null;
+  retour: RetourPrestation | null;
   circuit: EtapeCircuit[];
   etapeCourante: number | null;
   pieces: { id: string; libelle: string; nomOrigine: string; taille: number; mime: string; ajoutePar: string | null; creeLe: string }[];

@@ -3,7 +3,7 @@
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, type CSSProperties } from "react";
 import { StyleImpressionA4 } from "@/components/pages-a4";
-import { ActeModuleImprime } from "@/components/prestations";
+import { ActeModuleImprime, MentionGenere } from "@/components/prestations";
 import { Alerte, Bouton, Chargement } from "@/components/ui";
 import { lireSession, useApi } from "@/lib/api";
 import { valeurChamp, type ActeModule, type FichePrestation } from "@/lib/prestations";
@@ -56,7 +56,7 @@ function Formulaire({ d }: { d: FichePrestation }) {
   const externes = d.circuit.filter((e) => e.phase === "EXTERNE");
   const internes = d.circuit.filter((e) => e.phase === "INTERNE");
   const precisions = def ? def.champs.map((c) => [c.libelle, valeurChamp(c, d.details)] as const).filter(([, v]) => v) : [];
-  const cellule = "border border-black px-1.5 py-1 align-top";
+  const cellule = "border border-black px-1.5 py-[2px] align-top";
   const ligneAvis = (e: FichePrestation["circuit"][number], i: number) => (
     <tr key={i}>
       <td className={cellule}>{e.nom === e.sigle ? e.sigle : `${e.sigle} — ${e.nom}`}</td>
@@ -76,7 +76,7 @@ function Formulaire({ d }: { d: FichePrestation }) {
     </tr>
   );
   return (
-    <div className="page-a4 text-[9pt]" style={{ "--marge-haut": "10mm", "--marge-cote": "12mm" } as CSSProperties}>
+    <div className="page-a4 text-[8.5pt] leading-tight" style={{ "--marge-haut": "9mm", "--marge-cote": "12mm" } as CSSProperties}>
       <div className="flex justify-between gap-4 text-[8pt]">
         <div className="w-[58%] text-center font-bold leading-tight">
           <div>MINISTERE DE L’ENSEIGNEMENT PRESCOLAIRE, PRIMAIRE,</div>
@@ -93,18 +93,23 @@ function Formulaire({ d }: { d: FichePrestation }) {
           {SEP}
         </div>
       </div>
-      <div className="mt-4 border-2 border-black py-1 text-center text-[12pt] font-bold">FORMULAIRE DE DEMANDE DE PRESTATION</div>
-      <table className="mt-3 w-full border-collapse">
+      <div className="mt-3 text-center text-[13pt] font-bold uppercase tracking-wide">FORMULAIRE DE DEMANDE DE PRESTATION</div>
+      {/* Le type de prestation saute aux yeux : bandeau de couleur, écrit en blanc (DG, 03/11/2026) */}
+      <div
+        className="mt-2 rounded-sm px-3 py-1.5 text-center text-[11.5pt] font-bold uppercase text-white"
+        style={{ background: "#1d5c3a", printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}
+      >
+        {def?.libelle ?? d.type}
+      </div>
+      <table className="mt-2 w-full border-collapse">
         <tbody>
           <tr>
-            <td className={`${cellule} w-[22%] font-bold`}>TYPE DE PRESTATION</td>
-            <td className={cellule}>
-              {def?.libelle ?? d.type} <span className="text-zinc-600">(n° {d.numero})</span>
-            </td>
+            <td className={`${cellule} w-[14%] font-bold`}>N° DE LA DEMANDE</td>
+            <td className={`${cellule} w-[14%]`}>{d.numero}</td>
             <td className={`${cellule} w-[8%] font-bold`}>DATE</td>
-            <td className={`${cellule} w-[12%]`}>{jour(d.creeLe)}</td>
+            <td className={`${cellule} w-[14%]`}>{jour(d.creeLe)}</td>
             <td className={`${cellule} w-[14%] font-bold`}>DÉPARTEMENT</td>
-            <td className={`${cellule} w-[14%]`}>{a.departement ?? ""}</td>
+            <td className={cellule}>{a.departement ?? ""}</td>
           </tr>
         </tbody>
       </table>
@@ -126,7 +131,7 @@ function Formulaire({ d }: { d: FichePrestation }) {
         </tbody>
       </table>
 
-      <div className="mt-3 text-center font-bold">LES AVIS DANS L’ORDRE HIÉRARCHIQUE</div>
+      <div className="mt-2 text-center font-bold">LES AVIS DANS L’ORDRE HIÉRARCHIQUE</div>
       <table className="mt-1 w-full border-collapse">
         <tbody>
           {enteteAvis("Circuit département scolaire / administration centrale")}
@@ -142,7 +147,7 @@ function Formulaire({ d }: { d: FichePrestation }) {
 
       {internes.length > 0 && (
         <>
-          <div className="mt-3 text-center font-bold">LE CIRCUIT DE TRAITEMENT À LA DGRHAS</div>
+          <div className="mt-2 text-center font-bold">LE CIRCUIT DE TRAITEMENT À LA DGRHAS</div>
           <table className="mt-1 w-full border-collapse">
             <tbody>
               {enteteAvis("Circuit interne")}
@@ -152,7 +157,7 @@ function Formulaire({ d }: { d: FichePrestation }) {
         </>
       )}
 
-      <table className="mt-3 w-full border-collapse">
+      <table className="mt-2 w-full border-collapse">
         <tbody>
           <tr>
             <td className={`${cellule} w-[18%] font-bold`}>DÉCISION</td>
@@ -171,13 +176,18 @@ function Formulaire({ d }: { d: FichePrestation }) {
         </tbody>
       </table>
 
-      <div className="mt-3 text-[8pt] leading-snug">
-        <strong className="underline">N.B.</strong> : 1°) Le formulaire de demande de prestation devra accompagner la demande manuscrite et les pièces jointes afin de prendre les avis
-        successifs des autorités hiérarchiques.
-        <br />
-        2°) La rétention des demandes de prestation est proscrite. Toute demande doit parvenir au destinataire final (niveau de décision) avec les avis favorables ou
-        défavorables des autorités hiérarchiques successives.
+      {/* La note, et à côté la place du cachet et de la signature (DG, 03/11/2026) */}
+      <div className="mt-2 flex items-start gap-3">
+        <div className="flex-1 text-[8pt] leading-snug">
+          <strong className="underline">N.B.</strong> : 1°) Le formulaire de demande de prestation devra accompagner la demande manuscrite et les pièces jointes afin de prendre les avis
+          successifs des autorités hiérarchiques.
+          <br />
+          2°) La rétention des demandes de prestation est proscrite. Toute demande doit parvenir au destinataire final (niveau de décision) avec les avis favorables ou
+          défavorables des autorités hiérarchiques successives.
+        </div>
+        <div className="h-[26mm] w-[58mm] shrink-0 border border-dashed border-zinc-500 p-1.5 text-center text-[8pt] text-zinc-600">Cachet et signature</div>
       </div>
+      <MentionGenere />
     </div>
   );
 }
