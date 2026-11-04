@@ -1,8 +1,8 @@
 "use client";
 
 import { ArrowRight, CheckCircle2, FileSignature, Paperclip, Scale, Users, X } from "lucide-react";
-import type { CSSProperties } from "react";
-import { Aide, Champ, Liste, Saisie, SaisieDate, Zone, cx } from "@/components/ui";
+import { useState, type CSSProperties } from "react";
+import { Aide, Alerte, Bouton, Champ, Liste, Modale, Saisie, SaisieDate, Zone, cx } from "@/components/ui";
 import { GENERE_PAR, type ActeModule, type ChampPrestation, type DefinitionPrestation, type LettreTransmission } from "@/lib/prestations";
 
 /**
@@ -432,68 +432,113 @@ export function MentionGenere({ fixe = true }: { fixe?: boolean }) {
   );
 }
 
-const SEP_LETTRE = <div className="leading-none">----------------------</div>;
+/**
+ * Barre sous une ligne de l'en-tête : des « _ », courte et centrée (remarque du 05/11/2026), qui ne
+ * prend pas toute la largeur du bloc.
+ */
+const Barre = ({ n = 8 }: { n?: number }) => <div className="-mt-[0.35em] leading-none">{"_".repeat(n)}</div>;
 
 /**
- * Soit-transmis comme les modèles Word de la DGRHAS (dossier « word », 04/11/2026) : en-tête du
- * ministère jusqu'au service du suivi des carrières et le n°, à droite la République, la date,
- * l'expéditeur et le destinataire ; l'objet sur deux lignes ; l'appel ; la phrase (une demande) ou
- * le tableau des agents (plusieurs) ; la formule de politesse et le nom du signataire.
- * La feuille s'allonge avec le tableau (plusieurs pages à l'impression).
+ * Le paragraphe avec ce qui ressort : la demande (« une (01) demande de … ») en gras et soulignée,
+ * le nom de l'intéressé en gras — aussi dans un texte modifié à la main, là où ces mots y sont.
  */
-export function LettreTransmissionImprimee({ l, a4 = true }: { l: LettreTransmission; a4?: boolean }) {
+function TexteMisEnValeur({ texte, m }: { texte: string; m: LettreTransmission["miseEnValeur"] }) {
+  const marques = [...m.grasSouligne.map((t) => ({ t, souligne: true })), ...m.gras.map((t) => ({ t, souligne: false }))].filter((x) => x.t);
+  const morceaux: { t: string; style: "" | "gras" | "souligne" }[] = [];
+  let reste = texte;
+  while (reste) {
+    let premier: { i: number; t: string; souligne: boolean } | null = null;
+    for (const x of marques) {
+      const i = reste.indexOf(x.t);
+      if (i >= 0 && (!premier || i < premier.i)) premier = { i, ...x };
+    }
+    if (!premier) {
+      morceaux.push({ t: reste, style: "" });
+      break;
+    }
+    if (premier.i > 0) morceaux.push({ t: reste.slice(0, premier.i), style: "" });
+    morceaux.push({ t: premier.t, style: premier.souligne ? "souligne" : "gras" });
+    reste = reste.slice(premier.i + premier.t.length);
+  }
+  return (
+    <>
+      {morceaux.map((x, i) =>
+        x.style === "souligne" ? (
+          <strong key={i} className="underline">
+            {x.t}
+          </strong>
+        ) : x.style === "gras" ? (
+          <strong key={i}>{x.t}</strong>
+        ) : (
+          <span key={i}>{x.t}</span>
+        ),
+      )}
+    </>
+  );
+}
+
+/**
+ * Soit-transmis comme les modèles Word de la DGRHAS (dossier « word ») : en-tête du ministère au
+ * service du suivi des carrières (pas en gras, barres courtes) et le n° ; à droite la République,
+ * « Brazzaville, le », l'expéditeur et le destinataire en gras, « - Brazzaville - » ; « Objet »
+ * souligné ; l'appel, le paragraphe (14 pt, la demande soulignée et le nom en gras) ou le tableau
+ * des agents ; la formule de politesse et le nom du signataire. La feuille s'allonge avec le tableau.
+ */
+export function LettreTransmissionImprimee({ l, a4 = true, corps }: { l: LettreTransmission; a4?: boolean; corps?: string }) {
   const cellule = "border border-black px-1.5 py-1 align-top";
+  const retrait = "indent-[1.25cm]";
   return (
     <div
       className={a4 ? "relative mx-auto mb-[8mm] box-border w-[210mm] bg-white px-[18mm] pt-[12mm] pb-[20mm] text-black shadow-doux print:mb-0 print:shadow-none" : "rounded-2xl bg-white p-5 text-[13px] shadow-doux print:shadow-none"}
-      style={a4 ? { minHeight: "296mm" } : undefined}
+      style={a4 ? { minHeight: "296mm", fontFamily: "'Agency FB', 'Arial Narrow', 'Roboto Condensed', Arial, sans-serif" } : undefined}
     >
-      <div className="flex items-start justify-between gap-6 text-[9.5pt]">
-        <div className="w-[56%] text-center font-semibold leading-tight">
-          <div>MINISTERE DE L’ENSEIGNEMENT PRESCOLAIRE,</div>
-          <div>PRIMAIRE, SECONDAIRE ET DE L’ALPHABETISATION</div>
-          {SEP_LETTRE}
-          <div>CABINET</div>
-          {SEP_LETTRE}
-          <div>DIRECTION GENERALE DES RESSOURCES HUMAINES</div>
+      <div className="flex items-start justify-between gap-6 text-[12pt]">
+        <div className="w-[56%] text-center leading-tight">
+          <div>MINISTERE DE L’ENSEIGNEMENT PRESCOLAIRE, PRIMAIRE,</div>
+          <div>SECONDAIRE ET DE L’ALPHABETISATION</div>
+          <Barre n={12} />
+          <div className="mt-1">CABINET</div>
+          <Barre />
+          <div className="mt-1">DIRECTION GENERALE DES RESSOURCES HUMAINES</div>
           <div>ET DE L’ADMINISTRATION SCOLAIRE</div>
-          {SEP_LETTRE}
-          <div>DIRECTION DES RECRUTEMENTS</div>
-          <div>ET DU SUIVI DES CARRIERES</div>
-          {SEP_LETTRE}
-          <div>SERVICE DU SUIVI DES CARRIERES</div>
-          {SEP_LETTRE}
-          <div className="mt-1 whitespace-nowrap">N°______________/{l.suffixeNumero}</div>
+          <Barre n={12} />
+          <div className="mt-1">DIRECTION DES RECRUTEMENTS ET DU SUIVI</div>
+          <div>DES CARRIERES</div>
+          <Barre n={10} />
+          <div className="mt-1">SERVICE DU SUIVI DES CARRIERES</div>
+          <Barre n={10} />
+          <div className="mt-2 whitespace-nowrap text-left">N°______________/{l.suffixeNumero}</div>
         </div>
-        <div className="w-[38%] text-center leading-tight">
-          <div className="font-semibold">REPUBLIQUE DU CONGO</div>
-          <div className="text-[9pt]">Unité-Travail-Progrès</div>
-          {SEP_LETTRE}
-          <div className="mt-6 text-left text-[11pt]">{l.lieu}, le</div>
-          <div className="mt-5 space-y-1 text-left text-[11pt] font-bold">
+        <div className="w-[40%] text-center leading-tight">
+          <div>REPUBLIQUE DU CONGO</div>
+          <div className="text-[10pt]">Unité-Travail-Progrès</div>
+          <Barre n={7} />
+          <div className="mt-6 text-[14pt]">{l.lieu}, le</div>
+          <div className="mt-4 space-y-0.5 text-[14pt] font-bold">
             <div>{l.expediteur}</div>
-            <div className="text-center font-normal">à</div>
+            <div>à</div>
             <div>{l.destinataire}</div>
-            <div className="text-center">- à {l.lieu} -</div>
+            <div>- {l.lieu} -</div>
           </div>
         </div>
       </div>
 
-      <div className="mt-8 text-[11pt] leading-snug">
+      <div className="mt-8 pl-[2.5mm] text-[14pt] leading-snug">
         <div>
-          <span className="font-bold underline">Objet : {l.objet[0]}</span>
+          <strong className="underline">Objet</strong> : {l.objet[0]}
         </div>
-        {/* Comme les modèles : seule la première ligne de l'objet est en gras et soulignée */}
-        <div className="pl-[4.2em]">{l.objet[1]}</div>
+        <div className="pl-[4.1em]">{l.objet[1]}</div>
       </div>
 
-      <div className="mt-6 space-y-4 text-justify text-[11.5pt] leading-relaxed">
-        <p>{l.appel}</p>
-        <p className={l.collective ? "" : "font-bold"}>{l.corps}</p>
+      <div className="mt-6 space-y-4 text-justify text-[14pt] leading-relaxed">
+        <p className={retrait}>{l.appel}</p>
+        <p className={retrait}>
+          <TexteMisEnValeur texte={corps ?? l.corps} m={l.miseEnValeur} />
+        </p>
       </div>
 
       {l.collective && (
-        <table className="mt-3 w-full border-collapse text-[9pt]">
+        <table className="mt-3 w-full border-collapse text-[10pt]">
           <thead>
             <tr className="font-bold">
               <th className={`${cellule} w-[6%] text-center`}>N°</th>
@@ -521,9 +566,9 @@ export function LettreTransmissionImprimee({ l, a4 = true }: { l: LettreTransmis
         </table>
       )}
 
-      <p className="mt-5 text-justify text-[11.5pt] leading-relaxed">{l.politesse}</p>
+      <p className={`mt-5 text-justify text-[14pt] leading-relaxed ${retrait}`}>{l.politesse}</p>
 
-      <div className="mt-6 flex justify-end text-[11.5pt]" style={{ breakInside: "avoid" }}>
+      <div className="mt-6 flex justify-end text-[14pt]" style={{ breakInside: "avoid" }}>
         <div className="w-[45%] text-center">
           <div className="h-[22mm]" />
           <div className="font-bold">{l.signataireNom ?? ""}</div>
@@ -605,5 +650,65 @@ function LettreImprimee({ a, classe, a4 }: { a: ActeModule; classe: string; a4: 
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * « Modifier l'introduction » du soit-transmis (comme pour les notes) : le paragraphe s'écrit à la
+ * main ; la demande et le nom de l'intéressé restent mis en valeur là où ils sont encore écrits.
+ */
+export function ModifierIntroduction({
+  texte,
+  modifie,
+  fermer,
+  enregistrer,
+  memoire,
+}: {
+  texte: string;
+  modifie: boolean;
+  fermer: () => void;
+  /** Texte vide : le paragraphe du modèle revient. */
+  enregistrer: (texte: string) => Promise<void> | void;
+  /** Gardé avec la demande (une demande) ou seulement pour cette impression (plusieurs). */
+  memoire: "demande" | "impression";
+}) {
+  const [t, setT] = useState(texte);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [enCours, setEnCours] = useState(false);
+  const faire = async (v: string) => {
+    setEnCours(true);
+    setErreur(null);
+    try {
+      await enregistrer(v);
+      fermer();
+    } catch (e) {
+      setErreur((e as Error).message);
+    } finally {
+      setEnCours(false);
+    }
+  };
+  return (
+    <Modale titre="Modifier l’introduction" ouverte fermer={fermer} large>
+      <div className="space-y-3">
+        {erreur && <Alerte>{erreur}</Alerte>}
+        <p className="text-[13px] text-zinc-600">
+          Le paragraphe du soit-transmis.{" "}
+          {memoire === "demande" ? "Il est gardé avec la demande : on le retrouve à la prochaine impression." : "Il vaut pour cette impression (plusieurs demandes)."} La demande
+          et le nom de l’intéressé restent en gras là où ils sont écrits.
+        </p>
+        <Zone rows={8} value={t} onChange={(e) => setT(e.target.value)} />
+        <div className="flex flex-wrap justify-end gap-2">
+          {modifie && (
+            <Bouton disabled={enCours} onClick={() => faire("")}>
+              Revenir au texte du modèle
+            </Bouton>
+          )}
+          <Bouton onClick={fermer}>Annuler</Bouton>
+          <Bouton variante="principal" disabled={enCours || !t.trim()} onClick={() => faire(t)}>
+            Enregistrer
+          </Bouton>
+        </div>
+      </div>
+    </Modale>
   );
 }

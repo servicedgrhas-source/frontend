@@ -117,6 +117,10 @@ export interface LettreTransmission {
   objet: [string, string];
   appel: string;
   corps: string;
+  /** La demande en gras et soulignée, le nom de l'intéressé en gras. */
+  miseEnValeur: { grasSouligne: string[]; gras: string[] };
+  /** Le paragraphe a été modifié à la main. */
+  texteModifie: boolean;
   colonnes: { cle: string; libelle: string }[];
   lignes: { numero: string; nomComplet: string; valeurs: string[]; reference: string }[];
   politesse: string;

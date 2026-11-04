@@ -1,11 +1,11 @@
 "use client";
 
 import { useParams, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, type CSSProperties } from "react";
+import { Suspense, useEffect, useState, type CSSProperties } from "react";
 import { StyleImpressionA4 } from "@/components/pages-a4";
-import { ActeModuleImprime, MentionGenere } from "@/components/prestations";
+import { ActeModuleImprime, MentionGenere, ModifierIntroduction } from "@/components/prestations";
 import { Alerte, Bouton, Chargement } from "@/components/ui";
-import { lireSession, useApi } from "@/lib/api";
+import { api, lireSession, useApi } from "@/lib/api";
 import { valeurChamp, type ActeModule, type FichePrestation } from "@/lib/prestations";
 
 /**
@@ -18,6 +18,7 @@ function Impression() {
   const acte = useSearchParams().get("doc") === "acte";
   const f = useApi<FichePrestation>(acte ? null : `/demandes-prestation/${id}`);
   const a = useApi<ActeModule>(acte ? `/demandes-prestation/${id}/acte` : null);
+  const [intro, setIntro] = useState(false);
   useEffect(() => {
     if (!lireSession().jeton) window.location.replace("/connexion");
   }, []);
@@ -36,11 +37,23 @@ function Impression() {
         <span className="text-sm text-zinc-700">
           {acte ? `${a.donnees!.titre} — demande ${a.donnees!.reference}${a.donnees!.officiel || a.donnees!.transmission ? " (modèle officiel de la DGRHAS)" : " (modèle proposé, en attendant le modèle officiel)"}` : `Formulaire de la demande ${f.donnees!.numero}`}
         </span>
-        <Bouton variante="principal" onClick={() => window.print()}>
-          Imprimer / Enregistrer en PDF
-        </Bouton>
+        <div className="flex gap-2">
+          {acte && a.donnees!.transmission && <Bouton onClick={() => setIntro(true)}>Modifier l’introduction</Bouton>}
+          <Bouton variante="principal" onClick={() => window.print()}>
+            Imprimer / Enregistrer en PDF
+          </Bouton>
+        </div>
       </div>
       {acte ? <ActeModuleImprime a={a.donnees!} /> : <Formulaire d={f.donnees!} />}
+      {intro && a.donnees?.transmission && (
+        <ModifierIntroduction
+          texte={a.donnees.transmission.corps}
+          modifie={a.donnees.transmission.texteModifie}
+          memoire="demande"
+          fermer={() => setIntro(false)}
+          enregistrer={async (texte) => a.setDonnees(await api.put<ActeModule>(`/demandes-prestation/${id}/lettre`, { texte }))}
+        />
+      )}
     </div>
   );
 }

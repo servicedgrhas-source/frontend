@@ -1,9 +1,9 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { StyleImpressionA4 } from "@/components/pages-a4";
-import { LettreTransmissionImprimee } from "@/components/prestations";
+import { LettreTransmissionImprimee, ModifierIntroduction } from "@/components/prestations";
 import { Alerte, Bouton, Chargement } from "@/components/ui";
 import { lireSession, qs, useApi } from "@/lib/api";
 import type { LettreTransmission } from "@/lib/prestations";
@@ -15,6 +15,9 @@ import type { LettreTransmission } from "@/lib/prestations";
 function Impression() {
   const ids = useSearchParams().get("ids") ?? "";
   const t = useApi<{ prestation: string; demandes: string[]; lettre: LettreTransmission }>(ids ? `/demandes-prestation/transmission${qs({ ids })}` : null);
+  const [intro, setIntro] = useState(false);
+  // Paragraphe écrit à la main, pour cette impression
+  const [corps, setCorps] = useState<string | null>(null);
   useEffect(() => {
     if (!lireSession().jeton) window.location.replace("/connexion");
   }, []);
@@ -34,11 +37,23 @@ function Impression() {
         <span className="text-sm text-zinc-700">
           Soit-transmis : {d.prestation} — {d.demandes.length} demande{d.demandes.length > 1 ? "s" : ""} ({d.demandes.join(", ")})
         </span>
-        <Bouton variante="principal" onClick={() => window.print()}>
-          Imprimer / Enregistrer en PDF
-        </Bouton>
+        <div className="flex gap-2">
+          <Bouton onClick={() => setIntro(true)}>Modifier l’introduction</Bouton>
+          <Bouton variante="principal" onClick={() => window.print()}>
+            Imprimer / Enregistrer en PDF
+          </Bouton>
+        </div>
       </div>
-      <LettreTransmissionImprimee l={d.lettre} />
+      <LettreTransmissionImprimee l={d.lettre} corps={corps ?? undefined} />
+      {intro && (
+        <ModifierIntroduction
+          texte={corps ?? d.lettre.corps}
+          modifie={corps !== null}
+          memoire="impression"
+          fermer={() => setIntro(false)}
+          enregistrer={(texte) => setCorps(texte.trim() ? texte : null)}
+        />
+      )}
     </div>
   );
 }
