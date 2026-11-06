@@ -656,12 +656,15 @@ export function Modale({
   fermer,
   children,
   large,
+  ecran,
 }: {
   titre: string;
   ouverte: boolean;
   fermer: () => void;
   children: ReactNode;
   large?: boolean;
+  /** Presque tout l'écran : une longue liste à traiter (import, doublons). */
+  ecran?: boolean;
 }) {
   useEffect(() => {
     if (!ouverte) return;
@@ -681,7 +684,7 @@ export function Modale({
           <div
             className={cx(
               "w-full animate-fenetre rounded-3xl bg-white p-6 shadow-2xl",
-              large ? "max-w-3xl" : "max-w-lg",
+              ecran ? "max-w-[min(96vw,1400px)]" : large ? "max-w-3xl" : "max-w-lg",
             )}
             role="dialog"
             aria-modal="true"

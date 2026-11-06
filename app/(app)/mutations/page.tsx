@@ -8,6 +8,7 @@ import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Pastille, Saisie, Tableau, Vide } from "@/components/ui";
 import { qs, useApi } from "@/lib/api";
 import { ImportMutations as ImportMutationsAssistant } from "@/components/mutations-import";
+import { CorrigerPoints, PointsAVerifier } from "@/components/mutation-points";
 import { CYCLES, duree, ETAT_MUTATION, GROUPES_MUTATION, peut } from "@/lib/libelles";
 import type { DemandeMutation } from "@/lib/types";
 
@@ -20,13 +21,25 @@ export default function Mutations() {
   const [groupe, setGroupe] = useState("");
   const [departementId, setDepartementId] = useState(profil.role === "DDEPPSA" && profil.departementId ? String(profil.departementId) : "");
   const [recherche, setRecherche] = useState("");
+  // Points à vérifier (06/11/2026) : « * » toutes les demandes qui en ont, sinon un point précis
+  const [anomalie, setAnomalie] = useState(() => (typeof window === "undefined" ? "" : (new URLSearchParams(window.location.search).get("anomalie") ?? "")));
+  const [corriger, setCorriger] = useState<DemandeMutation | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const { donnees, erreur, recharger } = useApi<DemandeMutation[]>(`/mutations${qs({ motif, etat, groupe, departementId })}`);
   const libMotif = useMemo(() => Object.fromEntries(refs.motifs.map((m) => [m.code, m.libelle])), [refs]);
 
   const liste = useMemo(() => {
     const r = recherche.trim().toUpperCase();
-    return r ? donnees?.filter((d) => d.nomComplet.toUpperCase().includes(r) || d.matricule?.toUpperCase().includes(r)) : donnees;
-  }, [donnees, recherche]);
+    let l = r ? donnees?.filter((d) => d.nomComplet.toUpperCase().includes(r) || d.matricule?.toUpperCase().includes(r)) : donnees;
+    if (anomalie) l = l?.filter((d) => (anomalie === "*" ? d.anomalies.length > 0 : d.anomalies.includes(anomalie)));
+    return l;
+  }, [donnees, recherche, anomalie]);
+  // La suivante à corriger : la prochaine demande de la liste affichée qui a encore des points
+  const suivanteDe = (d: DemandeMutation) => {
+    const l = (liste ?? []).filter((x) => x.anomalies.length && !x.noteId);
+    const i = l.findIndex((x) => x.id === d.id);
+    return l[i + 1] ?? null;
+  };
 
   return (
     <div className="space-y-4">
@@ -67,6 +80,12 @@ export default function Mutations() {
           </Champ>
         </div>
         {erreur && <Alerte>{erreur}</Alerte>}
+        {donnees && peut.traiter(profil.role) && (
+          <div className="mb-3">
+            <PointsAVerifier demandes={donnees} choisi={anomalie} choisir={setAnomalie} />
+          </div>
+        )}
+        <Annonce fermer={() => setMessage(null)}>{message}</Annonce>
         {!liste ? (
           <Chargement />
         ) : !liste.length ? (
@@ -134,6 +153,18 @@ export default function Mutations() {
                       {d.anomalies.length > 0 && (
                         <div className="mt-1 text-or-700" title={d.anomalies.join("\n")}>
                           {d.anomalies.length} point{d.anomalies.length > 1 ? "s" : ""} à vérifier
+                          {peut.traiter(profil.role) && !d.noteId && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCorriger(d);
+                              }}
+                              className="ml-1.5 rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-900 ring-1 ring-amber-300 hover:bg-amber-200"
+                            >
+                              Corriger
+                            </button>
+                          )}
                         </div>
                       )}
                     </td>
@@ -158,6 +189,20 @@ export default function Mutations() {
           </>
         )}
       </Carte>
+      {corriger && donnees && (
+        <CorrigerPoints
+          key={corriger.id}
+          demande={corriger}
+          toutes={donnees}
+          suivante={suivanteDe(corriger)}
+          fermer={() => setCorriger(null)}
+          apres={(texte, ensuite) => {
+            setMessage(texte);
+            setCorriger(ensuite);
+            recharger();
+          }}
+        />
+      )}
     </div>
   );
 }
