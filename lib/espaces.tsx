@@ -53,6 +53,7 @@ export interface Compteurs {
   pasAffectes: number;
   recommandations: number;
   recommandationsEnr?: number;
+  recommandationsMut?: number;
   mutationsEnCours: number;
   notesAffASoumettre: number;
   notesAffSoumises: number;
@@ -420,6 +421,14 @@ export const ESPACES: Espace[] = [
         icone: ArrowLeftRight,
         explication: "Suivre chaque demande : avis, décision du ministre.",
         compteur: (c) => ({ n: c.mutationsEnCours, texte: `${c.mutationsEnCours} demande(s) en cours` }),
+      },
+      {
+        href: "/mutations/recommandations",
+        libelle: "Recommandations",
+        icone: Stamp,
+        visible: traiter,
+        explication: "Les recommandations sur les demandes : autre département, autre lieu ou autre motif. Le chef de service propose, le directeur donne son avis, le DG décide.",
+        compteur: (c) => ({ n: c.recommandationsMut ?? 0, texte: `${c.recommandationsMut ?? 0} en attente (avis du directeur ou décision du DG)` }),
       },
       {
         href: "/mutations/statistiques",

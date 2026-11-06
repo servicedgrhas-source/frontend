@@ -104,7 +104,7 @@ export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "E
   const [aSeparer, setASeparer] = useState<NoteResume | null>(null);
   // Enrôlement : chaque note suivie de ses lots, additifs et rectificatifs (06/11/2026)
   const rangees = useMemo<Rangee[]>(
-    () => (module === "ENROLEMENT" ? familles(donnees ?? []) : (donnees ?? []).map((n) => ({ n, niveau: 0, lien: null, enfants: { ADDITIF: 0, RECTIFICATIF: 0, LOT: 0 } }))),
+    () => (module === "ENROLEMENT" || module === "MUTATION" ? familles(donnees ?? []) : (donnees ?? []).map((n) => ({ n, niveau: 0, lien: null, enfants: { ADDITIF: 0, RECTIFICATIF: 0, LOT: 0 } }))),
     [donnees, module],
   );
   const avecFamilles = rangees.some((r) => r.lien);
@@ -252,6 +252,12 @@ export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "E
                     )}
                     <div>{n.libelle}</div>
                     <ResumeFamille enfants={enfants} />
+                    {/* Mutation signée : la base du personnel attend le bouton de la note (06/11/2026) */}
+                    {n.module === "MUTATION" && n.statut === "SIGNEE" && (
+                      <div className={`mt-1.5 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${n.reportePersonnelLe ? "bg-emerald-50 text-emerald-800 ring-emerald-200" : "bg-amber-50 text-amber-800 ring-amber-200"}`}>
+                        {n.reportePersonnelLe ? "Reportée dans la base du personnel" : "À importer dans la base du personnel"}
+                      </div>
+                    )}
                     {/* Notes réunies : un menu déroulant les montre une à une (DG, 01/11/2026) */}
                     {n.reunion && (
                       <button
@@ -424,7 +430,13 @@ function familles(notes: NoteResume[]): Rangee[] {
     else if (n.rectificatifDe && parId.has(n.rectificatifDe)) parent.set(n.id, { id: n.rectificatifDe, type: "RECTIFICATIF" });
     else if (n.lotRangement != null) {
       const p = notes.find(
-        (x) => x.id !== n.id && x.lotRangement == null && !x.additifDe && !x.rectificatifDe && x.typeNote === n.typeNote && x.campagneId === n.campagneId,
+        (x) =>
+          x.id !== n.id &&
+          x.lotRangement == null &&
+          !x.additifDe &&
+          !x.rectificatifDe &&
+          x.typeNote === n.typeNote &&
+          (n.module === "MUTATION" ? x.motif === n.motif : x.campagneId === n.campagneId),
       );
       if (p) parent.set(n.id, { id: p.id, type: "LOT" });
     }

@@ -119,6 +119,7 @@ export function VueMutation() {
         <ProposerRecommandation
           url={`/mutations/${d.id}/recommandations`}
           personne={d.nomComplet}
+          motifActuel={d.motif}
           avant={[refs.departements.find((x) => x.id === d.departementSolliciteId)?.nom, d.lieuSollicite].filter(Boolean).join(" · ")}
           libelleLieu="Lieu demandé (établissement, structure)"
           fermer={() => setRecommander(false)}

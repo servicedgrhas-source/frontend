@@ -264,6 +264,11 @@ export interface NoteResume {
   groupes?: string[];
   /** Notes d'enrôlement : lot de rangement (null : la note principale du type), textes réécrits. */
   lotRangement?: number | null;
+  /** Lot de rangement : ce qui le distingue (« Anglais »…). */
+  libelleLot?: string | null;
+  /** Note de mutation signée reportée dans la base du personnel (06/11/2026). */
+  reportePersonnelLe?: string | null;
+  reportePersonnelPar?: string | null;
   textesLibres?: { introduction?: string | null; mentions?: string[] | null } | null;
   additifDe?: string | null;
   rectificatifDe?: string | null;
@@ -332,6 +337,12 @@ export interface Rectification {
     specialite: string | null;
     diplome: string | null;
     departementId: number | null;
+    /** Mutation : matricule, grade/échelon, cycle, ancien poste, lieu sollicité. */
+    matricule?: string | null;
+    ge?: string | null;
+    cycle?: string | null;
+    ancienPoste?: string | null;
+    lieuSollicite?: string | null;
   };
 }
 

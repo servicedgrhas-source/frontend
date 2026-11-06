@@ -62,7 +62,10 @@ export function RecommandationsVue({ operationFixe }: { operationFixe?: "AFFECTA
   const [avis, setAvis] = useState<{ r: Recommandation; a: "FAVORABLE" | "DEFAVORABLE" } | null>(null);
   // Enrôlement : les notes du préscolaire, du primaire, du collège, du lycée (06/11/2026)
   const libType = (c?: string | null, op?: string) =>
-    (op === "ENROLEMENT" ? NOTES_ENROLEMENT[c ?? ""] : undefined) ?? refs.typesNote.find((t) => t.code === c)?.libelle ?? c ?? "—";
+    (op === "ENROLEMENT" ? NOTES_ENROLEMENT[c ?? ""] : op === "MUTATION" ? refs.motifs.find((m) => m.code === c)?.libelle : undefined) ??
+    refs.typesNote.find((t) => t.code === c)?.libelle ??
+    c ??
+    "—";
   const directeur = profil.role === "DIRECTEUR" || profil.role === "ADMIN";
   // Décision groupée (DG, 01/11/2026) : cocher des dossiers, puis les valider ou les rejeter ensemble
   const decideur = peut.decider(profil.role);
@@ -107,8 +110,8 @@ export function RecommandationsVue({ operationFixe }: { operationFixe?: "AFFECTA
   return (
     <div className="space-y-4">
       <EnTete
-        titre={operationFixe === "ENROLEMENT" ? "Recommandations de l’enrôlement" : "Recommandations"}
-        sousTitre={operationFixe === "ENROLEMENT" ? "Une recommandation change ce que la règle donne à un volontaire : autre département, autre établissement, autre note (un instituteur dans la note du collège…) avec sa spécialité. Le chef de service la propose (depuis la saisie ou la base des enrôlés), le directeur donne son avis, le DG décide. Validée, elle s’applique au dossier, le fait retenir s’il ne l’était pas, et ressort sur la note." : "Une recommandation change ce que la règle donne naturellement (autre département, autre établissement ou lieu), pour une affectation, une mutation ou un enrôlement. Le chef de service la propose, le directeur donne son avis, le DG décide. Validée, elle s’applique au dossier et ressort sur la note ; sans validation, la règle s’applique."}
+        titre={operationFixe === "ENROLEMENT" ? "Recommandations de l’enrôlement" : operationFixe === "MUTATION" ? "Recommandations des mutations" : "Recommandations"}
+        sousTitre={operationFixe === "MUTATION" ? "Une recommandation change ce qui a été demandé : autre département, autre lieu, ou autre motif (et donc une autre note de mutation). On la propose depuis la fiche de la demande (bouton « Recommander ») ; le directeur donne son avis, le DG décide. Validée, elle s’applique à la demande et ressort sur la note. L’accord de la mutation reste celui du Ministre." : operationFixe === "ENROLEMENT" ? "Une recommandation change ce que la règle donne à un volontaire : autre département, autre établissement, autre note (un instituteur dans la note du collège…) avec sa spécialité. Le chef de service la propose (depuis la saisie ou la base des enrôlés), le directeur donne son avis, le DG décide. Validée, elle s’applique au dossier, le fait retenir s’il ne l’était pas, et ressort sur la note." : "Une recommandation change ce que la règle donne naturellement (autre département, autre établissement ou lieu), pour une affectation, une mutation ou un enrôlement. Le chef de service la propose, le directeur donne son avis, le DG décide. Validée, elle s’applique au dossier et ressort sur la note ; sans validation, la règle s’applique."}
       />
       <div className="flex flex-wrap items-center gap-2">
         <Saisie
@@ -234,13 +237,13 @@ export function RecommandationsVue({ operationFixe }: { operationFixe?: "AFFECTA
                     )}
                   </td>
                   <td className="text-xs">
-                    {(r.operation === "AFFECTATION" || r.operation === "ENROLEMENT") && r.avant?.typeNote && <div>{libType(r.avant.typeNote, r.operation)}</div>}
+                    {r.avant?.typeNote && <div>{r.operation === "MUTATION" ? "Motif : " : ""}{libType(r.avant.typeNote, r.operation)}</div>}
                     {r.operation === "ENROLEMENT" && r.typeNote && <div className="text-zinc-500">Spécialité : {r.avant?.specialite || "aucune"}</div>}
                     <div>{r.departementAvant ?? "—"}</div>
                     {r.operation !== "AFFECTATION" && r.avant?.etablissement && <div>{r.avant.etablissement}</div>}
                   </td>
                   <td className="text-xs font-medium text-sky-800">
-                    {r.typeNote && <div>Note : {libType(r.typeNote, r.operation)}</div>}
+                    {r.typeNote && <div>{r.operation === "MUTATION" ? "Motif" : "Note"} : {libType(r.typeNote, r.operation)}</div>}
                     {r.specialite && <div>Spécialité : {r.specialite}</div>}
                     {r.departementPropose && <div>Département : {r.departementPropose}</div>}
                     {r.structure && <div>Structure : {r.structure}</div>}
@@ -468,7 +471,12 @@ function Avis({ r, a, fermer, apres }: { r: Recommandation; a: "FAVORABLE" | "DE
 
 function Decision({ r, d, fermer, apres }: { r: Recommandation; d: "VALIDEE" | "REJETEE"; fermer: () => void; apres: () => void }) {
   const { refs } = useSession();
-  const libType = (c?: string | null) => refs.typesNote.find((t) => t.code === c)?.libelle ?? c ?? "—";
+  // Mutation : le motif ; enrôlement : la note du cycle ; affectation : le type de note
+  const libType = (c?: string | null) =>
+    (r.operation === "MUTATION" ? refs.motifs.find((m) => m.code === c)?.libelle : r.operation === "ENROLEMENT" ? NOTES_ENROLEMENT[c ?? ""] : undefined) ??
+    refs.typesNote.find((t) => t.code === c)?.libelle ??
+    c ??
+    "—";
   const [commentaire, setCommentaire] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
   const sansAvis = r.etape === "AVIS_DIRECTEUR";
@@ -495,12 +503,16 @@ function Decision({ r, d, fermer, apres }: { r: Recommandation; d: "VALIDEE" | "
         {sansAvis && <Alerte ton="jaune">Le directeur n’a pas encore donné son avis : vous pouvez décider seul, en écrivant pourquoi.</Alerte>}
         <div className="rounded-2xl bg-zinc-50 px-4 py-3 text-[13px]">
           <div className="text-zinc-500">
-            {d === "VALIDEE" ? "En confirmant, la personne passe de" : "En rejetant, la règle s’applique"} : <strong className="text-encre">{r.departementAvant ?? "—"}</strong>
+            {d === "VALIDEE" ? "En confirmant, la personne passe de" : "En rejetant, la règle s’applique"} :{" "}
+            <strong className="text-encre">
+              {r.departementAvant ?? "—"}
+              {r.operation === "MUTATION" && r.typeNote && r.avant?.typeNote ? ` · motif ${libType(r.avant.typeNote)}` : ""}
+            </strong>
           </div>
           {d === "VALIDEE" && (
             <div className="mt-1 font-medium text-sky-800">
               à :{" "}
-              {[r.departementPropose && `département ${r.departementPropose}`, r.typeNote && `note ${libType(r.typeNote)}`, r.structure, r.etablissement].filter(Boolean).join(" · ")}
+              {[r.departementPropose && `département ${r.departementPropose}`, r.typeNote && `${r.operation === "MUTATION" ? "motif" : "note"} ${libType(r.typeNote)}`, r.structure, r.etablissement].filter(Boolean).join(" · ")}
               <div className="text-[12px] font-normal text-zinc-500">Le dossier est mis à jour aussitôt ; les notes pas encore validées en tiennent compte.</div>
             </div>
           )}

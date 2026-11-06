@@ -75,8 +75,8 @@ const LARGEUR: Record<string, number> = {
   diplome: 26,
 };
 
-/** Tailles de police essayées, de la normale à 85 % : la plus grande qui donne la meilleure mise en page. */
-const ECHELLES = [1, 0.97, 0.94, 0.91, 0.88, 0.85];
+/** Tailles de police essayées, de la normale à 80 % (lignes de mutation hautes) : la plus grande qui donne la meilleure mise en page. */
+const ECHELLES = [1, 0.97, 0.94, 0.91, 0.88, 0.85, 0.82, 0.8];
 
 /** Rendu officiel d'une note de service, découpé en pages A4 par le système. */
 export function NoteImprimable({
@@ -103,7 +103,7 @@ export function NoteImprimable({
         pied={{ gauche: note.contenu.piedDePage, droite: note.entete.piedDroite }}
         // Notes d'enrôlement : une police un peu plus petite plutôt qu'une page presque vide
         // (une note de 1 à 4 personnes tient sur une page) — 06/11/2026
-        echelles={note.module === "ENROLEMENT" ? ECHELLES : undefined}
+        echelles={note.module === "ENROLEMENT" || note.module === "MUTATION" ? ECHELLES : undefined}
         surEchelle={surEchelle}
       />
     </div>

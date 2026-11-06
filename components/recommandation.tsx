@@ -18,9 +18,12 @@ export function ProposerRecommandation({
   avant,
   libelleLieu = "Établissement ou lieu demandé",
   enrole,
+  motifActuel,
   fermer,
   apres,
 }: {
+  /** Mutation : le motif d'aujourd'hui ; la recommandation peut en demander un autre (donc une autre note). */
+  motifActuel?: string;
   /** Enrôlement : on peut aussi recommander une autre note (et la spécialité qui va avec). */
   enrole?: Enrole;
   /** Ex. `/mutations/<id>/recommandations` */
@@ -38,6 +41,8 @@ export function ProposerRecommandation({
   const [origine, setOrigine] = useState("");
   const [motif, setMotif] = useState("");
   const [typeNote, setTypeNote] = useState<string | null>(null);
+  // Motifs d'une note de mutation (les prestations ne font pas de note de mutation)
+  const motifs = motifActuel ? refs.motifs.filter((m) => m.code !== "PRESTATION") : [];
   const [specialite, setSpecialite] = useState("");
   const cibles = enrole?.notesPossibles ?? [];
   const choix = cibles.find((c) => c.note === typeNote && c.note !== enrole?.noteActuelle) ?? null;
@@ -68,6 +73,28 @@ export function ProposerRecommandation({
             {choix?.specialite && !enrole.specialite?.trim() && <p className="mt-2 text-[12px] text-emerald-700">Sans spécialité : la règle lui donnera « {choix.specialite} ».</p>}
           </div>
         )}
+        {motifActuel && motifs.length > 0 && (
+          <div className="rounded-2xl bg-zinc-50 p-3">
+            <div className="mb-1 text-[13px] font-semibold text-encre">Motif (et donc note de mutation)</div>
+            <p className="mb-2 text-[12px] text-zinc-500">Chaque motif a sa note de service. Laissez le motif d’aujourd’hui s’il ne change pas.</p>
+            <div className="flex flex-wrap gap-1.5">
+              {motifs.map((m) => {
+                const choisi = (typeNote ?? motifActuel) === m.code;
+                return (
+                  <button
+                    key={m.code}
+                    type="button"
+                    onClick={() => setTypeNote(m.code)}
+                    className={`rounded-full px-3 py-1.5 text-[12px] font-medium ring-1 transition ${choisi ? "bg-marque-600 text-white ring-marque-600" : "bg-white text-zinc-700 ring-zinc-200 hover:ring-zinc-300"}`}
+                  >
+                    {m.libelle}
+                    {m.code === motifActuel && <span className={`ml-1.5 text-[10px] ${choisi ? "text-white/80" : "text-zinc-400"}`}>aujourd’hui</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <Champ libelle="Département demandé">
           <Liste value={departementId} onChange={(e) => setDepartementId(e.target.value)} vide="— Inchangé —" options={refs.departements.map((d) => ({ valeur: d.id, libelle: d.nom }))} />
         </Champ>
@@ -93,6 +120,7 @@ export function ProposerRecommandation({
                 departementId: departementId ? Number(departementId) : null,
                 etablissement: etablissement.trim() || null,
                 ...(enrole ? { typeNote: choix?.note ?? null, specialite: specialite.trim() || null } : {}),
+                ...(motifActuel ? { typeNote: typeNote && typeNote !== motifActuel ? typeNote : null } : {}),
                 origine,
                 motif: motif.trim() || null,
               });

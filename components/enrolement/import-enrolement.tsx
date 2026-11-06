@@ -5,11 +5,11 @@ import { useEffect, useRef, useState } from "react";
 import { Bouton, Modale, ZoneFichier } from "@/components/ui";
 import { api, qs } from "@/lib/api";
 
-type Decision = "MAJ" | "FUSION" | "AJOUTER" | "IGNORER";
-interface Ident {
+export type Decision = "MAJ" | "FUSION" | "AJOUTER" | "IGNORER";
+export interface Ident {
   cle: string;
   nom: string;
-  naissance: string | null;
+  naissance?: string | null;
 }
 interface Rapport {
   choisirFeuille?: true;
@@ -35,7 +35,7 @@ interface Rapport {
   };
 }
 
-const date = (d: string | null) => (d ? d.split("-").reverse().join("/") : "date ?");
+const date = (d: string | null | undefined) => (d ? d.split("-").reverse().join("/") : "date ?");
 const ligneExcel = (cle: string) => {
   const [f, n] = cle.split("#");
   return `${f}, ligne ${n}`;
@@ -394,7 +394,7 @@ export function ImportEnrolement({ campagne, apres }: { campagne: { id: number; 
   );
 }
 
-function Tuile({ n, texte, ton }: { n: number; texte: string; ton?: "vert" | "bleu" | "gris" }) {
+export function Tuile({ n, texte, ton }: { n: number; texte: string; ton?: "vert" | "bleu" | "gris" }) {
   const c = ton === "vert" ? "bg-marque-50 text-marque-800" : ton === "bleu" ? "bg-sky-50 text-sky-800" : ton === "gris" ? "bg-zinc-50 text-zinc-700" : "bg-white text-encre ring-1 ring-zinc-200";
   return (
     <div className={`rounded-2xl px-3 py-2.5 ${c}`}>
@@ -404,7 +404,7 @@ function Tuile({ n, texte, ton }: { n: number; texte: string; ton?: "vert" | "bl
   );
 }
 
-function Onglet({ actif, n, icone: Icone, texte, choisir }: { actif: boolean; n: number; icone: typeof Users; texte: string; choisir: () => void }) {
+export function Onglet({ actif, n, icone: Icone, texte, choisir }: { actif: boolean; n: number; icone: typeof Users; texte: string; choisir: () => void }) {
   return (
     <button
       type="button"
@@ -429,7 +429,7 @@ function Personne({ x }: { x: Ident }) {
 }
 
 /** Une liste à décider : chaque ligne a ses boutons, et des boutons pour tout le groupe. */
-function Liste<T extends Ident>({
+export function Liste<T extends Ident>({
   lignes,
   vide,
   aide,

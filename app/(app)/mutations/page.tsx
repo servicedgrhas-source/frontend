@@ -4,10 +4,10 @@ import { ArrowLeftRight, ArrowRight, ChevronRight, FileSpreadsheet, Printer } fr
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { PanneauRattachement } from "@/components/rattachement";
 import { useSession } from "@/components/session";
-import { Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Pastille, Saisie, Tableau, Vide, ZoneFichier } from "@/components/ui";
-import { api, qs, useApi } from "@/lib/api";
+import { Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Pastille, Saisie, Tableau, Vide } from "@/components/ui";
+import { qs, useApi } from "@/lib/api";
+import { ImportMutations as ImportMutationsAssistant } from "@/components/mutations-import";
 import { CYCLES, duree, ETAT_MUTATION, GROUPES_MUTATION, peut } from "@/lib/libelles";
 import type { DemandeMutation } from "@/lib/types";
 
@@ -47,7 +47,7 @@ export default function Mutations() {
         }
       />
       {peut.traiter(profil.role) && <ImportMutations apres={recharger} />}
-      {peut.traiter(profil.role) && <PanneauRattachement module="MUTATION" apres={recharger} />}
+      {/* Le rattachement à la base du personnel se fait sur la note signée (« Importer dans la base du personnel », 06/11/2026) */}
       <Carte>
         <div className="mb-3 flex flex-wrap items-end gap-3">
           <Champ libelle="Recherche" className="w-full sm:w-56">
@@ -163,51 +163,8 @@ export default function Mutations() {
 }
 
 function ImportMutations({ apres }: { apres: () => void }) {
-  const [envoi, setEnvoi] = useState(false);
-  const [message, setMessage] = useState<{ ton: "vert" | "rouge"; texte: string } | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [ouvert, setOuvert] = useState(false);
-
-  async function envoyer(f: File) {
-    const fd = new FormData();
-    fd.append("fichier", f);
-    setEnvoi(true);
-    setMessage(null);
-    try {
-      const r = await api.post<{
-        lues: number;
-        creees: number;
-        misesAJour: number;
-        feuilles: string[];
-        parFeuille?: { nom: string; lues: number; retenues: number }[];
-        dejaDansCompilation?: number;
-        doublonsFichier?: string[];
-        numerosAttribues?: number;
-        numerosCorriges?: number;
-        numerosEnDouble?: number[];
-      }>("/mutations/import", fd);
-      // Demandes reprises des feuilles par motif parce que la compilation ne les avait pas
-      const horsCompil = (r.parFeuille ?? []).filter((f) => !/^compil/i.test(f.nom.trim()) && f.retenues > 0);
-      const details = [
-        horsCompil.length
-          ? `${horsCompil.reduce((s, f) => s + f.retenues, 0)} absente(s) de la compilation, reprise(s) des feuilles ${horsCompil.map((f) => `« ${f.nom} » (${f.retenues})`).join(", ")}`
-          : null,
-        r.doublonsFichier?.length ? `${r.doublonsFichier.length} ligne(s) en double ignorée(s) : ${r.doublonsFichier.join(" ; ")}` : null,
-        r.numerosAttribues ? `${r.numerosAttribues} n° d’enregistrement donné(s) par le système (après le plus grand numéro existant)` : null,
-        r.numerosCorriges ? `${r.numerosCorriges} n° d’enregistrement remis d’accord avec le registre (numéros repris par erreur lors d’un import précédent)` : null,
-        r.numerosEnDouble?.length ? `n° d’enregistrement écrits deux fois dans le registre, à vérifier : ${r.numerosEnDouble.join(", ")}` : null,
-      ].filter(Boolean);
-      setMessage({
-        ton: "vert",
-        texte: `${r.lues} demandes retenues — ${r.creees} créées, ${r.misesAJour} mises à jour.${details.length ? " " + details.join(". ") + "." : ""}`,
-      });
-      apres();
-    } catch (e) {
-      setMessage({ ton: "rouge", texte: (e as Error).message });
-    } finally {
-      setEnvoi(false);
-    }
-  }
-
   if (!ouvert)
     return (
       <Bouton variante="secondaire" onClick={() => setOuvert(true)}>
@@ -217,11 +174,16 @@ function ImportMutations({ apres }: { apres: () => void }) {
   return (
     <Carte titre="Reprise d’un fichier Excel de mutations">
       <p className="mb-4 text-[13px] leading-relaxed text-zinc-500">
-        Le fichier « GESTIONS DES MUTATIONS » est lu depuis sa feuille « COMPIL » (ou, à défaut, toutes les feuilles visibles). Les demandes déjà
-        tranchées par le Ministre ne sont pas modifiées.
+        Choisissez le fichier « GESTIONS DES MUTATIONS » : vous choisirez ensuite la feuille (la compilation), le système montre ce qui est déjà dans la base des
+        mutations, ce qui est en double, et vous décidez avant d’importer. Les demandes déjà dans une note ou tranchées par le Ministre ne sont pas modifiées.
       </p>
-      <ZoneFichier accept=".xlsx" envoi={envoi} envoyer={envoyer} aide="GESTIONS DES MUTATIONS (.xlsx)" />
-      <Annonce ton={message?.ton} fermer={() => setMessage(null)}>{message?.texte}</Annonce>
+      <ImportMutationsAssistant
+        apres={(t) => {
+          setMessage(t);
+          apres();
+        }}
+      />
+      <Annonce fermer={() => setMessage(null)}>{message}</Annonce>
     </Carte>
   );
 }

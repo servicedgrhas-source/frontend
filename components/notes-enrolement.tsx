@@ -30,8 +30,9 @@ export function BoutonsEnrolement({ note, recharger, signaler }: { note: NoteDet
   const { profil } = useSession();
   const router = useRouter();
   const [fenetre, setFenetre] = useState<"colonnes" | "additif" | "textes" | "decouper" | "regrouper" | null>(null);
-  if (note.module !== "ENROLEMENT" || !peut.traiter(profil.role)) return null;
+  if ((note.module !== "ENROLEMENT" && note.module !== "MUTATION") || !peut.traiter(profil.role)) return null;
   const s = note.statut;
+  const enrolement = note.module === "ENROLEMENT";
 
   async function rectifier() {
     try {
@@ -48,7 +49,11 @@ export function BoutonsEnrolement({ note, recharger, signaler }: { note: NoteDet
         <Bouton onClick={() => setFenetre("textes")}>
           <FileText className="size-4" aria-hidden />
           Introduction et conclusion
-          <Aide>Réécrire le texte d’introduction (« Les enseignants finalistes… ») et le texte de fin (bourse, « prend effet… ») de cette note. Réservé au DG.</Aide>
+          <Aide>
+            {enrolement
+              ? "Réécrire le texte d’introduction (« Les enseignants finalistes… ») et le texte de fin (bourse, « prend effet… ») de cette note. Réservé au DG."
+              : "Réécrire le texte d’introduction (« Les agents … sont mutés … ») et le texte de fin (frais de voyage, « prend effet… ») de cette note. Réservé au DG."}
+          </Aide>
         </Bouton>
       )}
       {s === "BROUILLON" && !note.rectificatifDe && note.contenu.total > 1 && (
@@ -65,7 +70,7 @@ export function BoutonsEnrolement({ note, recharger, signaler }: { note: NoteDet
           <Aide>Défait le découpage : les personnes de ce lot (et des autres lots à soumettre) reviennent dans la note principale.</Aide>
         </Bouton>
       )}
-      {s !== "SIGNEE" && (
+      {enrolement && s !== "SIGNEE" && (
         <Bouton onClick={() => setFenetre("colonnes")}>
           Colonnes
           <Aide>Choisissez les colonnes du tableau pour cette note : par exemple enlever « Spécialité » et mettre « Diplôme ». « Promotion » est mise partout.</Aide>
@@ -75,8 +80,8 @@ export function BoutonsEnrolement({ note, recharger, signaler }: { note: NoteDet
         <Bouton onClick={() => setFenetre("additif")}>
           {note.additifDe ? "Additif : changer" : "Faire un additif"}
           <Aide>
-            Des noms oubliés, la même année, après une note déjà signée : cette note devient un <strong>ADDITIF</strong> « à la note de service n° … du … », sans
-            refaire la note signée.
+            {enrolement ? "Des noms oubliés, la même année, après une note déjà signée" : "D’autres mutations accordées pour le même motif, après une note déjà signée"} :
+            cette note devient un <strong>ADDITIF</strong> « à la note de service n° … du … », sans refaire la note signée.
           </Aide>
         </Bouton>
       )}
@@ -161,11 +166,11 @@ function FenetreColonnes({ note, fermer, apres, signaler }: { note: NoteDetail; 
 }
 
 function FenetreAdditif({ note, fermer, apres, signaler }: { note: NoteDetail; fermer: () => void; apres: (texte: string) => void; signaler: Signaler }) {
-  const notes = useApi<NoteResume[]>("/notes?module=ENROLEMENT");
+  const notes = useApi<NoteResume[]>(`/notes?module=${note.module}`);
   // Les notes du même diplôme d'abord : un additif complète la note de son diplôme (06/11/2026)
   const memeType = (n: NoteResume) => [n.typeNote, ...(n.groupes ?? [])].includes(note.typeNote);
   const signees = (notes.donnees ?? [])
-    .filter((n) => n.statut === "SIGNEE" && n.id !== note.id && n.campagneId === note.campagneId && !n.rectificatifDe)
+    .filter((n) => n.statut === "SIGNEE" && n.id !== note.id && (note.module === "MUTATION" ? n.motif === note.motif : n.campagneId === note.campagneId) && !n.rectificatifDe)
     .sort((a, b) => Number(memeType(b)) - Number(memeType(a)));
   const [de, setDe] = useState<string>(note.additifDe ?? "");
   async function enregistrer(valeur: string | null) {
@@ -180,10 +185,16 @@ function FenetreAdditif({ note, fermer, apres, signaler }: { note: NoteDetail; f
     <Modale titre="Faire un additif" ouverte fermer={fermer}>
       <p className="mb-3 text-[13px] leading-relaxed text-zinc-600">
         Les personnes de cette note complètent une note déjà signée. Le titre devient <strong>ADDITIF</strong> et l’introduction « À la note de service n° … du
-        …, relative à l’affectation des enseignants finalistes, titulaires du … ».
+        …, {note.module === "MUTATION" ? "relative à la mutation des agents … (le motif), au titre de l’année scolaire …" : "relative à l’affectation des enseignants finalistes, titulaires du …"} ».
       </p>
       {notes.chargement && <Chargement />}
-      {!notes.chargement && !signees.length && <Alerte ton="jaune">Aucune note d’enrôlement signée (numéro et date enregistrés) dans cette campagne.</Alerte>}
+      {!notes.chargement && !signees.length && (
+        <Alerte ton="jaune">
+          {note.module === "MUTATION"
+            ? "Aucune note de mutation signée (numéro et date enregistrés) pour ce motif."
+            : "Aucune note d’enrôlement signée (numéro et date enregistrés) dans cette campagne."}
+        </Alerte>
+      )}
       <div className="max-h-72 space-y-1.5 overflow-y-auto">
         {signees.map((n) => (
           <label key={n.id} className={`flex cursor-pointer items-start gap-3 rounded-xl px-3 py-2 text-[13px] ring-1 ${de === n.id ? "bg-marque-50 ring-marque-300" : "ring-zinc-200 hover:ring-zinc-300"}`}>
@@ -218,11 +229,17 @@ function FenetreAdditif({ note, fermer, apres, signaler }: { note: NoteDetail; f
 interface Personne {
   id: string;
   nom: string;
-  naissance: string | null;
-  lieu: string | null;
-  promotion: string | null;
+  /** Mutation */
+  matricule?: string | null;
+  ge?: string | null;
+  cycle?: string | null;
+  ancienPoste?: string | null;
+  lieuSollicite?: string | null;
+  naissance?: string | null;
+  lieu?: string | null;
+  promotion?: string | null;
   specialite: string | null;
-  diplome: string | null;
+  diplome?: string | null;
   departementId: number | null;
   n?: number;
   departement?: string;
@@ -231,12 +248,17 @@ interface Personne {
 const lireDe = (p: Personne, enroleId: string | null): Rectification["lire"] => ({
   enroleId,
   nom: p.nom,
-  naissance: p.naissance,
-  lieu: p.lieu,
-  promotion: p.promotion,
+  naissance: p.naissance ?? null,
+  lieu: p.lieu ?? null,
+  promotion: p.promotion ?? null,
   specialite: p.specialite,
-  diplome: p.diplome,
+  diplome: p.diplome ?? null,
   departementId: p.departementId,
+  matricule: p.matricule ?? null,
+  ge: p.ge ?? null,
+  cycle: p.cycle ?? null,
+  ancienPoste: p.ancienPoste ?? null,
+  lieuSollicite: p.lieuSollicite ?? null,
 });
 
 /** Corrections d'un rectificatif : une ligne par personne de la note signée. */
@@ -316,6 +338,7 @@ export function CorrectionsRectificatif({ note, recharger, signaler }: { note: N
       {edition && choix.donnees && (
         <FenetreCorrection
           existante={edition === "nouvelle" ? null : edition}
+          mutation={note.module === "MUTATION"}
           personnes={choix.donnees.personnes.filter((p) => p.id === (edition === "nouvelle" ? "" : edition.enroleId) || !liste.some((r) => r.enroleId === p.id))}
           remplacants={choix.donnees.remplacants}
           fermer={() => setEdition(null)}
@@ -328,12 +351,15 @@ export function CorrectionsRectificatif({ note, recharger, signaler }: { note: N
 
 function FenetreCorrection({
   existante,
+  mutation = false,
   personnes,
   remplacants,
   fermer,
   ok,
 }: {
   existante: Rectification | null;
+  /** Rectificatif d'une note de mutation : matricule, G/E, ancien poste, destination. */
+  mutation?: boolean;
   personnes: Personne[];
   remplacants: Personne[];
   fermer: () => void;
@@ -357,7 +383,13 @@ function FenetreCorrection({
   };
   const choisirType = (t: Rectification["type"]) => {
     setType(t);
-    setLire(t === "CORRECTION" && personne ? lireDe(personne, null) : personne ? { ...lireDe(personne, null), nom: "", naissance: null, lieu: null, promotion: null, enroleId: null } : null);
+    setLire(
+      t === "CORRECTION" && personne
+        ? lireDe(personne, null)
+        : personne
+          ? { ...lireDe(personne, null), nom: "", naissance: null, lieu: null, promotion: null, matricule: null, ge: null, ancienPoste: null, enroleId: null }
+          : null,
+    );
   };
   const champ = (cle: keyof Rectification["lire"], valeur: string) => setLire((x) => (x ? { ...x, [cle]: valeur || null } : x));
 
@@ -377,7 +409,7 @@ function FenetreCorrection({
             <div className="flex flex-wrap gap-2">
               {(
                 [
-                  ["CORRECTION", "Corriger (nom, date, département…)", Pencil],
+                  ["CORRECTION", mutation ? "Corriger (nom, matricule, destination…)" : "Corriger (nom, date, département…)", Pencil],
                   ["REMPLACEMENT", "Remplacer par une autre personne", Replace],
                 ] as const
               ).map(([t, libelle, Icone]) => (
@@ -393,7 +425,10 @@ function FenetreCorrection({
               ))}
             </div>
             {type === "REMPLACEMENT" && (
-              <Champ libelle="Chercher la personne qui remplace (dossiers pas encore dans une note)" aide="Ou écrivez directement son nom et ses informations ci-dessous.">
+              <Champ
+                libelle={mutation ? "Chercher la personne qui remplace (mutations accordées pas encore dans une note)" : "Chercher la personne qui remplace (dossiers pas encore dans une note)"}
+                aide="Ou écrivez directement son nom et ses informations ci-dessous."
+              >
                 <Saisie value={cherche} onChange={(e) => setCherche(e.target.value)} placeholder="Nom…" />
                 {!!trouve.length && (
                   <ul className="mt-1 divide-y divide-zinc-100 rounded-xl ring-1 ring-zinc-200">
@@ -407,7 +442,10 @@ function FenetreCorrection({
                             setCherche("");
                           }}
                         >
-                          {p.nom} <span className="text-zinc-500">· {p.diplome ?? ""} {p.naissance ? `· ${p.naissance.split("-").reverse().join("/")}` : ""}</span>
+                          {p.nom}{" "}
+                          <span className="text-zinc-500">
+                            {mutation ? `· ${p.matricule ?? "sans matricule"} · ${p.ancienPoste ?? ""}` : `· ${p.diplome ?? ""} ${p.naissance ? `· ${p.naissance.split("-").reverse().join("/")}` : ""}`}
+                          </span>
                         </button>
                       </li>
                     ))}
@@ -422,19 +460,41 @@ function FenetreCorrection({
                   <Champ libelle="Noms et prénoms">
                     <Saisie value={lire.nom} onChange={(e) => champ("nom", e.target.value)} />
                   </Champ>
-                  <Champ libelle="Date de naissance">
-                    <Saisie type="date" value={lire.naissance ?? ""} onChange={(e) => champ("naissance", e.target.value)} />
-                  </Champ>
-                  <Champ libelle="Lieu de naissance">
-                    <Saisie value={lire.lieu ?? ""} onChange={(e) => champ("lieu", e.target.value)} />
-                  </Champ>
-                  <Champ libelle="Promotion">
-                    <Saisie value={lire.promotion ?? ""} onChange={(e) => champ("promotion", e.target.value)} />
-                  </Champ>
+                  {mutation ? (
+                    <>
+                      <Champ libelle="Matricule solde">
+                        <Saisie value={lire.matricule ?? ""} onChange={(e) => champ("matricule", e.target.value)} />
+                      </Champ>
+                      <Champ libelle="Grade / échelon (G/E)">
+                        <Saisie value={lire.ge ?? ""} onChange={(e) => champ("ge", e.target.value)} />
+                      </Champ>
+                      <Champ libelle="Cycle">
+                        <Saisie value={lire.cycle ?? ""} onChange={(e) => champ("cycle", e.target.value)} />
+                      </Champ>
+                      <Champ libelle="Ancien poste">
+                        <Saisie value={lire.ancienPoste ?? ""} onChange={(e) => champ("ancienPoste", e.target.value)} />
+                      </Champ>
+                      <Champ libelle="Lieu sollicité">
+                        <Saisie value={lire.lieuSollicite ?? ""} onChange={(e) => champ("lieuSollicite", e.target.value)} />
+                      </Champ>
+                    </>
+                  ) : (
+                    <>
+                      <Champ libelle="Date de naissance">
+                        <Saisie type="date" value={lire.naissance ?? ""} onChange={(e) => champ("naissance", e.target.value)} />
+                      </Champ>
+                      <Champ libelle="Lieu de naissance">
+                        <Saisie value={lire.lieu ?? ""} onChange={(e) => champ("lieu", e.target.value)} />
+                      </Champ>
+                      <Champ libelle="Promotion">
+                        <Saisie value={lire.promotion ?? ""} onChange={(e) => champ("promotion", e.target.value)} />
+                      </Champ>
+                    </>
+                  )}
                   <Champ libelle="Spécialité">
                     <Saisie value={lire.specialite ?? ""} onChange={(e) => champ("specialite", e.target.value)} />
                   </Champ>
-                  <Champ libelle="Département">
+                  <Champ libelle={mutation ? "Département sollicité" : "Département"}>
                     <Liste
                       value={lire.departementId ?? ""}
                       onChange={(e) => setLire({ ...lire, departementId: e.target.value ? Number(e.target.value) : null })}
@@ -442,7 +502,13 @@ function FenetreCorrection({
                     />
                   </Champ>
                 </div>
-                {lire.enroleId && <p className="mt-2 text-xs text-zinc-500">Dossier de la base : à la signature, cette personne est retenue dans ce département.</p>}
+                {lire.enroleId && (
+                  <p className="mt-2 text-xs text-zinc-500">
+                    {mutation
+                      ? "Demande de la base : à la signature, cette mutation entre dans le rectificatif (la demande remplacée est retirée)."
+                      : "Dossier de la base : à la signature, cette personne est retenue dans ce département."}
+                  </p>
+                )}
               </div>
             )}
           </>
@@ -588,7 +654,9 @@ function FenetreDecouper({ note, fermer, apres, signaler }: { note: NoteDetail; 
         <div className="grid gap-3 md:grid-cols-3">
           {choix("nombre", Hash, "Par nombre de personnes", "Des notes de 100 personnes au plus, par exemple. Le système partage tout seul.")}
           {choix("main", Hand, "En cochant les personnes", "Vous choisissez qui part dans une nouvelle note : un par un, un département, ou les N premiers.")}
-          {choix("critere", Tags, "Par spécialité (ou autre)", "Une note pour l’anglais, une pour les maths… ou par diplôme, promotion, département.")}
+          {note.module === "MUTATION"
+            ? choix("critere", Tags, "Par département (ou autre)", "Une note par département sollicité, par cycle, par spécialité ou par département d’origine.")
+            : choix("critere", Tags, "Par spécialité (ou autre)", "Une note pour l’anglais, une pour les maths… ou par diplôme, promotion, département.")}
         </div>
 
         {mode === "nombre" && (
@@ -704,7 +772,8 @@ type Critere = { critere: string; libelle: string; valeurs: { valeur: string; n:
 /** Une note pour les valeurs choisies d'un critère : une par valeur, ou une seule pour toutes. */
 function DecouperParCritere({ note, apres, signaler }: { note: NoteDetail; apres: (t: string) => void; signaler: Signaler }) {
   const criteres = useApi<Critere[]>(`/notes/${note.id}/lots/criteres`);
-  const [critere, setCritere] = useState("specialite");
+  // Le premier critère proposé par le serveur : la spécialité (enrôlement), le département (mutation)
+  const [critere, setCritere] = useState<string | null>(null);
   const [choisies, setChoisies] = useState<string[]>([]);
   const [ensemble, setEnsemble] = useState(false);
   const [envoi, setEnvoi] = useState(false);
