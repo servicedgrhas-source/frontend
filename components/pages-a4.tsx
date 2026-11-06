@@ -24,6 +24,8 @@ export type Bloc =
       garderAvecPrecedent?: boolean;
       /** Commence une nouvelle page (l'emploi du temps de chaque enseignant). */
       nouvellePage?: boolean;
+      /** Reste sur sa page : la signature qui passe à la page suivante ne l'emmène pas (introduction). */
+      ancre?: boolean;
     }
   /** Ligne d'un tableau : le tableau continue sur la page suivante, avec son en-tête. */
   | { cle: string; type: "ligne"; tableau: string; contenu: ReactNode };
@@ -42,7 +44,8 @@ export interface Tableau {
 interface Props {
   blocs: Bloc[];
   tableaux: Record<string, Tableau>;
-  pied: { gauche: string; droite: string };
+  /** mention : une ligne en petite police sous le pied (ex. « Généré par le Système d’Information… »). */
+  pied: { gauche: string; droite: string; mention?: string };
   /** Classe de la feuille (police, taille du texte). */
   classeFeuille: string;
   margeHaut?: number;
@@ -50,6 +53,37 @@ interface Props {
   margeBas?: number;
   /** Page A4 couchée (297 × 210 mm) : tableaux larges, emploi du temps affiché à l'école. */
   paysage?: boolean;
+  /**
+   * Tailles de police à essayer (1 : normale), via la variable CSS --echelle de la feuille. Une taille
+   * plus petite ne sert que pour éviter une page presque vide ou tenir sur une seule page (06/11/2026).
+   */
+  echelles?: number[];
+  /** Prévenu de la taille retenue (le Word de la note la reprend). */
+  surEchelle?: (echelle: number) => void;
+}
+
+/**
+ * Note d'une mise en page (plus petite = meilleure) : une page presque vide avant la dernière coûte
+ * le plus ; ensuite, tenir sur une seule page. Une note longue bien remplie ne rapetisse pas juste
+ * pour gagner une page.
+ */
+function noter(pages: string[][], hauteur: Map<string, number>, entete: Map<string, number>, dispo: number) {
+  let creuses = 0;
+  pages.forEach((p, i) => {
+    if (i === pages.length - 1) return;
+    const vus = new Set<string>();
+    let h = 0;
+    for (const c of p) {
+      h += hauteur.get(c) ?? 0;
+      const t = c.split("-")[0];
+      if (entete.has(t) && !vus.has(t)) {
+        vus.add(t);
+        h += entete.get(t) ?? 0;
+      }
+    }
+    if (h < dispo * 0.55) creuses++;
+  });
+  return creuses * 100 + (pages.length > 1 ? 50 : 0);
 }
 
 const HAUTEUR_PAGE = 296; // mm (un peu moins que 297 pour éviter une page blanche)
@@ -87,10 +121,12 @@ function rendre(blocs: Bloc[], tableaux: Record<string, Tableau>, mesure = false
   return sortie;
 }
 
-export function PagesA4({ blocs, tableaux, pied, classeFeuille, margeHaut = 12, margeCote = 16, margeBas = 20, paysage = false }: Props) {
+export function PagesA4({ blocs, tableaux, pied, classeFeuille, margeHaut = 12, margeCote = 16, margeBas = 20, paysage = false, echelles, surEchelle }: Props) {
   const mesureur = useRef<HTMLDivElement>(null);
   const sonde = useRef<HTMLDivElement>(null);
   const [pages, setPages] = useState<string[][] | null>(null);
+  const [echelle, setEchelle] = useState(1);
+  const essais = (echelles?.length ? echelles : [1]).join("|");
   const uneFois = Object.keys(tableaux)
     .filter((t) => tableaux[t].enteteUneFois)
     .join("|");
@@ -101,20 +137,31 @@ export function PagesA4({ blocs, tableaux, pied, classeFeuille, margeHaut = 12, 
       const zone = mesureur.current;
       if (!zone || !sonde.current || !actif) return;
       const dispo = sonde.current.offsetHeight * 0.985;
-      const hauteur = new Map<string, number>();
-      zone.querySelectorAll<HTMLElement>("[data-bloc]").forEach((el) => hauteur.set(el.dataset.bloc!, el.offsetHeight));
-      zone.querySelectorAll<HTMLElement>("tbody > tr[data-ligne]").forEach((el) => hauteur.set(el.dataset.ligne!, el.offsetHeight));
-      const entete = new Map<string, number>();
-      zone.querySelectorAll<HTMLElement>("thead[data-entete]").forEach((el) => entete.set(el.dataset.entete!, el.offsetHeight));
-
-      setPages(decouperPages(blocs, hauteur, entete, dispo, new Set(uneFois ? uneFois.split("|") : [])));
+      let meilleur: { pages: string[][]; note: number; echelle: number } | null = null;
+      for (const e of essais.split("|").map(Number)) {
+        // Chaque taille est mesurée pour de vrai : le texte se recoupe autrement en lignes
+        zone.style.setProperty("--echelle", String(e));
+        const hauteur = new Map<string, number>();
+        zone.querySelectorAll<HTMLElement>("[data-bloc]").forEach((el) => hauteur.set(el.dataset.bloc!, el.offsetHeight));
+        zone.querySelectorAll<HTMLElement>("tbody > tr[data-ligne]").forEach((el) => hauteur.set(el.dataset.ligne!, el.offsetHeight));
+        const entete = new Map<string, number>();
+        zone.querySelectorAll<HTMLElement>("thead[data-entete]").forEach((el) => entete.set(el.dataset.entete!, el.offsetHeight));
+        const p = decouperPages(blocs, hauteur, entete, dispo, new Set(uneFois ? uneFois.split("|") : []));
+        const note = noter(p, hauteur, entete, dispo);
+        // Une taille plus petite ne sert que si elle fait mieux
+        if (!meilleur || note < meilleur.note) meilleur = { pages: p, note, echelle: e };
+        if (note === 0) break;
+      }
+      setEchelle(meilleur!.echelle);
+      surEchelle?.(meilleur!.echelle);
+      setPages(meilleur!.pages);
     };
     // On attend les polices : leur taille change la hauteur des lignes
     void document.fonts.ready.then(decouper);
     return () => {
       actif = false;
     };
-  }, [blocs, paysage, uneFois]);
+  }, [blocs, paysage, uneFois, essais]);
 
   const largeur = `${(paysage ? 297 : 210) - 2 * margeCote}mm`;
   const parCle = new Map(blocs.map((b) => [b.cle, b]));
@@ -138,11 +185,16 @@ export function PagesA4({ blocs, tableaux, pied, classeFeuille, margeHaut = 12, 
           </div>
         </div>
       )}
+      {pages && echelle < 1 && (
+        <div className="no-print mx-auto mb-2 w-fit rounded-full bg-sky-50 px-3 py-1 text-[12px] text-sky-800 ring-1 ring-sky-200">
+          Police réduite à {Math.round(echelle * 100)} % pour que la note tienne sur {pages.length} page{pages.length > 1 ? "s" : ""} sans page presque vide.
+        </div>
+      )}
       {(pages ?? []).map((cles, i) => (
         <div
           key={i}
           className={`page-a4 ${paysage ? "page-a4-paysage " : ""}${classeFeuille}`}
-          style={{ "--marge-haut": `${margeHaut}mm`, "--marge-cote": `${margeCote}mm` } as React.CSSProperties}
+          style={{ "--marge-haut": `${margeHaut}mm`, "--marge-cote": `${margeCote}mm`, "--echelle": String(echelle) } as React.CSSProperties}
         >
           {rendre(
             cles.map((c) => parCle.get(c)!),
@@ -157,6 +209,7 @@ export function PagesA4({ blocs, tableaux, pied, classeFeuille, margeHaut = 12, 
               Page {i + 1} sur {pages!.length}
             </span>
             <span className="text-right">{pied.droite}</span>
+            {pied.mention && <span className="col-span-3 whitespace-normal text-center text-[6.5pt] italic text-zinc-500">{pied.mention}</span>}
           </div>
         </div>
       ))}

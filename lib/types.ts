@@ -219,7 +219,9 @@ export interface Recommandation {
   origine: string;
   motif: string | null;
   statut: "EN_ATTENTE" | "VALIDEE" | "REJETEE";
-  avant: { typeNote?: string; departementId?: number; structure?: string; etablissement?: string } | null;
+  avant: { typeNote?: string; departementId?: number; structure?: string; etablissement?: string; specialite?: string | null } | null;
+  /** Enrôlement : spécialité écrite avec le changement de note (06/11/2026). */
+  specialite?: string | null;
   soumisPar: string | null;
   decidePar: string | null;
   dateDecision: string | null;
@@ -241,7 +243,7 @@ export interface ContenuNote {
   colonnes: { cle: string; libelle: string }[];
   classification: boolean;
   /** sousTitre : établissement, quand les personnes du département en ont un. */
-  sections: { titre: string | null; sousTitre?: string | null; lignes: LigneNote[] }[];
+  sections: { titre: string | null; sousTitre?: string | null; effectif?: string | null; lignes: LigneNote[] }[];
   total: number;
   departements: number;
   ampliations: { libelle: string; nombre: string }[];
@@ -256,6 +258,15 @@ export type StatutNote = "BROUILLON" | "SOUMISE" | "VALIDEE" | "SIGNEE";
 export interface NoteResume {
   id: string;
   module: "AFFECTATION" | "MUTATION" | "ENROLEMENT" | "NOMINATION";
+  /** Notes d'enrôlement : campagne, note signée complétée (additif) ou corrigée (rectificatif). */
+  campagneId?: number | null;
+  /** Notes d'enrôlement : autres types réunis dans la note (BET, CFEEN…). */
+  groupes?: string[];
+  /** Notes d'enrôlement : lot de rangement (null : la note principale du type), textes réécrits. */
+  lotRangement?: number | null;
+  textesLibres?: { introduction?: string | null; mentions?: string[] | null } | null;
+  additifDe?: string | null;
+  rectificatifDe?: string | null;
   typeNote: string;
   motif: string | null;
   lotNumero: number | null;
@@ -307,8 +318,28 @@ export interface AvisConformite {
   remarque: string | null;
 }
 
+/** Une correction d'un rectificatif d'enrôlement : « au lieu de » une personne de la note signée, « lire ». */
+export interface Rectification {
+  id: string;
+  type: "CORRECTION" | "REMPLACEMENT";
+  enroleId: string;
+  lire: {
+    enroleId: string | null;
+    nom: string;
+    naissance: string | null;
+    lieu: string | null;
+    promotion: string | null;
+    specialite: string | null;
+    diplome: string | null;
+    departementId: number | null;
+  };
+}
+
 export interface NoteDetail extends NoteResume {
   introduction: string;
+  /** Notes d'enrôlement : colonnes choisies pour la note (null : celles du type). */
+  colonnesNote?: string[] | null;
+  rectifications?: Rectification[];
   /** Notes d'affectation : autres lots réunis dans cette note. */
   lotsReunis?: { id: number; numero: number; libelle: string }[];
   contenu: ContenuNote;
@@ -324,6 +355,9 @@ export interface NoteDetail extends NoteResume {
     adresse: string;
     /** Police réglée dans les paramètres (Times New Roman par défaut). */
     police?: "Times New Roman" | "Sylfaen";
+    /** Lignes du ministère (« --- » : un trait) ; libre : réécrites pour cette note (06/11/2026). */
+    lignes?: string[];
+    libre?: boolean;
   };
 }
 

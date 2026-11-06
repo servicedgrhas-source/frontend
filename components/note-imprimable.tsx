@@ -9,6 +9,44 @@ import { PagesA4, type Bloc, type Tableau } from "./pages-a4";
 
 const SEP = <div className="leading-none">-----------------</div>;
 
+/** L'en-tête habituel ; le service ne vient que si la référence finit par « -SR ». */
+export function enteteParDefaut(reference: string) {
+  return [
+    "MINISTERE DE L’ENSEIGNEMENT PRESCOLAIRE,",
+    "PRIMAIRE, SECONDAIRE ET DE L’ALPHABETISATION",
+    "---",
+    "CABINET",
+    "---",
+    "DIRECTION GENERALE DES RESSOURCES HUMAINES",
+    "ET DE L’ADMINISTRATION SCOLAIRE",
+    "---",
+    "DIRECTION DES RECRUTEMENTS",
+    "ET DU SUIVI DES CARRIERES",
+    "---",
+    ...(/-SR[./ ]*$/.test(reference) ? ["SERVICE DES RECRUTEMENTS", "---"] : []),
+  ];
+}
+
+/** Blocs entre les traits, avec le visa de chacun (null : un trait) — comme dans Word. */
+export function blocsEntete(lignes: string[]) {
+  const res: ({ lignes: string[]; visa: "DG" | "DIRECTION" | "SERVICE" | null } | null)[] = [];
+  let cour: string[] = [];
+  const fermer = () => {
+    if (!cour.length) return;
+    const t = cour.join(" ").toUpperCase();
+    res.push({ lignes: cour, visa: /DIRECTION\s+GENERALE/.test(t) ? "DG" : /^DIRECTION\b/.test(t) ? "DIRECTION" : /^SERVICE\b/.test(t) ? "SERVICE" : null });
+    cour = [];
+  };
+  for (const l of lignes) {
+    if (l === "---") {
+      fermer();
+      res.push(null);
+    } else cour.push(l);
+  }
+  fermer();
+  return res;
+}
+
 /** Largeur des colonnes (mm) : la mise en page fixe garantit le découpage en pages. */
 const LARGEUR: Record<string, number> = {
   n: 7,
@@ -31,12 +69,27 @@ const LARGEUR: Record<string, number> = {
   origine: 19,
   naissance: 20,
   lieu: 22,
-  promotion: 15,
+  promotion: 19,
   accueil: 19,
+  // Notes d'enrôlement : « BET-Préscolaire », « CFEEN-Préscolaire » (cadrage du 05/11/2026)
+  diplome: 26,
 };
 
+/** Tailles de police essayées, de la normale à 85 % : la plus grande qui donne la meilleure mise en page. */
+const ECHELLES = [1, 0.97, 0.94, 0.91, 0.88, 0.85];
+
 /** Rendu officiel d'une note de service, découpé en pages A4 par le système. */
-export function NoteImprimable({ note, visas = true }: { note: NoteDetail; /** Imprimer avec les spécimens de visa (sinon sans). */ visas?: boolean }) {
+export function NoteImprimable({
+  note,
+  visas = true,
+  surEchelle,
+}: {
+  note: NoteDetail;
+  /** Imprimer avec les spécimens de visa (sinon sans). */
+  visas?: boolean;
+  /** Taille de police retenue pour la note (le Word la reprend). */
+  surEchelle?: (echelle: number) => void;
+}) {
   const { blocs, tableaux } = useMemo(() => construire(note, visas), [note, visas]);
   const sylfaen = note.entete.police === "Sylfaen";
   return (
@@ -48,6 +101,10 @@ export function NoteImprimable({ note, visas = true }: { note: NoteDetail; /** I
         tableaux={tableaux}
         classeFeuille="feuille-note"
         pied={{ gauche: note.contenu.piedDePage, droite: note.entete.piedDroite }}
+        // Notes d'enrôlement : une police un peu plus petite plutôt qu'une page presque vide
+        // (une note de 1 à 4 personnes tient sur une page) — 06/11/2026
+        echelles={note.module === "ENROLEMENT" ? ECHELLES : undefined}
+        surEchelle={surEchelle}
       />
     </div>
   );
@@ -163,29 +220,24 @@ function construire(note: NoteDetail, avecVisas: boolean) {
           <div className="text-center text-[8pt]">{repere}</div>
           <div className="mt-2 flex items-start justify-between gap-6 text-[10pt]">
             <div className="w-[60%] text-center font-semibold leading-tight">
-              <div>MINISTERE DE L’ENSEIGNEMENT PRESCOLAIRE,</div>
-              <div>PRIMAIRE, SECONDAIRE ET DE L’ALPHABETISATION</div>
-              {SEP}
-              <div>CABINET</div>
-              {SEP}
-              <AvecVisa visa={v.DG} style="DG">
-                <div>DIRECTION GENERALE DES RESSOURCES HUMAINES</div>
-                <div>ET DE L’ADMINISTRATION SCOLAIRE</div>
-              </AvecVisa>
-              {SEP}
-              <AvecVisa visa={v.DIRECTION} style="DIRECTION">
-                <div>DIRECTION DES RECRUTEMENTS</div>
-                <div>ET DU SUIVI DES CARRIERES</div>
-              </AvecVisa>
-              {SEP}
-              {/* Le service suit le numéro : « …-DRSC-SR » (une note signée avant garde son en-tête) */}
-              {/-SR[./ ]*$/.test(e.reference) && (
-                <>
-                  <AvecVisa visa={v.SERVICE} style="SERVICE">
-                    <div>SERVICE DES RECRUTEMENTS</div>
+              {/* Les lignes de l'en-tête, modifiables note par note (06/11/2026) ; les visas vont
+                  sur la direction générale, la direction et le service */}
+              {blocsEntete(e.lignes ?? enteteParDefaut(e.reference)).map((b, i) =>
+                b === null ? (
+                  <Fragment key={i}>{SEP}</Fragment>
+                ) : b.visa ? (
+                  <AvecVisa key={i} visa={v[b.visa]} style={b.visa}>
+                    {b.lignes.map((l, j) => (
+                      <div key={j}>{l}</div>
+                    ))}
                   </AvecVisa>
-                  {SEP}
-                </>
+                ) : (
+                  <Fragment key={i}>
+                    {b.lignes.map((l, j) => (
+                      <div key={j}>{l}</div>
+                    ))}
+                  </Fragment>
+                ),
               )}
               {/* Plus de place pour écrire le numéro (DG, 01/11/2026) ; la référence est un paramètre */}
               <div className="mt-1 whitespace-nowrap font-semibold">
@@ -207,6 +259,7 @@ function construire(note: NoteDetail, avecVisas: boolean) {
       cle: "intro",
       type: "libre",
       garderAvecSuivant: true,
+      ancre: true,
       contenu: (
         // Paragraphes « à l'américaine » : alignés à gauche, sans retrait, justifiés (demande du DG, 20/10/2026)
         <p className="mt-3 text-justify">
@@ -224,7 +277,7 @@ function construire(note: NoteDetail, avecVisas: boolean) {
 
   c.sections.forEach((s, i) => {
     const tableau = `t${i}`;
-    tableaux[tableau] = { colonnes, entete, className: "text-[10pt]", enteteUneFois: true };
+    tableaux[tableau] = { colonnes, entete, className: "t-note", enteteUneFois: true };
     blocs.push({
       cle: `s${i}`,
       type: "libre",
@@ -232,6 +285,8 @@ function construire(note: NoteDetail, avecVisas: boolean) {
       contenu: (
         <div className={s.titre ? "pt-4" : "pt-3"}>
           {s.titre && <h2 className="mb-1 font-bold">{s.titre}</h2>}
+          {/* « Effectif : Quatre-vingt-deux (82) » sous le département (notes d'enrôlement) */}
+          {s.effectif && <div className="mb-2 ml-4">Effectif : {s.effectif}</div>}
           {s.sousTitre && <h3 className="mb-1 ml-8 font-bold">{s.sousTitre}</h3>}
         </div>
       ),
@@ -301,9 +356,9 @@ function construire(note: NoteDetail, avecVisas: boolean) {
           {/* Un peu d'espace sous « Fait à » (DG, 31/10/2026) */}
           <div className="col-start-4 mt-4 whitespace-nowrap">{e.signataireTitre}</div>
           {/* Plus d'espace pour la signature (DG, 19/10/2026), plus deux lignes (31/10/2026) */}
-          <div className="col-start-1 self-end text-[10pt] font-bold underline" style={{ marginTop: "calc(6rem + 3em)" }}>Ampliations :</div>
+          <div className="t-note col-start-1 self-end font-bold underline" style={{ marginTop: "calc(6rem + 3em)" }}>Ampliations :</div>
           <div className="col-start-4 self-end whitespace-nowrap font-bold" style={{ marginTop: "calc(6rem + 3em)" }}>{e.signataireNom}</div>
-          <table className="ampliations col-start-1 w-auto justify-self-start text-[9pt]">
+          <table className="ampliations col-start-1 w-auto justify-self-start">
             <tbody>
               {c.ampliations.map((a) => (
                 <tr key={a.libelle}>

@@ -1,12 +1,13 @@
 "use client";
 
-import { MapPin, Stamp } from "lucide-react";
+import { ArrowRightLeft, MapPin, Stamp } from "lucide-react";
 import { useState } from "react";
 import { ChoixEtablissement } from "@/components/choix-etablissement";
+import { ChangerNote, EcrireSpecialite, PastilleSpecialite, SpecialitesACompleter } from "@/components/enrolement/changer-note";
 import { type Enrole, FicheEnrole, SelecteurCampagne, useCampagne } from "@/components/enrolement/commun";
 import { useSession } from "@/components/session";
 import { ProposerRecommandation } from "@/components/recommandation";
-import { Alerte, Annonce, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Modale, Saisie, Tableau, Vide } from "@/components/ui";
+import { Aide, Alerte, Annonce, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Modale, Saisie, Tableau, Vide } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
 import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
@@ -67,10 +68,21 @@ export default function BaseEnroles() {
   const [fiche, setFiche] = useState<Enrole | null>(null);
   const [placer, setPlacer] = useState<Enrole | null>(null);
   const [recommander, setRecommander] = useState<Enrole | null>(null);
+  const [changerNote, setChangerNote] = useState<Enrole[] | null>(null);
+  const [specialite, setSpecialite] = useState<Enrole[] | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
 
   const lignes = dossiers.donnees ?? [];
+  const appliquerRegle = async (e: Enrole) => {
+    try {
+      await api.post("/enrolement/dossiers/specialite", { ids: [e.id], specialite: null });
+      setMessage(`Spécialité de ${e.nomComplet} : « ${e.specialiteEtat?.etat === "regle" ? e.specialiteEtat.valeur : ""} ».`);
+      dossiers.recharger();
+    } catch (x) {
+      setMessage((x as Error).message);
+    }
+  };
   const sansDepartement = lignes.filter((e) => !e.departementRetenuId).length;
   const enNote = lignes.filter((e) => e.noteId).length;
 
@@ -88,9 +100,19 @@ export default function BaseEnroles() {
         <Carte
           titre={`Volontaires retenus — enrôlement ${campagne.annee}`}
           actions={
+            <span className="flex flex-wrap gap-2">
+            <Bouton
+              disabled={!lignes.some((e) => !e.noteId && e.notesPossibles?.length)}
+              onClick={() => setChangerNote(lignes.filter((e) => !e.noteId && e.notesPossibles?.length))}
+            >
+              <ArrowRightLeft className="size-4" aria-hidden />
+              Changer la note de la liste affichée
+              <Aide>Filtrez d’abord (par diplôme, par nom…), puis envoyez tous les volontaires affichés dans une autre note, ou remettez-les à la règle automatique.</Aide>
+            </Bouton>
             <Bouton onClick={() => api.telecharger(`/enrolement/dossiers/excel${qs({ campagne: campagne.id, etat: "RETENU" })}`, `Enrolement ${campagne.annee} - base des enroles.xlsx`)}>
               Télécharger en Excel
             </Bouton>
+            </span>
           }
         >
           <div className="mb-4 grid gap-3 md:grid-cols-3">
@@ -108,6 +130,7 @@ export default function BaseEnroles() {
             </div>
           )}
           {dossiers.erreur && <Alerte>{dossiers.erreur}</Alerte>}
+          <SpecialitesACompleter dossiers={lignes} apres={(t) => { setMessage(t); dossiers.recharger(); }} />
           {!dossiers.donnees ? (
             <Chargement />
           ) : !lignes.length ? (
@@ -138,6 +161,13 @@ export default function BaseEnroles() {
                     <td className="text-[12px]">
                       {e.diplomeLibelle}
                       <div className="text-zinc-400">{[e.promotion, e.specialite].filter(Boolean).join(" · ")}</div>
+                      {e.noteAutre && <div className="mt-0.5 inline-flex rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 ring-1 ring-sky-200" title={e.noteAutre}>→ {e.noteAutre.split(" (")[0]}</div>}
+                      {!e.noteId && (
+                        <button type="button" className="ml-1 mt-0.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-marque-700 ring-1 ring-marque-200 hover:bg-marque-50" onClick={() => setChangerNote([e])}>
+                          <ArrowRightLeft className="size-3" aria-hidden /> Changer de note
+                        </button>
+                      )}
+                        <PastilleSpecialite e={e} ouvrir={(regle) => (regle ? appliquerRegle(e) : setSpecialite([e]))} />
                     </td>
                     <td className={e.departementRetenu ? "" : "text-or-700"}>{e.departementRetenu ?? "pas encore choisi"}</td>
                     <td className="text-[12px]">{e.etablissement ?? (e.departementRetenu ? "à la disposition de la DDEPPSA" : "—")}</td>
@@ -149,7 +179,12 @@ export default function BaseEnroles() {
                         </BoutonIcone>
                       )}
                       {!e.noteId && (
-                        <BoutonIcone libelle="Recommandation (autre département ou établissement, décision du DG)" onClick={() => setRecommander(e)}>
+                        <BoutonIcone
+                          libelle={e.recommandationEnAttente ? "Recommandation en attente (directeur, puis DG)" : "Recommandation (autre département ou établissement, décision du DG)"}
+                          ton="vert"
+                          disabled={e.recommandationEnAttente}
+                          onClick={() => setRecommander(e)}
+                        >
                           <Stamp />
                         </BoutonIcone>
                       )}
@@ -161,11 +196,14 @@ export default function BaseEnroles() {
           )}
         </Carte>
       )}
+      {specialite && <EcrireSpecialite dossiers={specialite} fermer={() => setSpecialite(null)} apres={(t) => { setSpecialite(null); setMessage(t); dossiers.recharger(); }} />}
+      {changerNote && <ChangerNote dossiers={changerNote} fermer={() => setChangerNote(null)} apres={(t) => { setChangerNote(null); setMessage(t); dossiers.recharger(); }} />}
       {fiche && <FicheEnrole e={fiche} fermer={() => setFiche(null)} />}
       {recommander && (
         <ProposerRecommandation
           url={`/enrolement/enroles/${recommander.id}/recommandations`}
           personne={recommander.nomComplet}
+          enrole={recommander}
           avant={[recommander.departementRetenu, recommander.etablissement].filter(Boolean).join(" · ")}
           fermer={() => setRecommander(null)}
           apres={() => {

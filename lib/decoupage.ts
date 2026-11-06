@@ -3,7 +3,7 @@
  * chaque ligne de tableau, la liste des blocs de chaque page (utilisé par components/pages-a4.tsx).
  */
 export type BlocMesure =
-  | { cle: string; type: "libre"; garderAvecSuivant?: boolean; garderAvecPrecedent?: boolean; nouvellePage?: boolean }
+  | { cle: string; type: "libre"; garderAvecSuivant?: boolean; garderAvecPrecedent?: boolean; nouvellePage?: boolean; ancre?: boolean }
   | { cle: string; type: "ligne"; tableau: string };
 
 export function decouperPages(
@@ -62,7 +62,9 @@ export function decouperPages(
   const retirer = (page: string[], k: number) => {
     while (k > 0) {
       const x = parCle.get(page[k - 1])!;
-      if (x.type === "libre" && x.garderAvecSuivant) k--;
+      // Un bloc « ancre » (l'introduction de la note) n'est jamais emmené : sans cela, une note d'une
+      // seule ligne (un additif) laissait sa page 1 avec le seul en-tête (05/11/2026)
+      if (x.type === "libre" && x.garderAvecSuivant && !x.ancre) k--;
       else break;
     }
     return k > 0 ? page.splice(k) : [];

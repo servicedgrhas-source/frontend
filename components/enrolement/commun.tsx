@@ -31,6 +31,16 @@ export interface Enrole {
   lieuNaissance: string | null;
   diplome: string;
   diplomeLibelle: string;
+  /** La note où ira le dossier quand ce n'est pas celle de son diplôme (licence de langue ou de philosophie → lycée). */
+  noteAutre?: string | null;
+  /** Une recommandation attend l'avis du directeur ou la décision du DG. */
+  recommandationEnAttente?: boolean;
+  /** Notes où on peut l’envoyer à la main (licence : collège ou lycée ; CFEEN : primaire ou préscolaire). */
+  notesPossibles?: { note: string; libelle: string; cycle: string; specialite: string | null }[];
+  /** La note où il ira aujourd'hui (BET, CFEEN, LICENCE, MASTER…). */
+  noteActuelle?: string;
+  /** Spécialité au regard de sa note : donnée par la règle (préscolaire, primaire) ou à préciser (collège, lycée). */
+  specialiteEtat?: { etat: "regle"; valeur: string } | { etat: "aPreciser" } | null;
   diplomePrecision: string | null;
   promotion: string | null;
   cycle: string | null;

@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useRef, useState } from "react";
 import { NoteImprimable } from "@/components/note-imprimable";
+import { FenetreEntete } from "@/components/fenetre-entete";
+import { BoutonsEnrolement, CorrectionsRectificatif } from "@/components/notes-enrolement";
 import { useSession } from "@/components/session";
 import { Aide, Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, Modale, Saisie, Zone } from "@/components/ui";
-import { api, useApi } from "@/lib/api";
+import { api, qs, useApi } from "@/lib/api";
 import { dateCourte, peut, STATUT_NOTE } from "@/lib/libelles";
 import type { NoteDetail, NoteResume } from "@/lib/types";
 
@@ -18,7 +20,9 @@ export function VueNote() {
   const { donnees: note, erreur, recharger } = useApi<NoteDetail>(`/notes/${id}`);
   const [message, setMessage] = useState<{ ton: "vert" | "rouge"; texte: string } | null>(null);
   const [avecVisas, setAvecVisas] = useState(true);
-  const [dialogue, setDialogue] = useState<"renvoyer" | "signer" | "intro" | "rouvrir" | "supprimer" | "reunir" | "separer" | "ampliations" | null>(null);
+  // Police réduite retenue à l'écran (notes courtes) : le Word la reprend (06/11/2026)
+  const [echelle, setEchelle] = useState(1);
+  const [dialogue, setDialogue] = useState<"renvoyer" | "signer" | "intro" | "rouvrir" | "supprimer" | "reunir" | "separer" | "ampliations" | "entete" | null>(null);
 
   if (erreur) return <Alerte>{erreur}</Alerte>;
   if (!note) return <Chargement />;
@@ -114,13 +118,22 @@ export function VueNote() {
           </Bouton>
           <Bouton
             onClick={() =>
-              api.telecharger(`/notes/${id}/word${aDesVisas && !avecVisas ? "?visas=0" : ""}`, `${note.libelle}.docx`).catch((e: Error) => setMessage({ ton: "rouge", texte: e.message }))
+              api.telecharger(`/notes/${id}/word${qs({ visas: aDesVisas && !avecVisas ? 0 : "", echelle: echelle < 1 ? echelle : "" })}`, `${note.libelle}.docx`).catch((e: Error) => setMessage({ ton: "rouge", texte: e.message }))
             }
           >
             Word
             <Aide>Télécharge la note dans Word, avec la même mise en page que la version imprimée, pour retoucher la présentation (espacer, faire descendre un tableau). La signature reste toujours avec la dernière ligne du tableau.</Aide>
           </Bouton>
-          {s === "BROUILLON" && peut.decider(profil.role) && (
+          {/* Notes d'enrôlement : colonnes, additif, rectificatif (cadrage du 05/11/2026) */}
+          <BoutonsEnrolement note={note} recharger={recharger} signaler={(ton, texte) => setMessage({ ton, texte })} />
+          {/* En-tête de la note : enlever ou ajouter une ligne, un trait (06/11/2026) */}
+          {s === "BROUILLON" && peut.traiter(profil.role) && (
+            <Bouton onClick={() => setDialogue("entete")}>
+              En-tête{note.entete.libre ? " (modifié)" : ""}
+              <Aide>Enlever ou ajouter une ligne de l’en-tête (ministère, cabinet, direction, service…), un trait, ou changer la référence du numéro, pour cette note seulement.</Aide>
+            </Bouton>
+          )}
+          {s === "BROUILLON" && peut.decider(profil.role) && note.module !== "ENROLEMENT" && (
             <Bouton onClick={() => setDialogue("intro")}>
               Modifier l’introduction
               <Aide>
@@ -130,19 +143,20 @@ export function VueNote() {
           )}
           {s === "BROUILLON" && peut.traiter(profil.role) && (
             <>
-              {note.module === "AFFECTATION" && (
+              {(note.module === "AFFECTATION" || (note.module === "ENROLEMENT" && !note.additifDe && !note.rectificatifDe && note.lotRangement == null)) && (
                 <Bouton onClick={() => setDialogue("reunir")}>
                   Réunir avec une autre note
                   <Aide>
-                    Une seule note au lieu de plusieurs : les personnes d’une autre note du même type (un autre lot, par exemple le lot 8 avec le lot 7) passent dans
-                    celle-ci. Possible tant que les notes sont « à soumettre au DG ».
+                    {note.module === "ENROLEMENT"
+                      ? "Une seule note au lieu de deux, au choix : par exemple le préscolaire et le primaire. Les volontaires de l’autre note passent dans celle-ci et l’introduction cite les deux diplômes."
+                      : "Une seule note au lieu de plusieurs : les personnes d’une autre note du même type (un autre lot, par exemple le lot 8 avec le lot 7) passent dans celle-ci. Possible tant que les notes sont « à soumettre au DG »."}
                   </Aide>
                 </Bouton>
               )}
-              {!!note.lotsReunis?.length && (
+              {(!!note.lotsReunis?.length || (note.module === "ENROLEMENT" && !!note.groupes?.length)) && (
                 <Bouton onClick={() => setDialogue("separer")}>
-                  Séparer les lots
-                  <Aide>Défait la réunion : cette note garde son premier lot ; chaque autre lot retrouvera sa note en la préparant.</Aide>
+                  {note.module === "ENROLEMENT" ? "Séparer" : "Séparer les lots"}
+                  <Aide>Défait la réunion : cette note garde son premier type (ou lot) ; chaque autre retrouve sa note.</Aide>
                 </Bouton>
               )}
               <Bouton variante="danger" onClick={() => setDialogue("supprimer")}>
@@ -190,7 +204,8 @@ export function VueNote() {
 
       <Annonce ton={message?.ton} fermer={() => setMessage(null)}>{message?.texte}</Annonce>
       {note.commentaire && s === "BROUILLON" && <Alerte ton="jaune">Renvoyée par le DG : {note.commentaire}</Alerte>}
-      {(s === "BROUILLON" || s === "SOUMISE") && note.contenu.total === 0 && (
+      <CorrectionsRectificatif note={note} recharger={recharger} signaler={(ton, texte) => setMessage({ ton, texte })} />
+      {(s === "BROUILLON" || s === "SOUMISE") && note.contenu.total === 0 && !note.rectificatifDe && (
         <Alerte ton="jaune">
           <strong>Cette note ne contient plus personne.</strong> Les personnes qui y figuraient ont changé de lot (diplôme ou type de texte corrigé), ont été
           exclues, ou sont déjà dans une autre note. Elle ne peut pas être soumise au DG : {s === "BROUILLON" ? "supprimez-la avec le bouton « Supprimer »" : "le DG peut la renvoyer pour qu’elle soit supprimée"}.
@@ -231,7 +246,7 @@ export function VueNote() {
       )}
 
       <div className="overflow-x-auto rounded-3xl bg-zinc-200/70 p-8">
-        <NoteImprimable note={note} visas={avecVisas} />
+        <NoteImprimable note={note} visas={avecVisas} surEchelle={setEchelle} />
       </div>
 
       <Modale titre="Supprimer cette note ?" ouverte={dialogue === "supprimer"} fermer={() => setDialogue(null)}>
@@ -257,10 +272,16 @@ export function VueNote() {
       {dialogue === "reunir" && (
         <Reunir note={note} fermer={() => setDialogue(null)} ok={(avec) => action("fusionner", { avec }, "Notes réunies : une seule note pour ces lots.")} />
       )}
-      <Modale titre="Séparer les lots ?" ouverte={dialogue === "separer"} fermer={() => setDialogue(null)}>
+      <Modale titre={note.module === "ENROLEMENT" ? "Séparer les notes ?" : "Séparer les lots ?"} ouverte={dialogue === "separer"} fermer={() => setDialogue(null)}>
         <p className="text-[13px] leading-relaxed text-zinc-600">
-          Cette note ne gardera que son premier lot. Les lots <strong>{(note.lotsReunis ?? []).map((l) => l.libelle).join(", ")}</strong> retrouvent chacun leur
-          note « à soumettre au DG », avec leurs personnes : vous pourrez les réunir de nouveau quand vous voudrez.
+          {note.module === "ENROLEMENT" ? (
+            <>Cette note ne gardera que son premier type. Les autres types réunis retrouvent chacun leur note « à soumettre au DG », avec leurs volontaires : vous pourrez les réunir de nouveau.</>
+          ) : (
+            <>
+              Cette note ne gardera que son premier lot. Les lots <strong>{(note.lotsReunis ?? []).map((l) => l.libelle).join(", ")}</strong> retrouvent chacun leur
+              note « à soumettre au DG », avec leurs personnes : vous pourrez les réunir de nouveau quand vous voudrez.
+            </>
+          )}
         </p>
         <div className="mt-6 flex justify-end gap-2">
           <Bouton onClick={() => setDialogue(null)}>Annuler</Bouton>
@@ -284,6 +305,17 @@ export function VueNote() {
       {dialogue === "renvoyer" && <Renvoi fermer={() => setDialogue(null)} ok={(c) => action("renvoyer", { commentaire: c }, "Note renvoyée aux agents.")} />}
       {dialogue === "signer" && (
         <Signature note={note} fermer={() => setDialogue(null)} ok={(numero, date) => action("signer", { numero, dateSignature: date }, "Signature enregistrée.")} />
+      )}
+      {dialogue === "entete" && (
+        <FenetreEntete
+          note={note}
+          fermer={() => setDialogue(null)}
+          apres={(texte, ton = "vert") => {
+            if (ton === "vert") setDialogue(null);
+            setMessage({ ton, texte });
+            recharger();
+          }}
+        />
       )}
       {dialogue === "ampliations" && (
         <Ampliations
@@ -651,14 +683,23 @@ function Introduction({ note, fermer, ok }: { note: NoteDetail; fermer: () => vo
 
 /** Choisir les notes du même type (autres lots) à réunir dans celle-ci. */
 function Reunir({ note, fermer, ok }: { note: NoteDetail; fermer: () => void; ok: (avec: string[]) => void }) {
-  const notes = useApi<NoteResume[]>("/notes?module=AFFECTATION");
+  const enrolement = note.module === "ENROLEMENT";
+  const notes = useApi<NoteResume[]>(`/notes?module=${enrolement ? "ENROLEMENT" : "AFFECTATION"}`);
   const [choix, setChoix] = useState<string[]>([]);
-  const candidates = (notes.donnees ?? []).filter((n) => n.id !== note.id && n.statut === "BROUILLON" && n.typeNote === note.typeNote);
+  // Enrôlement : n'importe quel autre type de la même campagne (au choix) ; affectation : le même type
+  const candidates = (notes.donnees ?? []).filter(
+    (n) =>
+      n.id !== note.id &&
+      n.statut === "BROUILLON" &&
+      (enrolement ? n.campagneId === note.campagneId && !n.additifDe && !n.rectificatifDe && n.lotRangement == null : n.typeNote === note.typeNote),
+  );
   return (
     <Modale titre="Réunir avec une autre note" ouverte fermer={fermer}>
       <p className="text-[13px] leading-relaxed text-zinc-600">
-        Les personnes des notes cochées passent dans <strong>« {note.libelle} »</strong>, et ces notes sont retirées. Seules les notes du même type, encore « à
-        soumettre au DG », sont proposées.
+        Les personnes des notes cochées passent dans <strong>« {note.libelle} »</strong>, et ces notes sont retirées.{" "}
+        {enrolement
+          ? "Toutes les notes d’enrôlement de la campagne encore « à soumettre au DG » sont proposées, quel que soit leur type ; l’introduction citera tous les diplômes."
+          : "Seules les notes du même type, encore « à soumettre au DG », sont proposées."}
       </p>
       <div className="mt-4 max-h-72 space-y-1.5 overflow-y-auto">
         {notes.chargement && <Chargement />}

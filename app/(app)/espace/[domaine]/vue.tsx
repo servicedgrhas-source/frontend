@@ -77,7 +77,25 @@ export function VueEspace() {
               <p className="mt-3 flex-1 text-[13px] leading-relaxed text-zinc-500">{r.explication}</p>
               {(travail || info) && (
                 <div className="mt-3 space-y-1 text-[12px]">
-                  {travail && <div className={travail.n ? "font-medium text-or-700" : "text-zinc-400"}>{travail.n ? travail.texte : "Rien en attente"}</div>}
+                  {/* Notes : une pastille par étape du circuit qui attend (06/11/2026) */}
+                  {travail?.etapes ? (
+                    travail.etapes.length ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {travail.etapes.map((x) => (
+                          <span
+                            key={x.texte}
+                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium ring-1 ${x.ton === "jaune" ? "bg-or-100 text-or-700 ring-or-400/40" : x.ton === "bleu" ? "bg-sky-50 text-sky-800 ring-sky-200" : "bg-marque-50 text-marque-700 ring-marque-200"}`}
+                          >
+                            <strong className="tabular-nums">{x.n}</strong> {x.texte}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-zinc-400">Rien en attente</div>
+                    )
+                  ) : (
+                    travail && <div className={travail.n ? "font-medium text-or-700" : "text-zinc-400"}>{travail.n ? travail.texte : "Rien en attente"}</div>
+                  )}
                   {info && info.n > 0 && <div className="text-zinc-500">{info.texte}</div>}
                 </div>
               )}

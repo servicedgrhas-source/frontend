@@ -1,13 +1,18 @@
 "use client";
 
-import { CheckCircle2, PencilLine, Stamp, Trash2, Undo2, XCircle } from "lucide-react";
+import { ArrowRightLeft, CheckCircle2, PencilLine, Stamp, Trash2, Undo2, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ChampOrigine } from "@/components/champ-origine";
+import { Pagination } from "@/components/pagination";
+import { ImportEnrolement } from "@/components/enrolement/import-enrolement";
+import { ChangerNote, EcrireSpecialite, PastilleSpecialite, SpecialitesACompleter } from "@/components/enrolement/changer-note";
 import { type Enrole, FicheEnrole, SelecteurCampagne, useCampagne } from "@/components/enrolement/commun";
 import { useSession } from "@/components/session";
-import { Alerte, Annonce, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, Zone, ZoneFichier } from "@/components/ui";
+import { Alerte, Annonce, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, Zone } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
 import { accesDonne } from "@/lib/espaces";
+import { ATrancher } from "@/components/enrolement/a-trancher";
+import { ProposerRecommandation } from "@/components/recommandation";
 import { peut } from "@/lib/libelles";
 
 type Etat = Enrole["etat"];
@@ -264,6 +269,7 @@ function FormulaireEnrole({ campagneId, dossier, apres, annuler }: { campagneId:
   );
 }
 
+/** Rapport de l'import (essai puis réel) : ce qui sera ajouté, et les vérifications faites (06/11/2026). */
 /** Saisie des enrôlements : formulaire, import, puis contrôle et décision de la DGRHAS. */
 export default function SaisieEnrolement() {
   const { profil } = useSession();
@@ -274,14 +280,23 @@ export default function SaisieEnrolement() {
   const [recherche, setRecherche] = useState("");
   const dossiers = useApi<Enrole[]>(campagne ? `/enrolement/dossiers${qs({ campagne: campagne.id, etat, recherche })}` : null);
   const [coches, setCoches] = useState<Set<string>>(new Set());
+  // 100 dossiers par page : avec 5 000 lignes d'un coup, le navigateur ne dessinait plus le bas de la page
+  // La page revient à 1 quand l'étape, la recherche ou la campagne change
+  const cleListe = `${etat}|${recherche}|${campagne?.id ?? ""}`;
+  const [pageEtat, setPageEtat] = useState({ cle: "", n: 1 });
+  const page = pageEtat.cle === cleListe ? pageEtat.n : 1;
+  const setPage = (n: number) => setPageEtat({ cle: cleListe, n });
   const [message, setMessage] = useState<{ ton: "vert" | "rouge" | "jaune"; texte: string } | null>(null);
   const [fiche, setFiche] = useState<Enrole | null>(null);
   const [correction, setCorrection] = useState<Enrole | null>(null);
   const [renvoi, setRenvoi] = useState<string[] | null>(null);
+  // Recommandation (cabinet, chef de service…) : comme aux affectations, avis du directeur puis DG
+  const [recommander, setRecommander] = useState<Enrole | null>(null);
   const [nonRetenu, setNonRetenu] = useState<string[] | null>(null);
+  // Envoyer dans une autre note (lycée, préscolaire…) ou remettre à la règle (06/11/2026)
+  const [changerNote, setChangerNote] = useState<Enrole[] | null>(null);
+  const [specialite, setSpecialite] = useState<Enrole[] | null>(null);
   const [texte, setTexte] = useState("");
-  const [envoiImport, setEnvoiImport] = useState(false);
-  const [apercu, setApercu] = useState<{ fichier: File; rapport: { feuilles: string[]; lues: number; ajoutes: number; dejaLa: number; sansDiplome: number } } | null>(null);
   if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
 
   const recharger = () => {
@@ -299,6 +314,9 @@ export default function SaisieEnrolement() {
     }
   };
   const lignes = dossiers.donnees ?? [];
+  // Préscolaire ou primaire sans spécialité : la règle la donne d'un clic (06/11/2026)
+  const appliquerRegle = (e: Enrole) =>
+    agir(() => api.post("/enrolement/dossiers/specialite", { ids: [e.id], specialite: null }), `Spécialité de ${e.nomComplet} : « ${e.specialiteEtat?.etat === "regle" ? e.specialiteEtat.valeur : ""} ».`);
   const basculer = (id: string) =>
     setCoches((c) => {
       const n = new Set(c);
@@ -306,28 +324,13 @@ export default function SaisieEnrolement() {
       else n.add(id);
       return n;
     });
-  const tousCoches = lignes.length > 0 && lignes.every((l) => coches.has(l.id));
+  const PAR_PAGE = 100;
+  const pages = Math.max(1, Math.ceil(lignes.length / PAR_PAGE));
+  const pageVue = Math.min(page, pages);
+  const visibles = lignes.slice((pageVue - 1) * PAR_PAGE, pageVue * PAR_PAGE);
+  const tousCoches = visibles.length > 0 && visibles.every((l) => coches.has(l.id));
+  const toutLeMondeCoche = lignes.length > 0 && lignes.every((l) => coches.has(l.id));
   const choisis = [...coches];
-
-  async function importer(f: File, essai: boolean) {
-    if (!campagne) return;
-    const fd = new FormData();
-    fd.append("fichier", f);
-    setEnvoiImport(true);
-    try {
-      const r = await api.post<{ feuilles: string[]; lues: number; ajoutes: number; dejaLa: number; sansDiplome: number }>(`/enrolement/import${qs({ campagne: campagne.id, essai: essai ? 1 : 0 })}`, fd);
-      if (essai) setApercu({ fichier: f, rapport: r });
-      else {
-        setApercu(null);
-        setMessage({ ton: "vert", texte: `${r.ajoutes} dossier(s) ajouté(s) « à contrôler »${r.dejaLa ? ` ; ${r.dejaLa} déjà dans la campagne (ignorés)` : ""}.` });
-        recharger();
-      }
-    } catch (e) {
-      setMessage({ ton: "rouge", texte: (e as Error).message });
-    } finally {
-      setEnvoiImport(false);
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -353,12 +356,14 @@ export default function SaisieEnrolement() {
           {(profil.role === "CHEF_SERVICE" || dg) && campagne.ouverte && (
             <Carte titre="Importer une liste Excel des dossiers déposés">
               <p className="mb-3 text-[13px] text-zinc-600">
-                Une liste avec au moins les colonnes « Noms et prénoms » et « Diplôme » (comme la compilation générale). Chaque ligne devient un dossier « à
-                contrôler ». Les personnes déjà dans la campagne (même nom et même date de naissance) sont ignorées.
+                Une liste avec au moins les colonnes « Noms et prénoms » et « Diplôme » (comme la compilation générale). Vous choisissez la feuille, le système compare chaque ligne à la campagne, au fichier lui-même, aux recrutés, à la base du personnel et aux volontaires ; vous décidez (mettre à jour, fusionner, ajouter, écarter) une ligne ou tout un groupe d’un clic, puis vous importez.
               </p>
-              <ZoneFichier accept=".xlsx" envoi={envoiImport} envoyer={(f) => importer(f, true)} libelleBouton="Lire le fichier" aide="Fichier Excel (.xlsx)" />
+              <ImportEnrolement campagne={campagne} apres={(t) => { setMessage({ ton: "vert", texte: t }); recharger(); }} />
             </Carte>
           )}
+
+          {/* Doublons probables et déjà connus : à trancher par la DGRHAS (06/11/2026) */}
+          <ATrancher campagneId={campagne.id} apres={(t, ton = "vert") => { setMessage({ ton, texte: t }); recharger(); }} />
 
           <Carte titre="Dossiers" actions={<Saisie className="w-64" placeholder="Rechercher un nom…" value={recherche} onChange={(e) => setRecherche(e.target.value)} />}>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -391,6 +396,9 @@ export default function SaisieEnrolement() {
               <span className="flex flex-wrap gap-2">
                 {etat === "A_CONTROLER" && controleur && (
                   <>
+                    <Bouton variante="danger" disabled={!choisis.length} onClick={() => { setTexte(""); setRenvoi(choisis); }}>
+                      <XCircle /> Pas conformes ({choisis.length})
+                    </Bouton>
                     <Bouton disabled={!choisis.length} onClick={() => agir(() => api.post("/enrolement/controler", { ids: choisis, conforme: true }), `${choisis.length} dossier(s) contrôlé(s) : ils passent à la DGRHAS.`)}>
                       <CheckCircle2 /> Conformes ({choisis.length})
                     </Bouton>
@@ -412,22 +420,46 @@ export default function SaisieEnrolement() {
                     </Bouton>
                   </>
                 )}
+                {etat !== "NON_RETENU" && (
+                  <Bouton disabled={!choisis.length} onClick={() => setChangerNote(lignes.filter((l) => coches.has(l.id)))}>
+                    <ArrowRightLeft /> Changer de note ({choisis.length})
+                  </Bouton>
+                )}
                 {etat === "RETENU" && (
                   <Bouton onClick={() => api.telecharger(`/enrolement/dossiers/excel${qs({ campagne: campagne.id, etat: "RETENU" })}`, `Enrolement ${campagne.annee} - retenus.xlsx`)}>Excel des retenus</Bouton>
                 )}
               </span>
             </div>
             {dossiers.erreur && <Alerte>{dossiers.erreur}</Alerte>}
+            <SpecialitesACompleter dossiers={lignes} apres={(t, ton = "vert") => { setMessage({ ton, texte: t }); recharger(); }} />
             {!dossiers.donnees ? (
               <Chargement />
             ) : !lignes.length ? (
               <Vide>Aucun dossier à cette étape.</Vide>
             ) : (
+              <>
+              {tousCoches && lignes.length > visibles.length && (
+                <div className="mb-3 flex flex-wrap items-center justify-center gap-2 rounded-2xl bg-marque-50 px-4 py-2.5 text-[13px] text-marque-800 ring-1 ring-marque-200">
+                  {toutLeMondeCoche ? (
+                    <>
+                      Les <strong>{lignes.length.toLocaleString("fr-FR")}</strong> dossiers de cette étape sont cochés.
+                      <button type="button" className="font-semibold underline underline-offset-2" onClick={() => setCoches(new Set())}>Tout décocher</button>
+                    </>
+                  ) : (
+                    <>
+                      Les {visibles.length} dossiers de cette page sont cochés.
+                      <button type="button" className="font-semibold underline underline-offset-2" onClick={() => setCoches(new Set(lignes.map((l) => l.id)))}>
+                        Cocher les {lignes.length.toLocaleString("fr-FR")} dossiers de cette étape
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
               <Tableau>
                 <thead>
                   <tr>
                     <th className="w-10">
-                      <input type="checkbox" className="size-4 accent-marque-600" aria-label="Tout cocher" checked={tousCoches} onChange={() => setCoches(tousCoches ? new Set() : new Set(lignes.map((l) => l.id)))} />
+                      <input type="checkbox" className="size-4 accent-marque-600" aria-label="Tout cocher" checked={tousCoches} onChange={() => setCoches((c) => { const n = new Set(c); for (const l of visibles) { if (tousCoches) n.delete(l.id); else n.add(l.id); } return n; })} />
                     </th>
                     <th>Nom et prénoms</th>
                     <th>Diplôme</th>
@@ -437,7 +469,7 @@ export default function SaisieEnrolement() {
                   </tr>
                 </thead>
                 <tbody>
-                  {lignes.map((e) => (
+                  {visibles.map((e) => (
                     <tr key={e.id} className={coches.has(e.id) ? "bg-marque-50/50" : ""}>
                       <td>
                         <input type="checkbox" className="size-4 accent-marque-600" checked={coches.has(e.id)} onChange={() => basculer(e.id)} aria-label={`Cocher ${e.nomComplet}`} />
@@ -451,10 +483,18 @@ export default function SaisieEnrolement() {
                         </div>
                         {e.remarqueControle && <div className="text-[11px] font-medium text-rouge-600">À corriger : {e.remarqueControle}</div>}
                         {e.motifDecision && <div className="text-[11px] text-zinc-500">Motif : {e.motifDecision}</div>}
+                        {e.recommandationEnAttente && <div className="mt-0.5 inline-flex rounded-full bg-or-100 px-2 py-0.5 text-[11px] font-medium text-or-700">Recommandation en attente</div>}
                       </td>
                       <td className="text-[12px]">
                         {e.diplomeLibelle}
                         <div className="text-zinc-400">{[e.promotion, e.specialite].filter(Boolean).join(" · ")}</div>
+                        {e.noteAutre && <div className="mt-0.5 inline-flex rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 ring-1 ring-sky-200" title={e.noteAutre}>→ {e.noteAutre.split(" (")[0]}</div>}
+                        {!e.noteId && (
+                          <button type="button" className="ml-1 mt-0.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-marque-700 ring-1 ring-marque-200 hover:bg-marque-50" onClick={() => setChangerNote([e])}>
+                            <ArrowRightLeft className="size-3" aria-hidden /> Changer de note
+                          </button>
+                        )}
+                        <PastilleSpecialite e={e} ouvrir={(regle) => (regle ? appliquerRegle(e) : setSpecialite([e]))} />
                       </td>
                       <td className="text-[12px]">
                         {e.departementsSouhaitesNoms.join(", ") || "—"}
@@ -470,9 +510,9 @@ export default function SaisieEnrolement() {
                               <Bouton className="px-3! py-1.5!" variante="principal" onClick={() => agir(() => api.post("/enrolement/controler", { ids: [e.id], conforme: true }), `Dossier de ${e.nomComplet} contrôlé.`)}>
                                 Conforme
                               </Bouton>
-                              <BoutonIcone libelle="Renvoyer pour correction" onClick={() => { setTexte(""); setRenvoi([e.id]); }}>
-                                <Undo2 />
-                              </BoutonIcone>
+                              <Bouton className="px-3! py-1.5!" variante="danger" title="Pas conforme au dossier papier : renvoyé avec ce qu’il faut corriger" onClick={() => { setTexte(""); setRenvoi([e.id]); }}>
+                                Pas conforme
+                              </Bouton>
                             </>
                           )}
                           {etat === "CONTROLE" && dg && (
@@ -488,6 +528,16 @@ export default function SaisieEnrolement() {
                           {(etat === "RETENU" || etat === "NON_RETENU") && dg && !e.noteId && (
                             <BoutonIcone libelle="Annuler la décision (retour « à décider »)" onClick={() => agir(() => api.post(`/enrolement/dossiers/${e.id}/annuler-decision`), `Décision annulée pour ${e.nomComplet}.`)}>
                               <Undo2 />
+                            </BoutonIcone>
+                          )}
+                          {!e.noteId && etat !== "NON_RETENU" && (
+                            <BoutonIcone
+                              libelle={e.recommandationEnAttente ? "Recommandation en attente (directeur, puis DG)" : "Proposer une recommandation (retenir, département, établissement)"}
+                              ton="vert"
+                              disabled={e.recommandationEnAttente}
+                              onClick={() => setRecommander(e)}
+                            >
+                              <Stamp />
                             </BoutonIcone>
                           )}
                           {!e.noteId && (
@@ -506,11 +556,20 @@ export default function SaisieEnrolement() {
                   ))}
                 </tbody>
               </Tableau>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[12px] text-zinc-500">
+                <span>
+                  {lignes.length.toLocaleString("fr-FR")} dossier(s) · lignes {((pageVue - 1) * PAR_PAGE + 1).toLocaleString("fr-FR")} à {Math.min(pageVue * PAR_PAGE, lignes.length).toLocaleString("fr-FR")}
+                </span>
+                <Pagination page={pageVue} pages={pages} aller={setPage} />
+              </div>
+              </>
             )}
           </Carte>
         </>
       )}
 
+      {specialite && <EcrireSpecialite dossiers={specialite} fermer={() => setSpecialite(null)} apres={(t) => { setSpecialite(null); setMessage({ ton: "vert", texte: t }); recharger(); }} />}
+      {changerNote && <ChangerNote dossiers={changerNote} fermer={() => setChangerNote(null)} apres={(t, ton = "vert") => { setChangerNote(null); setMessage({ ton, texte: t }); recharger(); }} />}
       {fiche && <FicheEnrole e={fiche} fermer={() => setFiche(null)} />}
       {correction && campagne && (
         <Modale titre={`Corriger le dossier – ${correction.nomComplet}`} ouverte large fermer={() => setCorrection(null)}>
@@ -548,28 +607,20 @@ export default function SaisieEnrolement() {
           </Bouton>
         </div>
       </Modale>
-      <Modale titre="Importer ces dossiers ?" ouverte={!!apercu} fermer={() => setApercu(null)}>
-        {apercu && (
-          <div className="space-y-2 text-[13px]">
-            <p>
-              Feuilles lues : {apercu.rapport.feuilles.join(", ")} — <strong>{apercu.rapport.lues}</strong> dossier(s).
-            </p>
-            <ul className="list-disc pl-5">
-              <li>
-                <strong>{apercu.rapport.ajoutes}</strong> seront ajoutés « à contrôler » dans la campagne {campagne?.annee}.
-              </li>
-              {apercu.rapport.dejaLa > 0 && <li>{apercu.rapport.dejaLa} déjà dans la campagne : ignorés.</li>}
-              {apercu.rapport.sansDiplome > 0 && <li className="text-or-700">{apercu.rapport.sansDiplome} sans diplôme lisible : à corriger au contrôle.</li>}
-            </ul>
-          </div>
-        )}
-        <div className="mt-6 flex justify-end gap-2">
-          <Bouton onClick={() => setApercu(null)}>Annuler</Bouton>
-          <Bouton variante="principal" disabled={!apercu?.rapport.ajoutes || envoiImport} onClick={() => apercu && importer(apercu.fichier, false)}>
-            Importer {apercu?.rapport.ajoutes ?? 0} dossier(s)
-          </Bouton>
-        </div>
-      </Modale>
+      {recommander && (
+        <ProposerRecommandation
+          url={`/enrolement/enroles/${recommander.id}/recommandations`}
+          personne={recommander.nomComplet}
+          enrole={recommander}
+          avant={[recommander.departementRetenu ?? "pas encore de département", recommander.etablissement].filter(Boolean).join(" · ")}
+          fermer={() => setRecommander(null)}
+          apres={() => {
+            setRecommander(null);
+            setMessage({ ton: "vert", texte: "Recommandation proposée : avis du directeur, puis décision du DG (page Recommandations). Validée, elle fait retenir le volontaire." });
+            recharger();
+          }}
+        />
+      )}
     </div>
   );
 }

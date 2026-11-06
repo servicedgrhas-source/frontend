@@ -2,7 +2,7 @@
 
 import { ChevronRight, CornerDownRight, FilePen, FileSignature, Layers, Lock, Send, Unlink, type LucideIcon } from "lucide-react";
 import Link from "next/link";
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useCampagne } from "./enrolement/commun";
 import { useSession } from "./session";
 import { Aide, Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, EnTete, Liste, Modale, Pastille, Saisie, Tableau, Vide } from "./ui";
@@ -42,7 +42,7 @@ const TITRES = {
   },
   ENROLEMENT: {
     titre: "Notes d’enrôlement",
-    aide: "Une note par diplôme avec les volontaires retenus par la DGRHAS, classés par département puis par établissement. Pas de lots ici : on choisit la campagne et l’année scolaire.",
+    aide: "Une note par diplôme avec les volontaires retenus par la DGRHAS, classés par département puis par établissement. On choisit la campagne et l’année scolaire. Une note trop longue peut être découpée en plusieurs notes (lots) depuis la note elle-même.",
   },
 };
 
@@ -102,6 +102,12 @@ export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "E
   // Notes réunies dont le menu déroulant est ouvert, et note à séparer (confirmation)
   const [ouvertes, setOuvertes] = useState<Set<string>>(new Set());
   const [aSeparer, setASeparer] = useState<NoteResume | null>(null);
+  // Enrôlement : chaque note suivie de ses lots, additifs et rectificatifs (06/11/2026)
+  const rangees = useMemo<Rangee[]>(
+    () => (module === "ENROLEMENT" ? familles(donnees ?? []) : (donnees ?? []).map((n) => ({ n, niveau: 0, lien: null, enfants: { ADDITIF: 0, RECTIFICATIF: 0, LOT: 0 } }))),
+    [donnees, module],
+  );
+  const avecFamilles = rangees.some((r) => r.lien);
   const basculer = (id: string) =>
     setOuvertes((x) => {
       const y = new Set(x);
@@ -216,6 +222,8 @@ export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "E
         ) : !donnees.length ? (
           <Vide>Aucune note pour le moment.</Vide>
         ) : (
+          <>
+          {avecFamilles && <LegendeFamilles />}
           <Tableau>
             <thead>
               <tr>
@@ -230,11 +238,20 @@ export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "E
               </tr>
             </thead>
             <tbody>
-              {donnees.map((n) => (
+              {rangees.map(({ n, niveau, lien, enfants, trait }) => (
                 <Fragment key={n.id}>
-                <tr className={ouvertes.has(n.id) ? "bg-sky-50/60" : undefined}>
-                  <td className="font-medium">
-                    {n.libelle}
+                <tr className={ouvertes.has(n.id) ? "bg-sky-50/60" : lien ? "bg-zinc-50/70" : undefined}>
+                  <td className="relative font-medium">
+                    {trait && <TraitFamille trait={trait} niveau={niveau} />}
+                    <div style={lien ? { marginLeft: 12 + (niveau - 1) * 18 } : trait ? { paddingLeft: 12 } : undefined}>
+                    {lien && (
+                      <div className={`mb-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${RELATIONS[lien.type].pastille}`}>
+                        <CornerDownRight className="size-3" aria-hidden />
+                        {lien.texte}
+                      </div>
+                    )}
+                    <div>{n.libelle}</div>
+                    <ResumeFamille enfants={enfants} />
                     {/* Notes réunies : un menu déroulant les montre une à une (DG, 01/11/2026) */}
                     {n.reunion && (
                       <button
@@ -256,6 +273,7 @@ export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "E
                       {n.valideeLe && ` · validée ${quand(n.valideeLe)}`}
                     </div>
                     {n.commentaire && n.statut === "BROUILLON" && <div className="text-xs font-normal text-rouge-600">Renvoyée par le DG : {n.commentaire}</div>}
+                    </div>
                   </td>
                   <td className="text-right tabular-nums">
                     {n.total}
@@ -323,8 +341,175 @@ export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "E
               ))}
             </tbody>
           </Tableau>
+          </>
         )}
       </Carte>
+    </div>
+  );
+}
+
+/* ---------------- Notes d’enrôlement : familles (note, additifs, rectificatifs, lots) ---------------- */
+
+type Relation = "ADDITIF" | "RECTIFICATIF" | "LOT";
+
+/** Couleur et mot de chaque relation, les mêmes dans la liste et dans la légende (06/11/2026). */
+const RELATIONS: Record<Relation, { mot: string; pastille: string; trait: string; aide: string }> = {
+  ADDITIF: {
+    mot: "Additif",
+    pastille: "bg-emerald-50 text-emerald-800 ring-emerald-200",
+    trait: "border-emerald-300",
+    aide: "ajoute des volontaires oubliés à une note déjà signée.",
+  },
+  RECTIFICATIF: {
+    mot: "Rectificatif",
+    pastille: "bg-amber-50 text-amber-800 ring-amber-200",
+    trait: "border-amber-300",
+    aide: "corrige une note signée (« au lieu de … lire … ») ou remplace une personne.",
+  },
+  LOT: {
+    mot: "Lot",
+    pastille: "bg-violet-50 text-violet-800 ring-violet-200",
+    trait: "border-violet-300",
+    aide: "une partie d’une note trop longue, découpée en notes plus petites.",
+  },
+};
+
+interface Rangee {
+  n: NoteResume;
+  niveau: number;
+  lien: { type: Relation; texte: string } | null;
+  enfants: Record<Relation, number>;
+  /** Place dans le trait de la famille : la mère, une fille, la dernière fille ; couleur de la famille. */
+  trait?: { position: "mere" | "milieu" | "derniere"; couleur: number };
+}
+
+/** Une couleur par famille, pour distinguer deux familles qui se suivent. */
+const COULEURS_FAMILLE = [
+  { fond: "bg-violet-400", bord: "border-violet-400" },
+  { fond: "bg-sky-400", bord: "border-sky-400" },
+  { fond: "bg-emerald-400", bord: "border-emerald-400" },
+  { fond: "bg-amber-400", bord: "border-amber-400" },
+  { fond: "bg-rose-400", bord: "border-rose-400" },
+];
+
+/** Le trait de la famille dans la première cellule : il part de la mère et descend jusqu'à la dernière fille. */
+function TraitFamille({ trait, niveau }: { trait: NonNullable<Rangee["trait"]>; niveau: number }) {
+  const c = COULEURS_FAMILLE[trait.couleur % COULEURS_FAMILLE.length];
+  const coude = 14 + (niveau - 1) * 18;
+  if (trait.position === "mere")
+    return (
+      <>
+        <span className={`absolute left-[3px] top-[1.05rem] size-2.5 rounded-full ring-2 ring-white ${c.fond}`} aria-hidden />
+        <span className={`absolute -bottom-px left-[7px] top-[1.6rem] w-0.5 rounded-t-full ${c.fond}`} aria-hidden />
+      </>
+    );
+  return (
+    <>
+      {trait.position === "milieu" && <span className={`absolute -bottom-px -top-px left-[7px] w-0.5 ${c.fond}`} aria-hidden />}
+      <span className={`absolute -top-px left-[7px] h-[1.55rem] rounded-bl-lg border-b-2 border-l-2 ${c.bord}`} style={{ width: coude }} aria-hidden />
+    </>
+  );
+}
+
+function nomDeLaNote(p: NoteResume) {
+  return p.numero ? `la note n° ${p.numero} du ${dateCourte(p.dateSignature)}` : `« ${p.libelle} »`;
+}
+
+/** Range chaque note sous celle dont elle dépend : additif, rectificatif, lot de rangement. */
+function familles(notes: NoteResume[]): Rangee[] {
+  const parId = new Map(notes.map((n) => [n.id, n]));
+  const parent = new Map<string, { id: string; type: Relation }>();
+  for (const n of notes) {
+    if (n.additifDe && parId.has(n.additifDe)) parent.set(n.id, { id: n.additifDe, type: "ADDITIF" });
+    else if (n.rectificatifDe && parId.has(n.rectificatifDe)) parent.set(n.id, { id: n.rectificatifDe, type: "RECTIFICATIF" });
+    else if (n.lotRangement != null) {
+      const p = notes.find(
+        (x) => x.id !== n.id && x.lotRangement == null && !x.additifDe && !x.rectificatifDe && x.typeNote === n.typeNote && x.campagneId === n.campagneId,
+      );
+      if (p) parent.set(n.id, { id: p.id, type: "LOT" });
+    }
+  }
+  const enfantsDe = new Map<string, NoteResume[]>();
+  for (const n of notes) {
+    const p = parent.get(n.id);
+    if (p) enfantsDe.set(p.id, [...(enfantsDe.get(p.id) ?? []), n]);
+  }
+  const ordre: Relation[] = ["LOT", "ADDITIF", "RECTIFICATIF"];
+  const res: Rangee[] = [];
+  const vus = new Set<string>();
+  const poser = (n: NoteResume, niveau: number) => {
+    if (vus.has(n.id)) return;
+    vus.add(n.id);
+    const p = parent.get(n.id);
+    const enfants = (enfantsDe.get(n.id) ?? []).sort(
+      (a, b) => ordre.indexOf(parent.get(a.id)!.type) - ordre.indexOf(parent.get(b.id)!.type) || (a.lotRangement ?? 0) - (b.lotRangement ?? 0),
+    );
+    const compte = { ADDITIF: 0, RECTIFICATIF: 0, LOT: 0 };
+    for (const e of enfants) compte[parent.get(e.id)!.type]++;
+    res.push({
+      n,
+      niveau,
+      lien: p
+        ? {
+            type: p.type,
+            texte:
+              p.type === "LOT"
+                ? `Lot ${n.lotRangement} : une partie de la note ci-dessus`
+                : `${RELATIONS[p.type].mot} ${p.type === "ADDITIF" ? "à" : "de"} ${nomDeLaNote(parId.get(p.id)!)}`,
+          }
+        : null,
+      enfants: compte,
+    });
+    for (const e of enfants) poser(e, niveau + 1);
+  };
+  for (const n of notes) if (!parent.has(n.id)) poser(n, 0);
+  for (const n of notes) poser(n, 0); // filet : une boucle de parents ne fait rien disparaître
+  // Le trait de chaque famille : de la mère jusqu'à la dernière note faite à partir d'elle
+  let couleur = 0;
+  for (let i = 0; i < res.length; i++) {
+    if (res[i].niveau !== 0) continue;
+    let fin = i;
+    while (fin + 1 < res.length && res[fin + 1].niveau > 0) fin++;
+    if (fin === i) continue;
+    res[i].trait = { position: "mere", couleur };
+    for (let k = i + 1; k <= fin; k++) res[k].trait = { position: k === fin ? "derniere" : "milieu", couleur };
+    couleur++;
+  }
+  return res;
+}
+
+/** Les pastilles « 2 lots », « 1 additif »… d’une note principale. */
+function ResumeFamille({ enfants }: { enfants: Record<Relation, number> }) {
+  const mots: [Relation, string][] = [
+    ["LOT", "lot"],
+    ["ADDITIF", "additif"],
+    ["RECTIFICATIF", "rectificatif"],
+  ];
+  const presents = mots.filter(([r]) => enfants[r] > 0);
+  if (!presents.length) return null;
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1">
+      {presents.map(([r, mot]) => (
+        <span key={r} className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${RELATIONS[r].pastille}`}>
+          {enfants[r]} {mot}
+          {enfants[r] > 1 ? "s" : ""} ci-dessous
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Légende : ce que veut dire chaque couleur. */
+function LegendeFamilles() {
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl bg-zinc-50 px-4 py-3 text-[12px] text-zinc-600">
+      <span className="font-semibold text-encre">Comment lire la liste : chaque note est suivie, en retrait, des notes faites à partir d’elle ; un trait de couleur les relie, de la note mère à la dernière.</span>
+      {(Object.keys(RELATIONS) as Relation[]).map((r) => (
+        <span key={r} className="inline-flex items-center gap-1.5">
+          <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${RELATIONS[r].pastille}`}>↳ {RELATIONS[r].mot}</span>
+          {RELATIONS[r].aide}
+        </span>
+      ))}
     </div>
   );
 }

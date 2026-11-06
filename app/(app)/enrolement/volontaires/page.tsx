@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { FileSpreadsheet, FileText, Printer } from "lucide-react";
 import { categoriesDe, FicheVolontaire, fcfa, libelleVague, LISTES, moisFr, nf, peutGerer, type Population, useConfigEnrolement, type Volontaire } from "@/components/enrolement/volontaires";
 import { useSession } from "@/components/session";
 import { Aide, Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, ChoixMois, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, ZoneFichier } from "@/components/ui";
@@ -587,6 +588,20 @@ export default function RegistreVolontaires() {
   };
   const p = liste.donnees;
   const pages = p ? Math.max(1, Math.ceil(p.total / p.taille)) : 1;
+  // Impression de la liste affichée (06/11/2026) : le titre suit les filtres
+  const filtresListe = { population, vague: population === "VOLONTAIRE" ? vague : "", recherche, statut, departement, categorie, motif: statut === "SORTI" ? motif : "" };
+  const titreListe = [
+    `Liste des ${L.des}${statut === "EN_POSTE" ? " en poste" : statut === "SORTI" ? " sortis" : ""}`,
+    departement ? refs.departements.find((d) => String(d.id) === departement)?.nom : "",
+    categorie && categorie !== "-" ? nomCat(categorie) : "",
+    population === "VOLONTAIRE" && vague ? (vague === "aucune" ? "vague inconnue" : libelleVague(Number(vague), null)) : "",
+  ]
+    .filter(Boolean)
+    .join(" — ");
+  const imprimer = (format: "docx" | "xlsx" | "pdf") => {
+    if (format === "pdf") window.open(`/impression/volontaires${qs({ ...filtresListe, titre: titreListe })}`, "_blank");
+    else api.telecharger(`/enrolement/volontaires/export${qs({ ...filtresListe, format, titre: titreListe })}`, `${titreListe}.${format}`).catch((e: Error) => setErreur(e.message));
+  };
 
   return (
     <div className="space-y-6">
@@ -694,7 +709,24 @@ export default function RegistreVolontaires() {
           </div>
         </Carte>
       )}
-      <Carte>
+      <Carte
+        titre={`Liste des ${L.des}`}
+        actions={
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="text-[12px] text-zinc-500">Imprimer la liste affichée :</span>
+            <Bouton disabled={!p?.total} onClick={() => imprimer("docx")}>
+              <FileText className="size-4" aria-hidden /> Word
+            </Bouton>
+            <Bouton disabled={!p?.total} onClick={() => imprimer("xlsx")}>
+              <FileSpreadsheet className="size-4" aria-hidden /> Excel
+            </Bouton>
+            <Bouton variante="principal" disabled={!p?.total} onClick={() => imprimer("pdf")}>
+              <Printer className="size-4" aria-hidden /> PDF / Imprimer
+              <Aide>La liste avec les filtres choisis (statut, département, catégorie, vague, recherche), en paysage, avec toutes les informations de chaque personne. Au pied de chaque page : « Généré par le Système d’Information… (SIGRHAS-MEPPSA) ».</Aide>
+            </Bouton>
+          </span>
+        }
+      >
         <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <Saisie placeholder="Nom, téléphone ou établissement…" value={recherche} onChange={(e) => filtre(() => setRecherche(e.target.value))} className="xl:col-span-2" />
           <Liste value={statut} onChange={(e) => filtre(() => setStatut(e.target.value))} vide="Tous" options={[{ valeur: "EN_POSTE", libelle: "En poste" }, { valeur: "SORTI", libelle: "Sortis" }]} />
@@ -716,11 +748,13 @@ export default function RegistreVolontaires() {
               <thead>
                 <tr>
                   <th>Nom et prénoms</th>
+                  <th>Naissance</th>
+                  <th>Diplôme · spécialité</th>
                   <th>{population === "VOLONTAIRE" ? "Catégorie" : "Cycle"}</th>
-                  <th>Département</th>
-                  <th>Établissement</th>
+                  <th>Département · établissement</th>
                   {population === "VOLONTAIRE" && <th>Vague</th>}
-                  <th>{statut === "SORTI" ? "Sortie" : "Payé depuis"}</th>
+                  <th>Note de service</th>
+                  <th>{statut === "SORTI" ? "Sortie" : "Prise de service · payé depuis"}</th>
                 </tr>
               </thead>
               <tbody>
@@ -732,11 +766,34 @@ export default function RegistreVolontaires() {
                       </button>
                       {v.telephone && <div className="text-[11px] text-zinc-400">{v.telephone}</div>}
                     </td>
-                    <td className={v.categorie ? "" : "text-rouge-600"}>{v.categorie ? nomCat(v.categorie) : `? (${v.cycleBrut ?? "vide"})`}</td>
-                    <td className={v.departementId ? "" : "text-rouge-600"}>{refs.departements.find((d) => d.id === v.departementId)?.nom ?? `? (${v.departementBrut ?? "vide"})`}</td>
-                    <td className="text-[12px]">{v.etablissement ?? "—"}</td>
+                    <td className="text-[12px]">
+                      {v.dateNaissance ? v.dateNaissance.split("-").reverse().join("/") : "—"}
+                      {v.lieuNaissance && <div className="text-zinc-400">{v.lieuNaissance}</div>}
+                    </td>
+                    <td className="text-[12px]">
+                      {v.diplome ?? "—"}
+                      {v.specialite && <div className="text-zinc-400">{v.specialite}</div>}
+                    </td>
+                    <td className={v.categorie ? "text-[12px]" : "text-[12px] text-rouge-600"}>{v.categorie ? nomCat(v.categorie) : `? (${v.cycleBrut ?? "vide"})`}</td>
+                    <td className="text-[12px]">
+                      <span className={v.departementId ? "" : "text-rouge-600"}>{refs.departements.find((d) => d.id === v.departementId)?.nom ?? `? (${v.departementBrut ?? "vide"})`}</span>
+                      <div className="text-zinc-400">{v.etablissement ?? "établissement non précisé"}</div>
+                    </td>
                     {population === "VOLONTAIRE" && <td className="text-[12px]">{libelleVague(v.vagueNumero, v.vague)}</td>}
-                    <td className="text-[12px]">{v.statut === "SORTI" ? `${nomMotif(v.motifSortie)}${v.dateSortie ? ` · ${v.dateSortie.split("-").reverse().join("/")}` : ""}` : moisFr(v.premierMois)}</td>
+                    <td className="text-[12px]">
+                      {v.noteReference ?? "—"}
+                      {v.dateNote && <div className="text-zinc-400">du {v.dateNote.split("-").reverse().join("/")}</div>}
+                    </td>
+                    <td className="text-[12px]">
+                      {v.statut === "SORTI" ? (
+                        `${nomMotif(v.motifSortie)}${v.dateSortie ? ` · ${v.dateSortie.split("-").reverse().join("/")}` : ""}`
+                      ) : (
+                        <>
+                          {v.datePriseService ? v.datePriseService.split("-").reverse().join("/") : "—"}
+                          <div className="text-zinc-400">payé depuis {moisFr(v.premierMois)}</div>
+                        </>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -105,8 +105,14 @@ input[type="radio"] {
   font-family: var(--font-note);
   color: #000;
   background: #fff;
-  font-size: 11.5pt;
+  /* --echelle : police un peu réduite quand la note tient ainsi sur moins de pages (06/11/2026) */
+  font-size: calc(11.5pt * var(--echelle, 1));
   line-height: 1.35;
+}
+
+/* Tableau des personnes et ampliations : suivent la même échelle */
+.feuille-note .t-note {
+  font-size: calc(10pt * var(--echelle, 1));
 }
 
 .feuille-note table {
@@ -125,6 +131,7 @@ input[type="radio"] {
 
 .feuille-note table.ampliations {
   width: auto;
+  font-size: calc(9pt * var(--echelle, 1));
 }
 
 /* Nombre collé à sa désignation */

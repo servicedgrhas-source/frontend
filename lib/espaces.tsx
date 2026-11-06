@@ -52,12 +52,35 @@ export interface Compteurs {
   lotsSansDate: number;
   pasAffectes: number;
   recommandations: number;
+  recommandationsEnr?: number;
   mutationsEnCours: number;
   notesAffASoumettre: number;
   notesAffSoumises: number;
   notesMutASoumettre: number;
   notesMutSoumises: number;
+  notesEnrASoumettre?: number;
+  notesEnrSoumises?: number;
+  notesNomASoumettre?: number;
+  notesNomSoumises?: number;
+  notesAffASigner?: number;
+  notesMutASigner?: number;
+  notesEnrASigner?: number;
+  notesNomASigner?: number;
 }
+
+/**
+ * Compteur d'une rubrique de notes (06/11/2026) : les trois étapes du circuit qui attendent quelqu'un,
+ * en pastilles de couleur (à soumettre au DG, en attente de validation, validées à faire signer).
+ */
+const etapesNotes = (aSoumettre = 0, soumises = 0, aSigner = 0) => ({
+  n: aSoumettre + soumises,
+  texte: parties([aSoumettre, "à soumettre au DG"], [soumises, "en attente de validation"], [aSigner, "validée(s), à faire signer"]),
+  etapes: [
+    { n: aSoumettre, texte: "à soumettre au DG", ton: "jaune" as const },
+    { n: soumises, texte: "en attente de validation", ton: "bleu" as const },
+    { n: aSigner, texte: "validée(s), à faire signer", ton: "vert" as const },
+  ].filter((x) => x.n > 0),
+});
 
 export interface Rubrique {
   /** Sous-section du domaine (ex. « Chaque mois : payer ») : les rubriques qui la suivent en font partie. */
@@ -71,7 +94,7 @@ export interface Rubrique {
   /** Ce que l'on fait dans cette rubrique (page d'accueil du domaine). */
   explication: string;
   /** Travail en attente : compté dans le menu. */
-  compteur?: (c: Compteurs) => { n: number; texte: string };
+  compteur?: (c: Compteurs) => { n: number; texte: string; etapes?: { n: number; texte: string; ton: "jaune" | "bleu" | "vert" }[] };
   /** Information seulement (ex. textes attendus de la FP) : pas comptée dans le menu. */
   info?: (c: Compteurs) => { n: number; texte: string };
 }
@@ -220,6 +243,23 @@ export const ESPACES: Espace[] = [
         icone: UserCheck,
         visible: traiter,
         explication: "Les volontaires retenus : département et établissement, export Excel.",
+      },
+      {
+        groupe: "Chaque année : enrôler",
+        href: "/enrolement/recommandations",
+        libelle: "Recommandations",
+        icone: Stamp,
+        visible: traiter,
+        explication: "Les recommandations pour les volontaires : autre département, établissement ou note (avec la spécialité). Le chef de service propose, le directeur donne son avis, le DG décide.",
+        compteur: (c) => ({ n: c.recommandationsEnr ?? 0, texte: `${c.recommandationsEnr ?? 0} en attente (avis du directeur ou décision du DG)` }),
+      },
+      {
+        groupe: "Chaque année : enrôler",
+        href: "/enrolement/statistiques",
+        libelle: "Statistiques de l’enrôlement",
+        icone: BarChart3,
+        visible: traiter,
+        explication: "Par cycle et diplôme : base générale, affectés, reste à affecter ; spécialités du collège (DEMA, licence) et du lycée (master, licences de langues et de philosophie).",
       },
       {
         groupe: "Chaque année : enrôler",
@@ -499,26 +539,21 @@ export const ESPACES: Espace[] = [
         libelle: "Notes d’affectation",
         icone: FileText,
         explication: "Relire les notes préparées, les soumettre au DG, puis reporter le numéro et la date de signature.",
-        compteur: (c) => ({
-          n: c.notesAffASoumettre + c.notesAffSoumises,
-          texte: parties([c.notesAffASoumettre, "à soumettre au DG"], [c.notesAffSoumises, "en attente de validation"]),
-        }),
+        compteur: (c) => etapesNotes(c.notesAffASoumettre, c.notesAffSoumises, c.notesAffASigner),
       },
       {
         href: "/notes/mutation",
         libelle: "Notes de mutation",
         icone: FileText,
         explication: "Les notes des mutations accordées, préparées automatiquement.",
-        compteur: (c) => ({
-          n: c.notesMutASoumettre + c.notesMutSoumises,
-          texte: parties([c.notesMutASoumettre, "à soumettre au DG"], [c.notesMutSoumises, "en attente de validation"]),
-        }),
+        compteur: (c) => etapesNotes(c.notesMutASoumettre, c.notesMutSoumises, c.notesMutASigner),
       },
       {
         href: "/notes/enrolement",
         libelle: "Notes d’enrôlement",
         icone: FileText,
-        explication: "Les notes de service des volontaires retenus à l’enrôlement.",
+        explication: "Les notes de service des volontaires retenus à l’enrôlement : une par type (préscolaire, primaire, collège, lycée, administration), additifs et rectificatifs.",
+        compteur: (c) => etapesNotes(c.notesEnrASoumettre, c.notesEnrSoumises, c.notesEnrASigner),
       },
       {
         href: "/notes/nomination",
@@ -526,6 +561,7 @@ export const ESPACES: Espace[] = [
         icone: FileText,
         visible: traiter,
         explication: "Une note par fonction (directeurs, directeurs des études, surveillants généraux, économes, proviseurs, inspecteurs…) avec les nominations validées.",
+        compteur: (c) => etapesNotes(c.notesNomASoumettre, c.notesNomSoumises, c.notesNomASigner),
       },
     ],
   },
