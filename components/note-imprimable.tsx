@@ -3,9 +3,10 @@
 import { SpecimenVisa, type StyleVisa } from "@/components/visa-specimen";
 import { Fragment, useMemo } from "react";
 import { dateLongue } from "@/lib/libelles";
+import { ajusterColonnes } from "@/lib/colonnes-note";
 import { largeurTexte, plusLongMot } from "@/lib/largeur-texte";
 import type { NoteDetail } from "@/lib/types";
-import { PagesA4, StyleImpressionA4, type Bloc, type Tableau } from "./pages-a4";
+import { PagesA4, type Bloc, type Tableau } from "./pages-a4";
 
 const SEP = <div className="leading-none">-----------------</div>;
 
@@ -79,16 +80,6 @@ const LARGEUR: Record<string, number> = {
   lieuSollicite: 26,
 };
 
-/**
- * Le tableau tient-il en portrait ? Sinon la note passe en paysage (le DG : « quitte à tirer ça en
- * paysage », 06/11/2026). Le nom garde au moins 30 mm (comme avant). Le Word fait le même calcul.
- */
-export function enPaysage(c: NoteDetail["contenu"]) {
-  if (c.classification) return false;
-  const fixes = ["n", ...c.colonnes.map((x) => x.cle).filter((k) => k !== "nom")].reduce((s, k) => s + (LARGEUR[k] ?? 20), 0);
-  return fixes + 30 > 210 - 2 * 16;
-}
-
 /** Tailles de police essayées, de la normale à 80 % (lignes de mutation hautes) : la plus grande qui donne la meilleure mise en page. */
 const ECHELLES = [1, 0.97, 0.94, 0.91, 0.88, 0.85, 0.82, 0.8];
 
@@ -104,25 +95,27 @@ export function NoteImprimable({
   /** Taille de police retenue pour la note (le Word la reprend). */
   surEchelle?: (echelle: number) => void;
 }) {
-  const { blocs, tableaux } = useMemo(() => construire(note, visas), [note, visas]);
-  const paysage = enPaysage(note.contenu);
+  const { blocs, tableaux, plafond } = useMemo(() => construire(note, visas), [note, visas]);
+  // Toujours en A4 portrait (DG, 07/11/2026) : la police ne dépasse pas la taille qui fait tenir le
+  // tableau en largeur ; elle peut encore baisser pour la mise en page (notes d'enrôlement et de mutation)
+  const base = note.module === "ENROLEMENT" || note.module === "MUTATION" ? ECHELLES : [1];
+  const echelles = base.filter((x) => x <= plafond + 1e-9);
+  const essais = echelles.length ? echelles : [plafond];
   const sylfaen = note.entete.police === "Sylfaen";
   return (
     // Police réglée dans les paramètres : Times New Roman (d'origine) ou Sylfaen (DG, 01/11/2026)
     <div style={sylfaen ? ({ "--font-note": "Sylfaen, 'Times New Roman', Times, serif" } as React.CSSProperties) : undefined}>
       <PagesA4
-        key={`${note.id}-${note.statut}-${note.contenu.total}-${note.introduction.length}-${visas}-${note.entete.police ?? ""}-${paysage}-${note.contenu.colonnes.length}`}
-        paysage={paysage}
+        key={`${note.id}-${note.statut}-${note.contenu.total}-${note.introduction.length}-${visas}-${note.entete.police ?? ""}-${plafond}-${note.contenu.colonnes.length}`}
         blocs={blocs}
         tableaux={tableaux}
         classeFeuille="feuille-note"
         pied={{ gauche: note.contenu.piedDePage, droite: note.entete.piedDroite }}
         // Notes d'enrôlement : une police un peu plus petite plutôt qu'une page presque vide
         // (une note de 1 à 4 personnes tient sur une page) — 06/11/2026
-        echelles={note.module === "ENROLEMENT" || note.module === "MUTATION" ? ECHELLES : undefined}
+        echelles={essais}
         surEchelle={surEchelle}
       />
-      {paysage && <StyleImpressionA4 paysage />}
     </div>
   );
 }
@@ -154,6 +147,9 @@ function AvecVisa({ visa, style, children }: { visa: { nom: string; le: string |
     </div>
   );
 }
+
+/** Colonnes jamais coupées sur deux lignes. */
+const SANS_COUPURE = new Set(["n", "grade", "cat", "ech", "echl", "ge", "matricule"]);
 
 function construire(note: NoteDetail, avecVisas: boolean) {
   const v = avecVisas ? visasDe(note) : { SERVICE: null, DIRECTION: null, DG: null };
@@ -190,10 +186,24 @@ function construire(note: NoteDetail, avecVisas: boolean) {
   const cles = c.classification
     ? ["n", "nom", ...(avecGrade ? ["grade"] : []), "cat", "ech", "echl", ...(refCol ? ["reference"] : []), ...autres.map((x) => x.cle)]
     : ["n", "nom", ...colsMutation.map((x) => x.cle)];
+  // Toujours en portrait (DG, 07/11/2026) : chaque colonne ne garde que la place qu'elle utilise,
+  // le texte passe à la ligne entre les mots, puis la police diminue (même calcul pour le Word)
+  const libelleDe = (k: string) =>
+    k === "n" ? "N°" : k === "nom" ? "Noms et prénoms" : k === "cat" ? "Cat" : k === "ech" ? "Ech" : k === "echl" ? "Echl" : (c.colonnes.find((x) => x.cle === k)?.libelle ?? "");
+  const ajuste = ajusterColonnes(
+    cles.map((k) => ({
+      cle: k,
+      entete: libelleDe(k),
+      textes: c.sections.flatMap((s) => s.lignes.map((l) => String(l[k] ?? ""))),
+      habituelle: k === "nom" ? undefined : largeur(k),
+      sansCoupure: SANS_COUPURE.has(k),
+    })),
+    (t, corps, gras) => largeurTexte(t, corps, gras) * elargi,
+  );
   const colonnes = (
     <colgroup>
       {cles.map((k) => (
-        <col key={k} style={k === "nom" ? undefined : { width: `${largeur(k)}mm` }} />
+        <col key={k} style={{ width: `${ajuste.largeurs[k]}mm` }} />
       ))}
     </colgroup>
   );
@@ -389,5 +399,5 @@ function construire(note: NoteDetail, avecVisas: boolean) {
       ),
     },
   );
-  return { blocs, tableaux };
+  return { blocs, tableaux, plafond: ajuste.echelle };
 }
