@@ -44,7 +44,7 @@ export default function Statistiques() {
     return s.departements.map((d) => {
       const M = s.lignes.reduce((t, l) => t + l.valeurs[d.code].M, 0);
       const R = s.lignes.reduce((t, l) => t + l.valeurs[d.code].R, 0);
-      return { ...d, M, R, E: M - R };
+      return { ...d, M, R, E: R - M };
     });
   }, [s]);
 
@@ -183,8 +183,8 @@ function Papillon({
             <span className="h-3 rounded-r-[4px] bg-marque-500" style={{ width: `${(l.R / max) * 100}%`, minWidth: l.R ? 3 : 0 }} />
             <span className="text-[11px] tabular-nums text-zinc-500">{l.R || ""}</span>
           </span>
-          <span className={cx("text-right text-[13px] font-semibold tabular-nums", l.E > 0 ? "text-rouge-600" : l.E < 0 ? "text-marque-700" : "text-zinc-300")}>
-            {l.E > 0 ? `−${l.E}` : l.E < 0 ? `+${-l.E}` : "0"}
+          <span className={cx("text-right text-[13px] font-semibold tabular-nums", l.E > 0 ? "text-marque-700" : l.E < 0 ? "text-rouge-600" : "text-zinc-300")}>
+            {l.E > 0 ? `+${l.E}` : l.E < 0 ? `−${-l.E}` : "0"}
           </span>
         </button>
       ))}
@@ -272,7 +272,7 @@ function FicheOfficielle({ s, base }: { s: Stat; base: string }) {
     <div className="text-black">
       <style>{`@page { size: A4 landscape; margin: 10mm; }`}</style>
       <h1 className="text-center text-base font-bold">FICHE STATISTIQUE DES MUTATIONS</h1>
-      <p className="mb-1 text-center text-xs">{base === "accordees" ? "Mutations accordées" : "Toutes les demandes"} — Légende : M = Muté ; R = Reçu ; E = Écart</p>
+      <p className="mb-1 text-center text-xs">{base === "accordees" ? "Mutations accordées" : "Toutes les demandes"} — Légende : M = Muté ; R = Reçu ; E = Écart (R − M : + le département gagne des agents, − il en perd)</p>
       <table className="w-full border-collapse text-[7pt] [&_td]:border [&_td]:border-black [&_td]:px-0.5 [&_td]:text-center [&_th]:border [&_th]:border-black [&_th]:px-0.5">
         <thead>
           <tr>
