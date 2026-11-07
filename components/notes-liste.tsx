@@ -95,8 +95,21 @@ function PreparerEnrolement({ fermer, apres }: { fermer: () => void; apres: (tex
 }
 
 export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "ENROLEMENT" | "NOMINATION" }) {
-  const { profil } = useSession();
-  const { donnees, erreur, recharger } = useApi<NoteResume[]>(`/notes${qs({ module })}`);
+  const { profil, refs } = useSession();
+  const { donnees: toutes, erreur, recharger } = useApi<NoteResume[]>(`/notes${qs({ module })}`);
+  // Notes de mutation : trier par motif (rapprochement de conjoints, raisons de santé…), 07/11/2026
+  const [motif, setMotif] = useState("");
+  const motifs = useMemo(() => {
+    const compte = new Map<string, number>();
+    if (module === "MUTATION") for (const n of toutes ?? []) if (n.motif) compte.set(n.motif, (compte.get(n.motif) ?? 0) + 1);
+    const ordre = refs.motifs.map((m) => m.code);
+    return [...compte.entries()]
+      .sort((a, b) => (ordre.indexOf(a[0]) + 1 || 99) - (ordre.indexOf(b[0]) + 1 || 99))
+      .map(([code, n]) => ({ code, n, libelle: refs.motifs.find((m) => m.code === code)?.libelle ?? code }));
+  }, [toutes, module, refs]);
+  // Un motif qui n'a plus de note n'est plus filtré
+  const motifActif = motifs.some((m) => m.code === motif) ? motif : "";
+  const donnees = useMemo(() => (motifActif && toutes ? toutes.filter((n) => n.motif === motifActif) : toutes), [toutes, motifActif]);
   const [message, setMessage] = useState<{ ton: "vert" | "rouge"; texte: string } | null>(null);
   const [enrolement, setEnrolement] = useState(false);
   // Notes réunies dont le menu déroulant est ouvert, et note à séparer (confirmation)
@@ -223,6 +236,24 @@ export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "E
           <Vide>Aucune note pour le moment.</Vide>
         ) : (
           <>
+          {motifs.length > 1 && (
+            <div className="mb-4 flex flex-wrap items-center gap-1.5">
+              <span className="mr-1 text-[12px] font-medium text-zinc-500">Motif :</span>
+              {[{ code: "", libelle: "Tous", n: toutes?.length ?? 0 }, ...motifs].map((m) => (
+                <button
+                  key={m.code || "tous"}
+                  type="button"
+                  aria-pressed={motifActif === m.code}
+                  onClick={() => setMotif(m.code)}
+                  className={`rounded-full px-3 py-1 text-[12px] font-medium ring-1 transition ${
+                    motifActif === m.code ? "bg-marque-600 text-white ring-marque-600" : "bg-white text-zinc-700 ring-zinc-200 hover:ring-marque-300"
+                  }`}
+                >
+                  {m.libelle} · {m.n}
+                </button>
+              ))}
+            </div>
+          )}
           {avecFamilles && <LegendeFamilles />}
           <Tableau>
             <thead>
