@@ -18,6 +18,8 @@ type Population = "VOLONTAIRE" | "COMMUNAUTAIRE";
 type TypeEcart = "COMPLETER" | "DIFFERENT";
 interface Bilan {
   reliees: number;
+  enPoste?: number;
+  sortis?: number;
   rubriques: { cle: string; libelle: string; completer: number; different: number }[];
 }
 interface Ligne {
@@ -70,7 +72,7 @@ function Ecarts() {
       ) : bilan.donnees ? (
         <>
           <div className="grid gap-3 sm:grid-cols-3">
-            <Chiffre icone={<FileUser className="size-5" />} valeur={bilan.donnees.reliees} libelle={`${L.des} reliés à une fiche du personnel`} />
+            <Chiffre icone={<FileUser className="size-5" />} valeur={bilan.donnees.reliees} libelle={`${L.des} reliés à une fiche du personnel`} detail={bilan.donnees.enPoste !== undefined ? `dont ${nf.format(bilan.donnees.enPoste)} en poste et ${nf.format(bilan.donnees.sortis ?? 0)} sortis (recrutés, déserteurs, retirés…) : le registre garde aussi les sortis` : undefined} />
             <Chiffre icone={<Database className="size-5" />} valeur={totalCompleter} libelle="informations à reprendre de la base du personnel" ton="vert" />
             <Chiffre icone={<ArrowLeftRight className="size-5" />} valeur={totalDifferent} libelle="valeurs différentes à trancher" ton="jaune" />
           </div>
@@ -136,7 +138,7 @@ function Ecarts() {
   );
 }
 
-function Chiffre({ icone, valeur, libelle, ton = "gris" }: { icone: React.ReactNode; valeur: number; libelle: string; ton?: "gris" | "vert" | "jaune" }) {
+function Chiffre({ icone, valeur, libelle, detail, ton = "gris" }: { icone: React.ReactNode; valeur: number; libelle: string; detail?: string; ton?: "gris" | "vert" | "jaune" }) {
   const c = ton === "vert" ? "bg-emerald-50 text-emerald-800 ring-emerald-200" : ton === "jaune" ? "bg-amber-50 text-amber-900 ring-amber-200" : "bg-white text-zinc-800 ring-zinc-200";
   return (
     <div className={`flex items-center gap-3 rounded-2xl px-4 py-3 ring-1 ${c}`}>
@@ -144,6 +146,7 @@ function Chiffre({ icone, valeur, libelle, ton = "gris" }: { icone: React.ReactN
       <div>
         <div className="text-xl font-semibold">{nf.format(valeur)}</div>
         <div className="text-[12px] opacity-80">{libelle}</div>
+        {detail && <div className="mt-1 text-[11.5px] leading-snug opacity-70">{detail}</div>}
       </div>
     </div>
   );

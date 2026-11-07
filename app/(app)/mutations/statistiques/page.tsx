@@ -1,9 +1,9 @@
 "use client";
 
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Printer } from "lucide-react";
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Download, Printer } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 import { Alerte, Bouton, Carte, Chargement, Chiffre, cx, EnTete, Liste, Segments, Vide } from "@/components/ui";
-import { useApi } from "@/lib/api";
+import { api, useApi } from "@/lib/api";
 import { CYCLES } from "@/lib/libelles";
 
 interface Stat {
@@ -63,9 +63,18 @@ export default function Statistiques() {
           titre="Statistiques des mutations"
           sousTitre="Départs et arrivées par département, puis le détail par cycle et spécialité."
           actions={
-            <Bouton onClick={() => window.print()}>
-              <Printer /> Imprimer la fiche officielle
-            </Bouton>
+            <span className="flex flex-wrap gap-2">
+              <Bouton
+                onClick={() =>
+                  api.telecharger(`/mutations/statistiques/excel?base=${base}`, `Statistiques des mutations ${new Date().toISOString().slice(0, 10)}.xlsx`).catch(() => undefined)
+                }
+              >
+                <Download className="size-4" aria-hidden /> Excel
+              </Bouton>
+              <Bouton onClick={() => window.print()}>
+                <Printer /> Imprimer la fiche officielle
+              </Bouton>
+            </span>
           }
         />
 
