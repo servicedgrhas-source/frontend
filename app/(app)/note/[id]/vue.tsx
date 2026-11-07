@@ -128,6 +128,15 @@ export function VueNote() {
             Word
             <Aide>Télécharge la note dans Word, avec la même mise en page que la version imprimée, pour retoucher la présentation (espacer, faire descendre un tableau). La signature reste toujours avec la dernière ligne du tableau.</Aide>
           </Bouton>
+          {/* Récapitulatif : la note de base + ses additifs + ses rectificatifs = la liste définitive (DG, 06/11/2026) */}
+          {(note.module === "ENROLEMENT" || note.module === "MUTATION") && (s === "SIGNEE" || note.additifDe || note.rectificatifDe) && (
+            <Link href={`/note/${id}/recapitulatif`}>
+              <Bouton>
+                Récapitulatif
+                <Aide>La liste définitive de cette note : la note signée, plus les personnes de ses additifs, avec les corrections de ses rectificatifs.</Aide>
+              </Bouton>
+            </Link>
+          )}
           {/* Notes d'enrôlement : colonnes, additif, rectificatif (cadrage du 05/11/2026) */}
           <BoutonsEnrolement note={note} recharger={recharger} signaler={(ton, texte) => setMessage({ ton, texte })} />
           <BoutonPersonnel note={note} recharger={recharger} signaler={(ton, texte) => setMessage({ ton, texte })} />

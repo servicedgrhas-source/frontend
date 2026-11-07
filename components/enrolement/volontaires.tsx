@@ -76,6 +76,9 @@ export interface Volontaire {
   departementId: number | null;
   departementBrut: string | null;
   etablissement: string | null;
+  /** Sexe et circonscription (bases biométrique et des communautaires, 07/11/2026). */
+  genre?: string | null;
+  circonscription?: string | null;
   vague: string | null;
   noteReference: string | null;
   dateNote: string | null;
@@ -304,11 +307,13 @@ export function FicheVolontaire({
           </div>
           <div>
             {ligne("Naissance", [dateFr(v.dateNaissance) !== "—" && dateFr(v.dateNaissance), v.lieuNaissance].filter(Boolean).join(" à "))}
+            {ligne("Sexe", v.genre === "F" ? "Féminin" : v.genre === "M" ? "Masculin" : null)}
             {ligne("Téléphone", v.telephone)}
             {ligne("Diplôme", [v.diplome, v.specialite].filter(Boolean).join(" · "))}
             {ligne(v.population === "COMMUNAUTAIRE" ? "Cycle (communautaire)" : "Catégorie de bourse", v.categorie ? `${nomCat(v.categorie)} (${fcfa(categoriesDe(c, v.population).find((x) => x.code === v.categorie)?.bourse)})` : <span className="text-rouge-600">à choisir (fichier : « {v.cycleBrut ?? "vide"} »)</span>)}
             {ligne("Département", nomDep(v.departementId) ?? <span className="text-rouge-600">non reconnu (fichier : « {v.departementBrut ?? "vide"} »)</span>)}
             {ligne("Établissement", v.etablissement)}
+            {ligne("Circonscription", v.circonscription)}
             {v.population !== "COMMUNAUTAIRE" && ligne("Vague", libelleVague(v.vagueNumero, v.vague))}
             {ligne("Note de service", [v.noteReference, v.dateNote && `du ${dateFr(v.dateNote)}`].filter(Boolean).join(" "))}
             {ligne("Prise de service", dateFr(v.datePriseService))}

@@ -237,3 +237,133 @@ export function CorrigerPoints({
     </Modale>
   );
 }
+
+interface Completion {
+  essai: boolean;
+  lues: number;
+  avecFiche: number;
+  completees: number;
+  parChamp: Record<string, number>;
+  doute: number;
+  sansFiche: number;
+  exemples: { id: string; nom: string; fiche: string; ajouts: { champ: string; valeur: string }[] }[];
+}
+
+/**
+ * « Compléter depuis la base du personnel » (DG, 06/11/2026) : avant le traitement, le système va
+ * chercher dans la base du personnel ce qui manque aux demandes (matricule, grade…). Il montre
+ * d'abord ce qu'il remplirait ; rien n'est enregistré avant « Compléter ». Seules les cases vides
+ * sont remplies, et la base du personnel n'est pas modifiée.
+ */
+export function CompleterPersonnel({ apres }: { apres: (texte: string) => void }) {
+  const [ouvert, setOuvert] = useState(false);
+  const [r, setR] = useState<Completion | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [occupe, setOccupe] = useState(false);
+  async function lancer(essai: boolean) {
+    setOccupe(true);
+    setErreur(null);
+    try {
+      const x = await api.post<Completion>(`/mutations/completer-personnel?essai=${essai ? 1 : 0}`);
+      if (essai) setR(x);
+      else {
+        setOuvert(false);
+        setR(null);
+        apres(`${x.completees} demande(s) complétée(s) depuis la base du personnel.`);
+      }
+    } catch (e) {
+      setErreur((e as Error).message);
+    } finally {
+      setOccupe(false);
+    }
+  }
+  return (
+    <>
+      <Bouton
+        variante="secondaire"
+        onClick={() => {
+          setOuvert(true);
+          lancer(true);
+        }}
+      >
+        <CheckCircle2 className="size-4" aria-hidden /> Compléter depuis la base du personnel
+      </Bouton>
+      <Modale titre="Compléter les demandes depuis la base du personnel" ouverte={ouvert} fermer={() => setOuvert(false)} large>
+        <p className="mb-3 text-[13px] leading-relaxed text-zinc-600">
+          Le système cherche la fiche de chaque demande dans la base du personnel (même matricule, ou même nom avec une seule fiche possible) et remplit seulement
+          les <strong>cases vides</strong> de la demande : matricule, grade et échelon, département d’origine, lieu de service, spécialité, date de prise de service.
+          Rien n’est enregistré avant « Compléter ». La base du personnel n’est pas modifiée ; les demandes déjà dans une note ne bougent pas.
+        </p>
+        {erreur && <Alerte>{erreur}</Alerte>}
+        {occupe && !r && <p className="py-6 text-center text-sm text-zinc-500">Recherche dans la base du personnel…</p>}
+        {r && (
+          <>
+            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {[
+                ["demandes regardées", r.lues],
+                ["fiche trouvée (sûre)", r.avecFiche],
+                ["seront complétées", r.completees],
+                ["en doute ou sans fiche", r.doute + r.sansFiche],
+              ].map(([l, n]) => (
+                <div key={String(l)} className="rounded-xl bg-zinc-50 px-3 py-2 ring-1 ring-zinc-200">
+                  <div className="text-lg font-semibold text-zinc-900">{n}</div>
+                  <div className="text-[12px] text-zinc-500">{l}</div>
+                </div>
+              ))}
+            </div>
+            {Object.keys(r.parChamp).length > 0 && (
+              <p className="mb-2 text-[13px] text-zinc-700">
+                Cases remplies :{" "}
+                {Object.entries(r.parChamp)
+                  .map(([c, n]) => `${c} (${n})`)
+                  .join(", ")}
+                .
+              </p>
+            )}
+            {r.doute + r.sansFiche > 0 && (
+              <p className="mb-3 text-[12px] text-zinc-500">
+                {r.doute} demande(s) ont plusieurs fiches possibles et {r.sansFiche} n’en ont aucune : elles ne sont pas touchées (corrigez-les avec « Corriger »).
+              </p>
+            )}
+            {r.exemples.length > 0 ? (
+              <div className="max-h-[46vh] overflow-auto rounded-xl ring-1 ring-zinc-200">
+                <table className="w-full text-[12.5px]">
+                  <thead className="sticky top-0 bg-zinc-50 text-left text-zinc-600">
+                    <tr>
+                      <th className="px-3 py-2">Demande</th>
+                      <th className="px-3 py-2">Fiche du personnel</th>
+                      <th className="px-3 py-2">Ce qui sera rempli</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {r.exemples.map((x) => (
+                      <tr key={x.id} className="border-t border-zinc-100 align-top">
+                        <td className="px-3 py-1.5 font-medium text-zinc-900">{x.nom}</td>
+                        <td className="px-3 py-1.5 text-zinc-600">{x.fiche}</td>
+                        <td className="px-3 py-1.5 text-zinc-700">
+                          {x.ajouts.map((a) => (
+                            <div key={a.champ}>
+                              <span className="text-zinc-500">{a.champ} :</span> {a.valeur}
+                            </div>
+                          ))}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <Alerte ton="jaune">Rien à compléter : les demandes qui ont une fiche sûre n’ont pas de case vide que la fiche connaît.</Alerte>
+            )}
+          </>
+        )}
+        <div className="mt-4 flex justify-end gap-2">
+          <Bouton onClick={() => setOuvert(false)}>Fermer</Bouton>
+          <Bouton variante="principal" disabled={occupe || !r?.completees} onClick={() => lancer(false)}>
+            Compléter {r?.completees ? `${r.completees} demande(s)` : ""}
+          </Bouton>
+        </div>
+      </Modale>
+    </>
+  );
+}

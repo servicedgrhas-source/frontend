@@ -5,7 +5,7 @@ import { Fragment, useMemo } from "react";
 import { dateLongue } from "@/lib/libelles";
 import { largeurTexte, plusLongMot } from "@/lib/largeur-texte";
 import type { NoteDetail } from "@/lib/types";
-import { PagesA4, type Bloc, type Tableau } from "./pages-a4";
+import { PagesA4, StyleImpressionA4, type Bloc, type Tableau } from "./pages-a4";
 
 const SEP = <div className="leading-none">-----------------</div>;
 
@@ -73,7 +73,21 @@ const LARGEUR: Record<string, number> = {
   accueil: 19,
   // Notes d'enrôlement : « BET-Préscolaire », « CFEEN-Préscolaire » (cadrage du 05/11/2026)
   diplome: 26,
+  // Notes de mutation : durée, justification, lieu sollicité (réunion DG du 06/11/2026)
+  duree: 20,
+  justification: 34,
+  lieuSollicite: 26,
 };
+
+/**
+ * Le tableau tient-il en portrait ? Sinon la note passe en paysage (le DG : « quitte à tirer ça en
+ * paysage », 06/11/2026). Le nom garde au moins 30 mm (comme avant). Le Word fait le même calcul.
+ */
+export function enPaysage(c: NoteDetail["contenu"]) {
+  if (c.classification) return false;
+  const fixes = ["n", ...c.colonnes.map((x) => x.cle).filter((k) => k !== "nom")].reduce((s, k) => s + (LARGEUR[k] ?? 20), 0);
+  return fixes + 30 > 210 - 2 * 16;
+}
 
 /** Tailles de police essayées, de la normale à 80 % (lignes de mutation hautes) : la plus grande qui donne la meilleure mise en page. */
 const ECHELLES = [1, 0.97, 0.94, 0.91, 0.88, 0.85, 0.82, 0.8];
@@ -91,12 +105,14 @@ export function NoteImprimable({
   surEchelle?: (echelle: number) => void;
 }) {
   const { blocs, tableaux } = useMemo(() => construire(note, visas), [note, visas]);
+  const paysage = enPaysage(note.contenu);
   const sylfaen = note.entete.police === "Sylfaen";
   return (
     // Police réglée dans les paramètres : Times New Roman (d'origine) ou Sylfaen (DG, 01/11/2026)
     <div style={sylfaen ? ({ "--font-note": "Sylfaen, 'Times New Roman', Times, serif" } as React.CSSProperties) : undefined}>
       <PagesA4
-        key={`${note.id}-${note.statut}-${note.contenu.total}-${note.introduction.length}-${visas}-${note.entete.police ?? ""}`}
+        key={`${note.id}-${note.statut}-${note.contenu.total}-${note.introduction.length}-${visas}-${note.entete.police ?? ""}-${paysage}-${note.contenu.colonnes.length}`}
+        paysage={paysage}
         blocs={blocs}
         tableaux={tableaux}
         classeFeuille="feuille-note"
@@ -106,6 +122,7 @@ export function NoteImprimable({
         echelles={note.module === "ENROLEMENT" || note.module === "MUTATION" ? ECHELLES : undefined}
         surEchelle={surEchelle}
       />
+      {paysage && <StyleImpressionA4 paysage />}
     </div>
   );
 }

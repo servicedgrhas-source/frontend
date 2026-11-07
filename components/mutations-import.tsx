@@ -145,7 +145,7 @@ function Paire({ nom, sous, raison, decide, children }: { nom: string; sous: str
         <span className="font-semibold text-encre">{nom}</span>
         <span className="text-[11px] text-zinc-400">{sous}</span>
         <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-800 ring-1 ring-violet-200">{raison}</span>
-        <span className={`ml-auto rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${decide ? "bg-marque-50 text-marque-800 ring-marque-200" : "bg-amber-100 text-amber-900 ring-amber-300"}`}>
+        <span className={`ml-auto rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${decide ? "bg-marque-50 text-marque-900 ring-marque-200" : "bg-amber-100 text-amber-900 ring-amber-300"}`}>
           {decide ? "Décidé" : "À décider"}
         </span>
       </div>
@@ -290,7 +290,7 @@ export function ImportMutations({ apres }: { apres: (texte: string) => void }) {
               <ol className="flex flex-wrap items-center gap-2 text-[12px]">
                 {["Choisir la feuille", "Vérifier et décider", "Importer"].map((t, i) => (
                   <li key={t} className="flex items-center gap-2">
-                    <span className={`grid size-6 place-items-center rounded-full font-semibold ${i < etape ? "bg-marque-600 text-white" : i === etape ? "bg-marque-100 text-marque-800 ring-2 ring-marque-300" : "bg-zinc-100 text-zinc-500"}`}>
+                    <span className={`grid size-6 place-items-center rounded-full font-semibold ${i < etape ? "bg-marque-600 text-white" : i === etape ? "bg-marque-100 text-marque-900 ring-2 ring-marque-300" : "bg-zinc-100 text-zinc-500"}`}>
                       {i < etape ? <Check className="size-3.5" aria-hidden /> : i + 1}
                     </span>
                     <span className={i === etape ? "font-semibold text-encre" : "text-zinc-500"}>{t}</span>
@@ -354,7 +354,7 @@ export function ImportMutations({ apres }: { apres: (texte: string) => void }) {
                   <Tuile n={rapport.creees} texte="nouvelles demandes" ton="vert" />
                   <Tuile n={rapport.misesAJour} texte="mises à jour dans la base" ton="bleu" />
                   <Tuile n={rapport.identiques + rapport.fusionnees + rapport.ecartees} texte="déjà à jour, fusionnées ou écartées" ton="gris" />
-                  <div className={`rounded-2xl px-3 py-2.5 ${restent ? "bg-amber-100 text-amber-900" : "bg-marque-50 text-marque-800"}`}>
+                  <div className={`rounded-2xl px-3 py-2.5 ${restent ? "bg-amber-100 text-amber-900" : "bg-marque-50 text-marque-900"}`}>
                     <div className="text-[20px] font-semibold tabular-nums">{restent}</div>
                     <div className="text-[11px] leading-tight">{restent ? "paire(s) de ressemblances encore à décider" : "tout est décidé"}</div>
                   </div>

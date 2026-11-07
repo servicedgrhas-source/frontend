@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { FileSpreadsheet, FileText, Printer } from "lucide-react";
 import { categoriesDe, FicheVolontaire, fcfa, libelleVague, LISTES, moisFr, nf, peutGerer, type Population, useConfigEnrolement, type Volontaire } from "@/components/enrolement/volontaires";
@@ -33,7 +34,7 @@ interface Liste30 {
 
 interface Rapport {
   feuille: string;
-  type: "EN_POSTE" | "SORTI" | "NOTE";
+  type: "EN_POSTE" | "SORTI" | "NOTE" | "MISE_A_JOUR";
   lues: number;
   ajoutes: number;
   montantFichier: number;
@@ -51,6 +52,13 @@ interface Rapport {
   relies: Liste30;
   agesHorsLimites: Liste30;
   telephonesPartages: Liste30;
+  /** Mise à jour des fiches déjà dans le registre (07/11/2026) ; absent des rapports d'avant. */
+  fichesTrouvees?: number;
+  fichesCompletees?: number;
+  parChamp?: Record<string, number>;
+  differences?: Record<string, { cle: string; n: number; remplace: boolean; exemples: { nom: string; registre: string; fichier: string }[] }>;
+  plusieursFiches?: Liste30;
+  introuvables?: Liste30;
   essai: boolean;
 }
 
@@ -63,7 +71,12 @@ function Reprise({ apres, ouvertParDefaut, population }: { apres: () => void; ou
   const [fichier, setFichier] = useState<File | null>(null);
   const [feuilles, setFeuilles] = useState<FeuilleAnalysee[] | null>(null);
   const [feuille, setFeuille] = useState("");
-  const [type, setType] = useState<"EN_POSTE" | "SORTI" | "NOTE">("EN_POSTE");
+  const [type, setType] = useState<"EN_POSTE" | "SORTI" | "NOTE" | "MISE_A_JOUR">("EN_POSTE");
+  // Fiches déjà dans le registre : on complète leurs cases vides (par défaut) ; les rubriques cochées
+  // prennent aussi la valeur du fichier quand elle est différente (07/11/2026)
+  const [completer, setCompleter] = useState(true);
+  const [remplacer, setRemplacer] = useState<string[]>([]);
+  const [calcul, setCalcul] = useState(false);
   const [note, setNote] = useState("");
   const [dateNote, setDateNote] = useState("");
   const [categorie, setCategorie] = useState("");
@@ -114,7 +127,7 @@ function Reprise({ apres, ouvertParDefaut, population }: { apres: () => void; ou
     }
   }
 
-  async function importer(essai: boolean) {
+  async function importer(essai: boolean, rubriques = remplacer) {
     if (!fichier) return;
     setErreur(null);
     if (Object.values(manque).some(Boolean)) {
@@ -122,6 +135,7 @@ function Reprise({ apres, ouvertParDefaut, population }: { apres: () => void; ou
       setErreur(CHAMPS_EN_ROUGE);
       return;
     }
+    setCalcul(true);
     try {
       const fd = new FormData();
       fd.append("fichier", fichier);
@@ -134,6 +148,8 @@ function Reprise({ apres, ouvertParDefaut, population }: { apres: () => void; ou
           dateNote: type === "NOTE" ? dateNote : undefined,
           categorie: type === "NOTE" ? categorie : undefined,
           population,
+          miseAJour: type === "MISE_A_JOUR" || completer ? "VIDES" : "NON",
+          remplacer: rubriques.join(",") || undefined,
           essai: essai ? 1 : 0,
         })}`, fd);
       setRapport(r);
@@ -143,7 +159,16 @@ function Reprise({ apres, ouvertParDefaut, population }: { apres: () => void; ou
       }
     } catch (x) {
       setErreur((x as Error).message);
+    } finally {
+      setCalcul(false);
     }
+  }
+
+  /** Cocher une rubrique à remplacer : l'essai est refait tout de suite, pour voir l'effet. */
+  function basculerRemplacer(cle: string) {
+    const r = remplacer.includes(cle) ? remplacer.filter((x) => x !== cle) : [...remplacer, cle];
+    setRemplacer(r);
+    importer(true, r);
   }
 
   /** Le rapport d'un essai ou d'un import : les mêmes messages avant et après (DG, 26/10/2026). */
@@ -151,7 +176,18 @@ function Reprise({ apres, ouvertParDefaut, population }: { apres: () => void; ou
     <div className="space-y-2">
       <Alerte ton={r.essai ? "bleu" : "vert"}>
         {r.essai ? "Essai : rien n’est enregistré. " : "Import terminé. "}
-        <strong>{nf.format(r.lues)}</strong> personnes lues, <strong>{nf.format(r.ajoutes)}</strong> {r.essai ? "seraient ajoutées" : "ajoutées"} au registre
+        <strong>{nf.format(r.lues)}</strong> personnes lues
+        {r.type !== "MISE_A_JOUR" && (
+          <>
+            , <strong>{nf.format(r.ajoutes)}</strong> {r.essai ? "seraient ajoutées" : "ajoutées"} au registre
+          </>
+        )}
+        {r.fichesCompletees !== undefined && (
+          <>
+            {" "}
+            · <strong>{nf.format(r.fichesCompletees)}</strong> fiche(s) déjà dans le registre {r.essai ? "seraient mises à jour" : "mises à jour"}
+          </>
+        )}
         {r.type === "SORTI" && (
           <>
             {" "}
@@ -179,6 +215,9 @@ function Reprise({ apres, ouvertParDefaut, population }: { apres: () => void; ou
       {bloc("téléphone partagé avec d’autres volontaires", r.telephonesPartages)}
       {bloc("déjà dans le registre sans note : reliés à cette note", r.relies, "bleu")}
       {bloc("déjà dans le registre (non recréés)", r.dejaDansRegistre, "gris")}
+      {r.fichesTrouvees !== undefined && <MiseAJourFiches r={r} remplacer={remplacer} basculer={basculerRemplacer} calcul={calcul} />}
+      {bloc("plusieurs fiches possibles dans le registre : rien n’est changé (à compléter depuis la fiche)", r.plusieursFiches, "jaune")}
+      {bloc("pas dans le registre : rien n’est fait (une mise à jour n’ajoute personne)", r.introuvables, "gris")}
     </div>
   );
 
@@ -265,8 +304,32 @@ function Reprise({ apres, ouvertParDefaut, population }: { apres: () => void; ou
               { valeur: "EN_POSTE", libelle: `${LISTES[population].titre} en poste (payés)` },
               { valeur: "SORTI", libelle: "Sortants (recrutés, déserteurs…)" },
               ...(population === "VOLONTAIRE" ? [{ valeur: "NOTE" as const, libelle: "Note de service d’affectation" }] : []),
+              { valeur: "MISE_A_JOUR", libelle: "Mettre à jour les fiches (n’ajoute personne)" },
             ]}
           />
+          {type === "MISE_A_JOUR" ? (
+            <div className="rounded-2xl bg-marque-50 px-4 py-3 text-[13px] leading-relaxed text-marque-900 ring-1 ring-marque-200">
+              Le système retrouve chaque personne du fichier dans le registre (volontaires et communautaires) et <strong>complète les cases vides</strong> de sa fiche :
+              date et lieu de naissance, sexe, téléphone, diplôme, spécialité, établissement, circonscription, date de prise de service, vague. Personne n’est ajouté
+              ni sorti. Après l’essai, vous pouvez aussi choisir de remplacer les valeurs différentes, rubrique par rubrique.
+            </div>
+          ) : (
+            <label className="flex cursor-pointer items-start gap-3 rounded-2xl bg-zinc-50 px-4 py-3 text-[13px] ring-1 ring-zinc-200">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4 accent-marque-600"
+                checked={completer}
+                onChange={(e) => {
+                  setCompleter(e.target.checked);
+                  setRapport(null);
+                }}
+              />
+              <span>
+                <strong>Mettre aussi à jour les personnes déjà dans le registre</strong>
+                <span className="block text-zinc-500">Leurs cases vides prennent les informations du fichier (naissance, téléphone, diplôme…). Rien n’est effacé.</span>
+              </span>
+            </label>
+          )}
           {type === "NOTE" ? (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <Champ libelle="Numéro de la note" erreur={rouge("note")}>
@@ -288,7 +351,7 @@ function Reprise({ apres, ouvertParDefaut, population }: { apres: () => void; ou
               />
               </Champ>
             </div>
-          ) : type === "EN_POSTE" ? (
+          ) : type === "MISE_A_JOUR" ? null : type === "EN_POSTE" ? (
             <Champ
               libelle="Mois de bourse de cette liste"
               aide="Le mois que cette liste a payé (ex. Septembre 2026 pour « Bourse Septembre 2026 ») : ces volontaires sont payés à partir de ce mois."
@@ -309,8 +372,8 @@ function Reprise({ apres, ouvertParDefaut, population }: { apres: () => void; ou
             </Champ>
           )}
           <div className="flex flex-wrap gap-2">
-            <Bouton onClick={() => importer(true)}>
-              Faire un essai
+            <Bouton onClick={() => importer(true)} disabled={calcul}>
+              {calcul ? "Calcul en cours…" : "Faire un essai"}
             </Bouton>
             <Bouton variante="principal" disabled={!feuille || !rapport?.essai || rapport.feuille !== feuille} onClick={() => importer(false)}>
               Importer pour de bon
@@ -322,6 +385,86 @@ function Reprise({ apres, ouvertParDefaut, population }: { apres: () => void; ou
         </>
       )}
     </Carte>
+  );
+}
+
+/**
+ * Ce que la réimportation change dans les fiches déjà présentes : les cases complétées, puis les
+ * valeurs différentes, rubrique par rubrique, avec une case « Remplacer par la valeur du fichier ».
+ */
+function MiseAJourFiches({ r, remplacer, basculer, calcul }: { r: Rapport; remplacer: string[]; basculer: (cle: string) => void; calcul: boolean }) {
+  const remplies = Object.entries(r.parChamp ?? {}).sort((a, b) => b[1] - a[1]);
+  const diffs = Object.entries(r.differences ?? {}).sort((a, b) => b[1].n - a[1].n);
+  return (
+    <div className="space-y-3 rounded-2xl bg-white p-4 ring-1 ring-zinc-200">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h4 className="text-[14px] font-semibold text-encre">Mise à jour des fiches déjà dans le registre</h4>
+        <span className="text-[12px] text-zinc-500">
+          {nf.format(r.fichesTrouvees ?? 0)} retrouvée(s) avec certitude · {nf.format(r.fichesCompletees ?? 0)} {r.essai ? "seront modifiées" : "modifiées"}
+        </span>
+      </div>
+      {remplies.length ? (
+        <div>
+          <div className="mb-1.5 text-[12px] font-medium text-zinc-600">Cases vides complétées</div>
+          <div className="flex flex-wrap gap-1.5">
+            {remplies.map(([c, n]) => (
+              <span key={c} className="rounded-full bg-emerald-50 px-2.5 py-1 text-[12px] text-emerald-800 ring-1 ring-emerald-200">
+                {c} <strong>{nf.format(n)}</strong>
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <p className="text-[12px] text-zinc-500">Aucune case vide à compléter : les fiches retrouvées ont déjà ces informations.</p>
+      )}
+      {diffs.length > 0 && (
+        <div>
+          <div className="mb-1.5 text-[12px] font-medium text-zinc-600">
+            Valeurs différentes entre le registre et le fichier — par défaut, le registre garde la sienne. Cochez une rubrique pour prendre celle du fichier
+            {calcul && <span className="ml-2 text-marque-700">· calcul…</span>}
+          </div>
+          <div className="space-y-1.5">
+            {diffs.map(([libelle, d]) => (
+              <details key={libelle} className="rounded-xl bg-zinc-50 ring-1 ring-zinc-200">
+                <summary className="flex cursor-pointer flex-wrap items-center gap-3 px-3 py-2 text-[13px]">
+                  <span className="font-medium text-zinc-900">{libelle}</span>
+                  <Badge ton="jaune">{nf.format(d.n)} différente(s)</Badge>
+                  <label className="ml-auto flex items-center gap-2 text-[12px]" onClick={(e) => e.stopPropagation()}>
+                    <input type="checkbox" className="size-4 accent-marque-600" checked={remplacer.includes(d.cle)} disabled={calcul} onChange={() => basculer(d.cle)} />
+                    Remplacer par la valeur du fichier
+                  </label>
+                </summary>
+                <table className="mx-3 mb-2 w-[calc(100%-1.5rem)] text-[12px]">
+                  <thead className="text-left text-zinc-500">
+                    <tr>
+                      <th className="py-1 pr-3 font-medium">Personne</th>
+                      <th className="py-1 pr-3 font-medium">Dans le registre</th>
+                      <th className="py-1 font-medium">Dans le fichier</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {d.exemples.map((x, i) => (
+                      <tr key={i} className="border-t border-zinc-200/70">
+                        <td className="py-1 pr-3 text-zinc-800">{x.nom}</td>
+                        <td className={`py-1 pr-3 ${remplacer.includes(d.cle) ? "text-zinc-400 line-through" : "text-zinc-800"}`}>{x.registre}</td>
+                        <td className={`py-1 ${remplacer.includes(d.cle) ? "font-medium text-emerald-800" : "text-zinc-500"}`}>{x.fichier}</td>
+                      </tr>
+                    ))}
+                    {d.n > d.exemples.length && (
+                      <tr>
+                        <td colSpan={3} className="py-1 text-zinc-400">
+                          … et {nf.format(d.n - d.exemples.length)} autres
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </details>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -615,6 +758,12 @@ export default function RegistreVolontaires() {
         actions={
           peutGerer(profil.role) && (
             <>
+              <Link href={`/enrolement/volontaires/ecarts?population=${population}`}>
+                <Bouton>
+                  Écarts avec la base du personnel
+                  <Aide>Ce que le registre et la base du personnel ne disent pas pareil : naissance, sexe, téléphone, département, établissement, diplôme, prise de service… On reprend d’un clic ce que la fiche du personnel connaît, et on choisit la bonne valeur quand elles diffèrent.</Aide>
+                </Bouton>
+              </Link>
               <Bouton onClick={() => setSerie(true)}>
                 Corriger en série
                 <Aide>Corrige d’un coup une même faute répétée sur beaucoup de fiches (ex. la vague « 2022022 » en « 2021-2022 », un établissement écrit de deux façons). Le système signale les valeurs suspectes et propose la correction ; vous vérifiez, puis vous corrigez. Chaque fiche garde l’ancienne valeur dans son historique.</Aide>

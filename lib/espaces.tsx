@@ -11,6 +11,7 @@ import {
   Building2,
   Banknote,
   BarChart3,
+  MapPinned,
   CalendarCheck,
   Scale,
   Star,
@@ -260,7 +261,15 @@ export const ESPACES: Espace[] = [
         libelle: "Statistiques de l’enrôlement",
         icone: BarChart3,
         visible: traiter,
-        explication: "Par cycle et diplôme : base générale, affectés, reste à affecter ; spécialités du collège (DEMA, licence) et du lycée (master, licences de langues et de philosophie).",
+        explication: "Base définitive, coût face à l’enveloppe, puis par cycle et diplôme : base générale, affectés, reste à affecter ; spécialités du collège (DEMA, licence) et du lycée (master, licences de langues et de philosophie).",
+      },
+      {
+        groupe: "Chaque année : enrôler",
+        href: "/enrolement/repartition",
+        libelle: "Répartition par département",
+        icone: MapPinned,
+        visible: traiter,
+        explication: "La commission fixe les places par département (et par cycle, diplôme ou spécialité), puis place les retenus sur un brouillon ; le DG valide : chacun reçoit son département retenu.",
       },
       {
         groupe: "Chaque année : enrôler",
@@ -835,6 +844,7 @@ const DETAILS: [RegExp, string][] = [
   [/^\/mutations\/nouvelle$/, "Nouvelle demande"],
   [/^\/mutation\//, "Demande"],
   [/^\/note\//, "Note de service"],
+  [/^\/enrolement\/volontaires\/ecarts$/, "Écarts avec la base du personnel"],
 ];
 
 /**

@@ -8,7 +8,7 @@ import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Pastille, Saisie, Tableau, Vide } from "@/components/ui";
 import { qs, useApi } from "@/lib/api";
 import { ImportMutations as ImportMutationsAssistant } from "@/components/mutations-import";
-import { CorrigerPoints, PointsAVerifier } from "@/components/mutation-points";
+import { CompleterPersonnel, CorrigerPoints, PointsAVerifier } from "@/components/mutation-points";
 import { CYCLES, duree, ETAT_MUTATION, GROUPES_MUTATION, peut } from "@/lib/libelles";
 import type { DemandeMutation } from "@/lib/types";
 
@@ -59,7 +59,17 @@ export default function Mutations() {
           )
         }
       />
-      {peut.traiter(profil.role) && <ImportMutations apres={recharger} />}
+      {peut.traiter(profil.role) && (
+        <div className="flex flex-wrap items-start gap-2">
+          <ImportMutations apres={recharger} />
+          <CompleterPersonnel
+            apres={(t) => {
+              setMessage(t);
+              recharger();
+            }}
+          />
+        </div>
+      )}
       {/* Le rattachement à la base du personnel se fait sur la note signée (« Importer dans la base du personnel », 06/11/2026) */}
       <Carte>
         <div className="mb-3 flex flex-wrap items-end gap-3">
@@ -217,7 +227,7 @@ function ImportMutations({ apres }: { apres: () => void }) {
       </Bouton>
     );
   return (
-    <Carte titre="Reprise d’un fichier Excel de mutations">
+    <Carte titre="Reprise d’un fichier Excel de mutations" className="order-last w-full">
       <p className="mb-4 text-[13px] leading-relaxed text-zinc-500">
         Choisissez le fichier « GESTIONS DES MUTATIONS » : vous choisirez ensuite la feuille (la compilation), le système montre ce qui est déjà dans la base des
         mutations, ce qui est en double, et vous décidez avant d’importer. Les demandes déjà dans une note ou tranchées par le Ministre ne sont pas modifiées.

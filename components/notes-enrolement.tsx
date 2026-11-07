@@ -23,6 +23,21 @@ const COLONNES: { cle: string; libelle: string }[] = [
   { cle: "etablissement", libelle: "Établissement" },
 ];
 
+/** Colonnes possibles d'une note de mutation ; « Durée » et « Justification » sont mises par défaut (DG, 06/11/2026). */
+const COLONNES_MUTATION: { cle: string; libelle: string; permutation?: boolean }[] = [
+  { cle: "ge", libelle: "G/E (grade et échelon)" },
+  { cle: "matricule", libelle: "Matricule solde" },
+  { cle: "cycle", libelle: "Cycle" },
+  { cle: "specialite", libelle: "Spécialité" },
+  { cle: "ancienPoste", libelle: "Ancien poste (lieu de service)" },
+  { cle: "origine", libelle: "Département d’origine" },
+  { cle: "accueil", libelle: "Département d’accueil", permutation: true },
+  { cle: "lieuSollicite", libelle: "Lieu sollicité" },
+  { cle: "duree", libelle: "Durée dans le poste (ancienneté)" },
+  { cle: "justification", libelle: "Justification (pièce, raison, acte de mariage, permutant)" },
+  { cle: "obs", libelle: "Obs (ens. actif, pers. adm., finaliste)" },
+];
+
 type Signaler = (ton: "vert" | "rouge", texte: string) => void;
 
 /** Boutons de la barre de la note d'enrôlement. */
@@ -70,10 +85,14 @@ export function BoutonsEnrolement({ note, recharger, signaler }: { note: NoteDet
           <Aide>Défait le découpage : les personnes de ce lot (et des autres lots à soumettre) reviennent dans la note principale.</Aide>
         </Bouton>
       )}
-      {enrolement && s !== "SIGNEE" && (
+      {s !== "SIGNEE" && !note.rectificatifDe && (
         <Bouton onClick={() => setFenetre("colonnes")}>
           Colonnes
-          <Aide>Choisissez les colonnes du tableau pour cette note : par exemple enlever « Spécialité » et mettre « Diplôme ». « Promotion » est mise partout.</Aide>
+          <Aide>
+            {enrolement
+              ? "Choisissez les colonnes du tableau pour cette note : par exemple enlever « Spécialité » et mettre « Diplôme ». « Promotion » est mise partout."
+              : "Choisissez les colonnes du tableau : la durée dans le poste et la justification sont là pour décider ; on peut les enlever avant la signature. Si le tableau est trop large, la note passe en paysage."}
+          </Aide>
         </Bouton>
       )}
       {s === "BROUILLON" && !note.rectificatifDe && (
@@ -130,9 +149,11 @@ export function BoutonsEnrolement({ note, recharger, signaler }: { note: NoteDet
 }
 
 function FenetreColonnes({ note, fermer, apres, signaler }: { note: NoteDetail; fermer: () => void; apres: () => void; signaler: Signaler }) {
+  const mutation = note.module === "MUTATION";
+  const liste = mutation ? COLONNES_MUTATION.filter((c) => !c.permutation || note.motif === "PERMUTATION") : COLONNES;
   const actuelles = note.contenu.colonnes.map((c) => c.cle).filter((c) => c !== "nom");
   const [choix, setChoix] = useState<string[]>(actuelles);
-  const basculer = (cle: string) => setChoix((x) => (x.includes(cle) ? x.filter((y) => y !== cle) : COLONNES.map((c) => c.cle).filter((c) => c === cle || x.includes(c))));
+  const basculer = (cle: string) => setChoix((x) => (x.includes(cle) ? x.filter((y) => y !== cle) : liste.map((c) => c.cle).filter((c) => c === cle || x.includes(c))));
   async function enregistrer(colonnes: string[] | null) {
     try {
       await api.put(`/notes/${note.id}/colonnes`, { colonnes });
@@ -145,7 +166,7 @@ function FenetreColonnes({ note, fermer, apres, signaler }: { note: NoteDetail; 
     <Modale titre="Colonnes du tableau" ouverte fermer={fermer}>
       <p className="mb-3 text-[13px] text-zinc-600">« N° » et « Noms et prénoms » sont toujours là. Cochez les autres colonnes de cette note.</p>
       <div className="space-y-1.5">
-        {COLONNES.map((c) => (
+        {liste.map((c) => (
           <label key={c.cle} className={`flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm ring-1 transition ${choix.includes(c.cle) ? "bg-marque-50 ring-marque-300" : "ring-zinc-200 hover:ring-zinc-300"}`}>
             <input type="checkbox" className="size-4 accent-marque-600" checked={choix.includes(c.cle)} onChange={() => basculer(c.cle)} />
             {c.libelle}
@@ -154,7 +175,7 @@ function FenetreColonnes({ note, fermer, apres, signaler }: { note: NoteDetail; 
       </div>
       <div className="mt-4 flex flex-wrap justify-end gap-2">
         <Bouton variante="discret" onClick={() => enregistrer(null)}>
-          Colonnes du type de note
+          {mutation ? "Colonnes par défaut" : "Colonnes du type de note"}
         </Bouton>
         <Bouton onClick={fermer}>Annuler</Bouton>
         <Bouton variante="principal" disabled={!choix.length} onClick={() => enregistrer(choix)}>
