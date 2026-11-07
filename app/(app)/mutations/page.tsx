@@ -37,7 +37,8 @@ export default function Mutations() {
   const liste = useMemo(() => {
     const r = recherche.trim().toUpperCase();
     let l = r ? donnees?.filter((d) => d.nomComplet.toUpperCase().includes(r) || d.matricule?.toUpperCase().includes(r)) : donnees;
-    if (anomalie) l = l?.filter((d) => (anomalie === "*" ? d.anomalies.length > 0 : d.anomalies.includes(anomalie)));
+    // « - » : sans aucun point à vérifier ; « * » : avec au moins un point ; sinon un point précis
+    if (anomalie) l = l?.filter((d) => (anomalie === "-" ? d.anomalies.length === 0 : anomalie === "*" ? d.anomalies.length > 0 : d.anomalies.includes(anomalie)));
     return l;
   }, [donnees, recherche, anomalie]);
   // Les demandes qu'on peut encore faire avancer : en circuit, pas retirées, pas dans une note

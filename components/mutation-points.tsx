@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useSession } from "./session";
 import { Alerte, Bouton, Champ, Liste, Modale, Saisie } from "./ui";
-import { api } from "@/lib/api";
+import { api, useApi } from "@/lib/api";
 import { CYCLES } from "@/lib/libelles";
 import type { DemandeMutation } from "@/lib/types";
 
@@ -16,9 +16,13 @@ import type { DemandeMutation } from "@/lib/types";
  * « vérifié » : il ne revient plus.
  */
 export function PointsAVerifier({ demandes, choisi, choisir }: { demandes: DemandeMutation[]; choisi: string; choisir: (a: string) => void }) {
+  // Paramètre du DG (07/11/2026) : les demandes qui ont des points à vérifier attendent hors des notes
+  const { donnees: params } = useApi<{ cle: string; valeur: string }[]>("/parametres");
+  const horsNotes = params?.find((p) => p.cle === "MUTATION_NOTE_SANS_POINTS")?.valeur !== "NON";
   const compte = new Map<string, number>();
   for (const d of demandes) for (const a of d.anomalies) compte.set(a, (compte.get(a) ?? 0) + 1);
   const total = demandes.filter((d) => d.anomalies.length).length;
+  const sansPoint = demandes.length - total;
   if (!total && !choisi) return null;
   return (
     <div className="rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
@@ -26,6 +30,12 @@ export function PointsAVerifier({ demandes, choisi, choisir }: { demandes: Deman
         <AlertTriangle className="size-4 text-amber-700" aria-hidden />
         <strong className="text-amber-900">{total} demande(s) avec des points à vérifier</strong>
         <span className="text-amber-800">— cliquez un point pour ne voir que ces demandes, puis « Corriger » sur chaque ligne.</span>
+        {horsNotes && (
+          <span className="basis-full text-[12px] text-amber-800">
+            Tant qu’elles ont des points à vérifier, ces demandes <strong>n’entrent pas dans les notes de service</strong>, même accordées : elles attendent hors de la note
+            et la rejoignent d’elles-mêmes une fois corrigées (ou déclarées vérifiées sur le dossier papier).
+          </span>
+        )}
         {choisi && (
           <button type="button" onClick={() => choisir("")} className="ml-auto inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[12px] font-medium text-zinc-700 ring-1 ring-zinc-200">
             <X className="size-3.5" aria-hidden /> Retirer le filtre
@@ -33,6 +43,15 @@ export function PointsAVerifier({ demandes, choisi, choisir }: { demandes: Deman
         )}
       </div>
       <div className="flex flex-wrap gap-1.5">
+        {/* Les demandes sans aucun problème : à cocher toutes pour l'avis favorable, puis les notes */}
+        <button
+          type="button"
+          onClick={() => choisir(choisi === "-" ? "" : "-")}
+          title="Les demandes sans aucun point à vérifier : cochez-les toutes pour compléter le circuit favorablement"
+          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[12px] font-medium ring-1 transition ${choisi === "-" ? "bg-emerald-600 text-white ring-emerald-600" : "bg-white text-emerald-800 ring-emerald-200 hover:ring-emerald-400"}`}
+        >
+          <CheckCircle2 className="size-3.5" aria-hidden /> Sans point à vérifier · {sansPoint}
+        </button>
         <button
           type="button"
           onClick={() => choisir(choisi === "*" ? "" : "*")}

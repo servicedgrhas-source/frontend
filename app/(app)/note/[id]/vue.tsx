@@ -221,7 +221,13 @@ export function VueNote() {
       <Annonce ton={message?.ton} fermer={() => setMessage(null)}>{message?.texte}</Annonce>
       {note.commentaire && s === "BROUILLON" && <Alerte ton="jaune">Renvoyée par le DG : {note.commentaire}</Alerte>}
       <CorrectionsRectificatif note={note} recharger={recharger} signaler={(ton, texte) => setMessage({ ton, texte })} />
-      {(s === "BROUILLON" || s === "SOUMISE") && note.contenu.total === 0 && !note.rectificatifDe && (
+      {(s === "BROUILLON" || s === "SOUMISE") && note.contenu.total === 0 && !note.rectificatifDe && note.module === "MUTATION" && bloques.length > 0 && (
+        <Alerte ton="jaune">
+          <strong>Personne n’entre encore dans cette note.</strong> Ses {bloques.length} demande(s) accordée(s) ont toutes des points à vérifier : elles attendent hors de la
+          note (liste ci-dessous). Corrigez-les, ou déclarez les points vérifiés sur le dossier papier, et elles la rejoindront d’elles-mêmes. Ne supprimez pas la note.
+        </Alerte>
+      )}
+      {(s === "BROUILLON" || s === "SOUMISE") && note.contenu.total === 0 && !note.rectificatifDe && !(note.module === "MUTATION" && bloques.length > 0) && (
         <Alerte ton="jaune">
           <strong>Cette note ne contient plus personne.</strong> Les personnes qui y figuraient ont changé de lot (diplôme ou type de texte corrigé), ont été
           exclues, ou sont déjà dans une autre note. Elle ne peut pas être soumise au DG : {s === "BROUILLON" ? "supprimez-la avec le bouton « Supprimer »" : "le DG peut la renvoyer pour qu’elle soit supprimée"}.
@@ -237,7 +243,7 @@ export function VueNote() {
       {(s === "VALIDEE" || s === "SIGNEE") && <CirculationNote note={note} recharger={recharger} signalerErreur={(texte) => setMessage({ ton: "rouge", texte })} signalerSucces={(texte) => setMessage({ ton: "vert", texte })} />}
 
       {bloques.length > 0 && (
-        <Carte titre={`${bloques.length} agent(s) de ce type non inclus (à compléter)`}>
+        <Carte titre={note.module === "MUTATION" ? `${bloques.length} demande(s) accordée(s) hors de la note : points à vérifier` : `${bloques.length} agent(s) de ce type non inclus (à compléter)`}>
           <ul className="max-h-48 space-y-0.5 overflow-y-auto text-sm">
             {bloques.map((b) => (
               <li key={b.id}>
@@ -250,6 +256,11 @@ export function VueNote() {
             {note.module === "AFFECTATION" && note.lotNumero && (
               <Link href={`/affectations?lot=${note.lotNumero}&typeNote=${note.typeNote}&probleme=bloquant`}>
                 <Bouton variante="principal">Voir et compléter ces {bloques.length} personne(s) →</Bouton>
+              </Link>
+            )}
+            {note.module === "MUTATION" && (
+              <Link href={`/mutations?motif=${note.motif ?? ""}&anomalie=*`}>
+                <Bouton variante="principal">Corriger leurs points à vérifier →</Bouton>
               </Link>
             )}
             {note.module === "ENROLEMENT" && (

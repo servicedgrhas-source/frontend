@@ -8,6 +8,11 @@ import { api, useApi } from "@/lib/api";
 
 /** Paramètres à choisir dans une liste plutôt qu'à écrire. */
 const CHOIX: Record<string, [string, string][]> = {
+  // DG, 07/11/2026 : les demandes à problème n'entrent pas d'abord dans les notes de mutation
+  MUTATION_NOTE_SANS_POINTS: [
+    ["OUI", "Oui : une demande accordée qui a encore des points à vérifier attend hors de la note"],
+    ["NON", "Non : toutes les demandes accordées entrent dans la note"],
+  ],
   POLICE_NOTES: [
     ["Times New Roman", "Times New Roman (d’origine)"],
     ["Sylfaen", "Sylfaen"],
@@ -31,7 +36,7 @@ const GROUPES: { titre: string; effet: string; cles: string[] }[] = [
     titre: "Notes de service (affectation, mutation et enrôlement)",
     effet:
       "Pris en compte immédiatement par les notes « à soumettre au DG » et « soumises au DG ». Une note validée ou signée garde les réglages du jour de sa validation ; pour qu’elle reprenne les nouveaux, le DG la rouvre (tant que le ministre n’a pas signé).",
-    cles: ["ANNEE_SCOLAIRE", "ANNEE_SCOLAIRE_MUTATION", "SIGNATAIRE_TITRE", "SIGNATAIRE_NOM", "LIEU_SIGNATURE", "POLICE_NOTES", "PROJET_DE_NOTE", "REFERENCE_NOTE", "PIED_PAGE_DROITE", "ADRESSE_PIED", "MENTION_BOURSE_ENROLEMENT"],
+    cles: ["ANNEE_SCOLAIRE", "ANNEE_SCOLAIRE_MUTATION", "SIGNATAIRE_TITRE", "SIGNATAIRE_NOM", "LIEU_SIGNATURE", "POLICE_NOTES", "PROJET_DE_NOTE", "MUTATION_NOTE_SANS_POINTS", "REFERENCE_NOTE", "PIED_PAGE_DROITE", "ADRESSE_PIED", "MENTION_BOURSE_ENROLEMENT"],
   },
   {
     titre: "Statut contractuel, âges et calculs",

@@ -284,7 +284,9 @@ export function NotesListe({ module }: { module: "AFFECTATION" | "MUTATION" | "E
                   <td className="text-right tabular-nums">
                     {n.total}
                     {!!n.enAttente && ["BROUILLON", "SOUMISE"].includes(n.statut) && (
-                      <div className="text-[11px] font-medium text-or-700">+ {n.enAttente} retenu(s) sans département retenu : à placer</div>
+                      <div className="text-[11px] font-medium text-or-700">
+                        {n.module === "MUTATION" ? `+ ${n.enAttente} accordée(s) hors de la note : points à vérifier` : `+ ${n.enAttente} retenu(s) sans département retenu : à placer`}
+                      </div>
                     )}
                     {n.total === 0 && !n.enAttente && ["BROUILLON", "SOUMISE"].includes(n.statut) && <div className="text-[11px] font-medium text-or-700">vide : à supprimer</div>}
                   </td>
