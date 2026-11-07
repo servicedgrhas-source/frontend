@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Download, MapPin, Sparkles, Trash2, Users } from "lucide-react";
+import { CheckCircle2, Download, Loader2, MapPin, Sparkles, Trash2, Users } from "lucide-react";
 import { Suspense, useState } from "react";
 import { SelecteurCampagne, useCampagne } from "@/components/enrolement/commun";
 import { useSession } from "@/components/session";
@@ -67,6 +67,8 @@ function Repartition() {
   const d = g.donnees;
   const dg = profil.role === "DG";
   const quotaTotal = d?.parColonne.reduce((t, c) => t + c.quota, 0) ?? 0;
+  // Changement de critère en cours : l'ancienne grille reste visible, grisée, avec un bandeau
+  const calcul = !!d && (g.chargement || (critere !== null && critere !== d.critere));
 
   async function action(chemin: string, texte: (r: Record<string, number>) => string) {
     if (!campagne) return;
@@ -107,18 +109,6 @@ function Repartition() {
                 <Download className="size-4" aria-hidden /> Excel
                 <Aide>Les places et le brouillon (une ligne par candidat, avec ses trois choix), pour travailler aussi sur papier en salle.</Aide>
               </Bouton>
-              <Bouton disabled={!quotaTotal || occupe} onClick={() => action("/enrolement/repartition/proposer", (r) => `${nf.format(r.ajoutes ?? 0)} candidat(s) proposé(s) dans le brouillon. Vérifiez et changez ce qu’il faut.`)}>
-                <Sparkles className="size-4" aria-hidden /> Proposer selon les choix
-                <Aide>Une aide, pas une décision : chaque case encore incomplète reçoit ceux qui ont demandé ce département en 1er choix, puis en 2e, puis en 3e (la promotion la plus ancienne d’abord). Tout reste modifiable.</Aide>
-              </Bouton>
-              <Bouton variante="discret" disabled={!d.places || occupe} onClick={() => setConfirmer("vider")}>
-                <Trash2 className="size-4" aria-hidden /> Vider le brouillon
-              </Bouton>
-              {dg && (
-                <Bouton variante="principal" disabled={!d.places || occupe} onClick={() => setConfirmer("valider")}>
-                  <CheckCircle2 className="size-4" aria-hidden /> Valider la répartition
-                </Bouton>
-              )}
             </>
           )
         }
@@ -132,14 +122,50 @@ function Repartition() {
         <>
           {/* Les trois étapes, et où on en est */}
           <div className="grid gap-3 md:grid-cols-3">
-            <Etape n={1} titre="Fixer les places" fait={quotaTotal > 0} texte={quotaTotal ? `${nf.format(quotaTotal)} place(s) fixée(s)` : "Tapez le nombre de places dans chaque case du tableau."} />
-            <Etape n={2} titre="Placer les candidats" fait={d.places > 0} texte={`${nf.format(d.places)} placé(s) sur ${nf.format(d.candidats)} retenus · ${nf.format(d.nonPlaces)} pas encore placé(s)`} />
+            <Etape
+              n={1}
+              titre="Fixer les places"
+              fait={quotaTotal > 0}
+              texte={quotaTotal ? `${nf.format(quotaTotal)} place(s) fixée(s). Vous pouvez en changer à tout moment.` : "Dans le tableau ci-dessous, tapez le nombre de places de chaque case (puis Entrée, ou cliquez ailleurs)."}
+            />
+            <Etape
+              n={2}
+              titre="Placer les candidats"
+              fait={d.places > 0}
+              texte={`${nf.format(d.places)} placé(s) sur ${nf.format(d.candidats)} retenus · ${nf.format(d.nonPlaces)} pas encore placé(s). « Placer → » dans une case pour choisir les noms.`}
+            >
+              <Bouton disabled={!quotaTotal || occupe} onClick={() => action("/enrolement/repartition/proposer", (r) => `${nf.format(r.ajoutes ?? 0)} candidat(s) proposé(s) dans le brouillon. Vérifiez et changez ce qu’il faut.`)}>
+                <Sparkles className="size-4" aria-hidden /> Proposer selon les choix
+                <Aide>Une aide, pas une décision : chaque case encore incomplète reçoit ceux qui ont demandé ce département en 1er choix, puis en 2e, puis en 3e (la promotion la plus ancienne d’abord). Tout reste modifiable.</Aide>
+              </Bouton>
+              {d.places > 0 && (
+                <Bouton variante="discret" disabled={occupe} onClick={() => setConfirmer("vider")}>
+                  <Trash2 className="size-4" aria-hidden /> Vider le brouillon
+                </Bouton>
+              )}
+              {!quotaTotal && <Raison>« Proposer » s’active dès que des places sont fixées (étape 1).</Raison>}
+            </Etape>
             <Etape
               n={3}
               titre="Le DG valide"
               fait={!!d.valideeLe}
-              texte={d.valideeLe ? `Validée le ${new Date(d.valideeLe).toLocaleDateString("fr-FR")}${d.valideePar ? ` par ${d.valideePar}` : ""}` : "Chaque candidat placé reçoit son département retenu."}
-            />
+              texte={
+                d.valideeLe
+                  ? `Validée le ${new Date(d.valideeLe).toLocaleDateString("fr-FR")}${d.valideePar ? ` par ${d.valideePar}` : ""}. On peut encore changer le brouillon et valider de nouveau.`
+                  : "Chaque candidat placé reçoit alors son département retenu et peut entrer dans les notes."
+              }
+            >
+              {dg ? (
+                <>
+                  <Bouton variante="principal" disabled={!d.places || occupe} onClick={() => setConfirmer("valider")}>
+                    <CheckCircle2 className="size-4" aria-hidden /> Valider la répartition
+                  </Bouton>
+                  {!d.places && <Raison>Le bouton s’active dès qu’au moins un candidat est placé (étape 2).</Raison>}
+                </>
+              ) : (
+                <Raison>Seul le DG valide : le bouton « Valider la répartition » apparaît ici sur son compte. En attendant, rien ne change dans la base.</Raison>
+              )}
+            </Etape>
           </div>
 
           <Carte
@@ -152,14 +178,20 @@ function Repartition() {
             actions={
               <div className="flex flex-wrap items-center gap-2 text-[12px] text-zinc-500">
                 Croiser le département avec :
-                <Segments valeur={d.critere} changer={(c) => setCritere(c)} options={Object.entries(d.criteres).map(([valeur, libelle]) => ({ valeur, libelle }))} />
+                <Segments valeur={critere ?? d.critere} changer={(c) => setCritere(c)} options={Object.entries(d.criteres).map(([valeur, libelle]) => ({ valeur, libelle }))} />
               </div>
             }
           >
+            {calcul && (
+              <div className="mb-3 flex items-center gap-2 rounded-xl bg-marque-50 px-3 py-2 text-[13px] font-medium text-marque-900 ring-1 ring-marque-200">
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+                Calcul de la grille par {(d.criteres[critere ?? d.critere] ?? "").toLowerCase()}… ({nf.format(d.candidats)} candidats à classer, quelques secondes)
+              </div>
+            )}
             {!d.candidats ? (
               <Alerte ton="jaune">Aucun retenu à répartir dans cette campagne (les retenus déjà dans une note ne sont plus ici).</Alerte>
             ) : (
-              <div className="overflow-x-auto rounded-xl ring-1 ring-zinc-200">
+              <div className={`overflow-x-auto rounded-xl ring-1 ring-zinc-200 transition-opacity ${calcul ? "pointer-events-none opacity-40" : ""}`}>
                 <table className="w-full border-collapse text-[12.5px]">
                   <thead>
                     <tr className="bg-zinc-50 text-zinc-600">
@@ -244,18 +276,24 @@ function Repartition() {
   );
 }
 
-function Etape({ n, titre, texte, fait }: { n: number; titre: string; texte: string; fait: boolean }) {
+function Etape({ n, titre, texte, fait, children }: { n: number; titre: string; texte: string; fait: boolean; children?: React.ReactNode }) {
   return (
     <div className={`flex gap-3 rounded-2xl px-4 py-3 ring-1 ${fait ? "bg-emerald-50 ring-emerald-200" : "bg-white ring-zinc-200"}`}>
       <span className={`flex size-7 shrink-0 items-center justify-center rounded-full text-[13px] font-bold ${fait ? "bg-emerald-600 text-white" : "bg-zinc-100 text-zinc-600"}`}>
         {fait ? "✓" : n}
       </span>
-      <div>
+      <div className="min-w-0 flex-1">
         <div className="text-[13px] font-semibold text-zinc-900">{titre}</div>
         <div className="text-[12px] text-zinc-600">{texte}</div>
+        {children && <div className="mt-2.5 flex flex-wrap items-center gap-2">{children}</div>}
       </div>
     </div>
   );
+}
+
+/** Pourquoi un bouton est grisé, ou qui doit agir. */
+function Raison({ children }: { children: React.ReactNode }) {
+  return <p className="w-full text-[11.5px] leading-snug text-zinc-500">{children}</p>;
 }
 
 /** Une case : les places (à taper), la jauge des placés, les demandeurs, et le bouton « Placer ». */

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowRight, Check, Copy, FileSpreadsheet, RefreshCw, Sheet, Sparkles, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, Copy, FileSpreadsheet, RefreshCw, Sheet, Sparkles, UserCheck, UserX, Users } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { type Decision, Liste, Onglet, Tuile } from "@/components/enrolement/import-enrolement";
@@ -49,11 +49,26 @@ interface Rapport {
   numerosEnDouble: number[];
   anomalies: Record<string, number>;
   tronque?: boolean;
+  /** Base du personnel (07/11/2026) : lue seulement. */
+  personnel?: { trouvees: number; doute: number; introuvables: number; avecEcarts: number; aCompleter: number };
   details?: {
+    personnel?: SituationPersonnel[];
     aMettreAJour: { cle: string; nom: string; motif: string; existant: { id: string; numero: number; bloquee: string | null }; ecarts: { champ: string; libelle: string; base: string; fichier: string }[] }[];
     doublonsFichier: PaireFichier[];
     doublonsBase: PaireBase[];
   };
+}
+
+/** La situation d'un agent dans la base du personnel, comparée à sa demande. */
+interface SituationPersonnel {
+  cle: string;
+  nom: string;
+  motif: string;
+  etat: "TROUVE" | "DOUTE" | "INTROUVABLE";
+  fiche: { id: number; numero: string | null; nom: string } | null;
+  candidats: number;
+  ecarts: { champ: string; libelle: string; demande: string; personnel: string }[];
+  manquants: { champ: string; libelle: string; personnel: string }[];
 }
 
 const ligneExcel = (cle: string) => {
@@ -168,7 +183,11 @@ export function ImportMutations({ apres }: { apres: (texte: string) => void }) {
   const [decisions, setDecisions] = useState<Record<string, Choix>>({});
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
-  const [onglet, setOnglet] = useState<"maj" | "fichier" | "base">("maj");
+  const [onglet, setOnglet] = useState<"maj" | "fichier" | "base" | "personnel">("maj");
+  // Base du personnel : garder la demande ou prendre la fiche, ligne par ligne ; compléter les cases vides
+  const [choixPersonnel, setChoixPersonnel] = useState<Record<string, "GARDER" | "PERSONNEL">>({});
+  const [completer, setCompleter] = useState(true);
+  const [vuePersonnel, setVuePersonnel] = useState<"ecarts" | "completees" | "introuvables">("ecarts");
   const [voir, setVoir] = useState(40);
   const etape = !fichier ? 0 : !rapport ? 1 : 2;
 
@@ -177,6 +196,8 @@ export function ImportMutations({ apres }: { apres: (texte: string) => void }) {
     fd.append("fichier", f);
     if (choisies) fd.append("feuilles", JSON.stringify(choisies));
     fd.append("decisions", JSON.stringify(dec));
+    fd.append("personnel", JSON.stringify(choixPersonnel));
+    fd.append("completer", completer ? "1" : "0");
     return api.post<Rapport>(`/mutations/import${qs({ essai: essai ? 1 : 0 })}`, fd);
   }
   const choisirOnglet = (r: Rapport) => {
@@ -233,7 +254,7 @@ export function ImportMutations({ apres }: { apres: (texte: string) => void }) {
     const t = setTimeout(() => tester(feuilles, decisions), 700);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [decisions]);
+  }, [decisions, choixPersonnel, completer]);
 
   function fermer() {
     setFichier(null);
@@ -241,6 +262,8 @@ export function ImportMutations({ apres }: { apres: (texte: string) => void }) {
     setFeuilles([]);
     setRapport(null);
     setDecisions({});
+    setChoixPersonnel({});
+    setCompleter(true);
     setErreur(null);
     setVoir(40);
     premier.current = true;
@@ -384,6 +407,15 @@ export function ImportMutations({ apres }: { apres: (texte: string) => void }) {
                   <Onglet actif={onglet === "fichier"} n={d.doublonsFichier.length} icone={Copy} texte="Se ressemblent dans le fichier" choisir={() => setOnglet("fichier")} />
                   <Onglet actif={onglet === "base"} n={d.doublonsBase.length} icone={Users} texte="Ressemblent à une demande de la base" choisir={() => setOnglet("base")} />
                   <Onglet actif={onglet === "maj"} n={d.aMettreAJour.length} icone={RefreshCw} texte="Déjà dans la base, avec du nouveau" choisir={() => setOnglet("maj")} />
+                  {rapport.personnel && (
+                    <Onglet
+                      actif={onglet === "personnel"}
+                      n={rapport.personnel.avecEcarts}
+                      icone={UserCheck}
+                      texte="Base du personnel"
+                      choisir={() => setOnglet("personnel")}
+                    />
+                  )}
                 </div>
 
                 <div className="h-[56vh] overflow-y-auto rounded-2xl ring-1 ring-zinc-200">
@@ -506,6 +538,18 @@ export function ImportMutations({ apres }: { apres: (texte: string) => void }) {
                       decisions={decisions as Record<string, Decision>}
                     />
                   )}
+                  {onglet === "personnel" && rapport.personnel && (
+                    <OngletPersonnel
+                      bilan={rapport.personnel}
+                      lignes={d.personnel ?? []}
+                      vue={vuePersonnel}
+                      changerVue={setVuePersonnel}
+                      choix={choixPersonnel}
+                      choisir={(cles, c) => setChoixPersonnel((x) => Object.fromEntries([...Object.entries(x), ...cles.map((k) => [k, c] as const)]))}
+                      completer={completer}
+                      changerCompleter={setCompleter}
+                    />
+                  )}
                   {(onglet === "fichier" ? d.doublonsFichier.length : onglet === "base" ? d.doublonsBase.length : 0) > voir && (
                     <div className="p-3 text-center">
                       <Bouton variante="discret" onClick={() => setVoir((v) => v + 60)}>
@@ -542,5 +586,169 @@ export function ImportMutations({ apres }: { apres: (texte: string) => void }) {
         </Modale>
       )}
     </>
+  );
+}
+
+/**
+ * Onglet « Base du personnel » de l'import des mutations (07/11/2026) : pour chaque agent, sa demande
+ * à côté de sa fiche du personnel. On garde la demande telle quelle (par défaut) ou on prend la fiche ;
+ * les cases vides de la demande peuvent être complétées depuis la fiche. La base des mutations reste à
+ * part : rien n'est écrit dans la base du personnel avant la note signée. Un agent pas trouvé est
+ * seulement signalé.
+ */
+function OngletPersonnel({
+  bilan,
+  lignes,
+  vue,
+  changerVue,
+  choix,
+  choisir,
+  completer,
+  changerCompleter,
+}: {
+  bilan: NonNullable<Rapport["personnel"]>;
+  lignes: SituationPersonnel[];
+  vue: "ecarts" | "completees" | "introuvables";
+  changerVue: (v: "ecarts" | "completees" | "introuvables") => void;
+  choix: Record<string, "GARDER" | "PERSONNEL">;
+  choisir: (cles: string[], c: "GARDER" | "PERSONNEL") => void;
+  completer: boolean;
+  changerCompleter: (v: boolean) => void;
+}) {
+  const [voir, setVoir] = useState(40);
+  const ecarts = lignes.filter((l) => l.ecarts.length);
+  const completees = lignes.filter((l) => l.manquants.length);
+  const absents = lignes.filter((l) => l.etat !== "TROUVE");
+  const liste = vue === "ecarts" ? ecarts : vue === "completees" ? completees : absents;
+  const pris = ecarts.filter((l) => choix[l.cle] === "PERSONNEL").length;
+  const Bouton2 = ({ actif, children, onClick }: { actif: boolean; children: React.ReactNode; onClick: () => void }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-xl px-3 py-1.5 text-[12px] font-semibold ring-1 transition ${actif ? "bg-marque-600 text-white ring-marque-600" : "bg-white text-zinc-700 ring-zinc-200 hover:ring-zinc-300"}`}
+    >
+      {children}
+    </button>
+  );
+  return (
+    <div>
+      <div className="sticky top-0 z-10 space-y-2 border-b border-zinc-100 bg-white/95 px-4 py-3 backdrop-blur">
+        <p className="text-[12px] text-zinc-600">
+          Chaque agent du fichier est cherché dans la <strong>base du personnel</strong> (lecture seulement). La base des mutations reste à part : la fiche du personnel
+          ne change qu’après la note signée (« Importer dans la base du personnel »).
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-marque-50 px-2.5 py-1 text-[12px] text-marque-900 ring-1 ring-marque-200">
+            <UserCheck className="mr-1 inline size-3.5" aria-hidden />
+            {bilan.trouvees} retrouvé(s)
+          </span>
+          <Bouton2 actif={vue === "ecarts"} onClick={() => changerVue("ecarts")}>
+            {bilan.avecEcarts} avec des différences
+          </Bouton2>
+          <Bouton2 actif={vue === "completees"} onClick={() => changerVue("completees")}>
+            {bilan.aCompleter} avec des cases vides
+          </Bouton2>
+          <Bouton2 actif={vue === "introuvables"} onClick={() => changerVue("introuvables")}>
+            {bilan.introuvables + bilan.doute} pas trouvé(s)
+          </Bouton2>
+          <label className="ml-auto flex cursor-pointer items-center gap-2 rounded-xl bg-zinc-50 px-3 py-1.5 text-[12px] ring-1 ring-zinc-200">
+            <input type="checkbox" className="size-4 accent-marque-600" checked={completer} onChange={(e) => changerCompleter(e.target.checked)} />
+            Compléter les cases vides des demandes depuis la base du personnel
+          </label>
+        </div>
+        {vue === "ecarts" && ecarts.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 text-[12px] text-zinc-600">
+            {pris ? `${pris} demande(s) prendront les valeurs de la base du personnel.` : "Par défaut, chaque demande est gardée telle quelle."}
+            <span className="ml-auto flex gap-2">
+              <Bouton2 actif={false} onClick={() => choisir(ecarts.map((l) => l.cle), "GARDER")}>
+                Tout garder tel quel
+              </Bouton2>
+              <Bouton2 actif={false} onClick={() => choisir(ecarts.map((l) => l.cle), "PERSONNEL")}>
+                Tout prendre de la base du personnel
+              </Bouton2>
+            </span>
+          </div>
+        )}
+      </div>
+      {liste.length ? (
+        <ul className="divide-y divide-zinc-100">
+          {liste.slice(0, voir).map((l) => {
+            const c = choix[l.cle] ?? "GARDER";
+            return (
+              <li key={l.cle} className="px-4 py-3">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <span className="font-semibold text-encre">{l.nom}</span>
+                  <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-600">{l.motif}</span>
+                  <span className="text-[11px] text-zinc-400">{ligneExcel(l.cle)}</span>
+                  {l.fiche && (
+                    <Link href={`/personnel/agents/${l.fiche.id}`} target="_blank" className="text-[11.5px] font-medium text-marque-700 hover:underline">
+                      Fiche {l.fiche.numero ?? ""} →
+                    </Link>
+                  )}
+                </div>
+                {l.etat !== "TROUVE" ? (
+                  <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-xl bg-amber-50 px-3 py-1.5 text-[12px] text-amber-900 ring-1 ring-amber-200">
+                    <UserX className="size-3.5" aria-hidden />
+                    {l.etat === "DOUTE"
+                      ? `Plusieurs fiches possibles (${l.candidats}) dans la base du personnel : on choisira après la note signée.`
+                      : "Pas trouvé dans la base du personnel. Ce n’est pas bloquant : sa fiche pourra être reliée ou créée après la note signée."}
+                  </p>
+                ) : (
+                  <>
+                    {l.ecarts.length > 0 && (
+                      <table className="mt-2 w-full text-[12px]">
+                        <thead className="text-left text-[11px] text-zinc-400">
+                          <tr>
+                            <th className="w-44 pb-1 font-medium">Rubrique</th>
+                            <th className="pb-1 font-medium">Dans la demande (au moment de la demande)</th>
+                            <th className="pb-1 font-medium">Dans la base du personnel (aujourd’hui)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {l.ecarts.map((e) => (
+                            <tr key={e.champ} className="border-t border-zinc-100">
+                              <td className="py-1 pr-2 text-zinc-500">{e.libelle}</td>
+                              <td className={`py-1 pr-2 ${c === "PERSONNEL" ? "text-zinc-400 line-through" : "font-medium text-zinc-800"}`}>{e.demande}</td>
+                              <td className={`py-1 ${c === "PERSONNEL" ? "font-medium text-marque-900" : "text-zinc-500"}`}>{e.personnel}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                    {l.manquants.length > 0 && (
+                      <p className="mt-1.5 text-[12px] text-zinc-600">
+                        <span className={completer ? "font-medium text-marque-900" : "text-zinc-500"}>{completer ? "Complété depuis la fiche :" : "Pourrait être complété depuis la fiche :"}</span>{" "}
+                        {l.manquants.map((m) => `${m.libelle} ${m.personnel}`).join(" · ")}
+                      </p>
+                    )}
+                    {l.ecarts.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Bouton2 actif={c === "GARDER"} onClick={() => choisir([l.cle], "GARDER")}>
+                          Garder la demande telle quelle
+                        </Bouton2>
+                        <Bouton2 actif={c === "PERSONNEL"} onClick={() => choisir([l.cle], "PERSONNEL")}>
+                          Prendre les valeurs de la base du personnel
+                        </Bouton2>
+                      </div>
+                    )}
+                  </>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="p-6 text-center text-zinc-500">
+          {vue === "ecarts" ? "Aucune différence entre les demandes et la base du personnel." : vue === "completees" ? "Aucune case vide à compléter." : "Tous les agents ont été retrouvés."}
+        </p>
+      )}
+      {liste.length > voir && (
+        <div className="p-3 text-center">
+          <button type="button" className="text-[12px] font-semibold text-marque-700" onClick={() => setVoir((v) => v + 60)}>
+            Voir 60 de plus
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

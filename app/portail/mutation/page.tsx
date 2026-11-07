@@ -115,6 +115,8 @@ export default function DemandeMutationPortail() {
   const [reconnu, setReconnu] = useState<FicheReconnue | null>(null);
   const [recherche, setRecherche] = useState(false);
   const [erreurIdent, setErreurIdent] = useState<string | null>(null);
+  // Fiche introuvable : l'agent remplit lui-même ; la DGRHAS la reliera plus tard (jamais bloquant)
+  const [manuel, setManuel] = useState(false);
   async function reconnaitre() {
     setRecherche(true);
     setErreurIdent(null);
@@ -170,7 +172,14 @@ export default function DemandeMutationPortail() {
   /** Ce qui manque pour passer à l'étape suivante. */
   const bloquant = (() => {
     if (etape === 0) return !f.typePrestation ? "Choisissez votre demande." : null;
-    if (etape === 1) return !reconnu ? "Faites-vous reconnaître : votre matricule solde (ou vos nom et prénoms) et votre date de naissance." : !f.telephone.trim() ? "Laissez un numéro de téléphone pour être joint." : null;
+    if (etape === 1)
+      return !reconnu && !manuel
+        ? "Faites-vous reconnaître : votre matricule solde (ou vos nom et prénoms) et votre date de naissance. Si votre fiche n’est pas trouvée, choisissez « Remplir moi-même »."
+        : manuel && f.nomComplet.trim().split(/\s+/).length < 2
+          ? "Écrivez vos nom et prénoms."
+          : !f.telephone.trim()
+            ? "Laissez un numéro de téléphone pour être joint."
+            : null;
     if (etape === 2) {
       if (f.lieuTravail === "DEPARTEMENT" && !f.departementOrigineId) return "Choisissez votre département actuel.";
       if (f.lieuTravail === "CENTRALE" && !f.structureOrigineId) return "Choisissez votre service.";
@@ -311,6 +320,8 @@ export default function DemandeMutationPortail() {
             <h2 className="text-[16px] font-semibold">Vous</h2>
             {!reconnu ? (
               <>
+                {!manuel && (
+                  <>
                 <p className="text-[13px] text-zinc-600">Le système retrouve votre fiche du personnel : vous n’avez rien d’autre à écrire sur vous.</p>
                 <Bloc champ="nom" libelle="Votre matricule solde, ou vos nom et prénoms *" aide="Comme sur votre bulletin de solde ou vos papiers, dans n’importe quel ordre">
                   <input className={GRANDS} value={identifiant} onChange={(e) => setIdentifiant(e.target.value)} autoComplete="name" placeholder="Ex. 123456 X, ou MOUANDA Jean Paul" />
@@ -318,15 +329,66 @@ export default function DemandeMutationPortail() {
                 <Bloc libelle="Votre date de naissance *">
                   <input className={GRANDS} type="date" value={naissance} onChange={(e) => setNaissance(e.target.value)} />
                 </Bloc>
+                  </>
+                )}
                 {erreurIdent && <Message ton="rouge">{erreurIdent}</Message>}
-                <button
-                  type="button"
-                  disabled={recherche || identifiant.trim().length < 3 || !naissance}
-                  onClick={reconnaitre}
-                  className="w-full rounded-2xl bg-nuit px-5 py-3.5 text-[15px] font-semibold text-white disabled:opacity-40"
-                >
-                  {recherche ? "Recherche…" : "Retrouver ma fiche"}
-                </button>
+                {!manuel && (
+                  <button
+                    type="button"
+                    disabled={recherche || identifiant.trim().length < 3 || !naissance}
+                    onClick={reconnaitre}
+                    className="w-full rounded-2xl bg-nuit px-5 py-3.5 text-[15px] font-semibold text-white disabled:opacity-40"
+                  >
+                    {recherche ? "Recherche…" : "Retrouver ma fiche"}
+                  </button>
+                )}
+                {!manuel ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManuel(true);
+                      setErreurIdent(null);
+                      // Ce qui a été tapé sert de nom (ou de matricule)
+                      if (identifiant.trim() && !/\d/.test(identifiant)) maj("nomComplet", identifiant.trim().toUpperCase());
+                      if (/\d/.test(identifiant)) maj("matricule", identifiant.trim());
+                    }}
+                    className="w-full rounded-2xl px-5 py-3 text-[14px] font-medium text-marque-700 ring-1 ring-marque-200"
+                  >
+                    Je ne retrouve pas ma fiche : remplir moi-même
+                  </button>
+                ) : (
+                  <div className="space-y-3 rounded-2xl bg-zinc-50 p-4">
+                    <p className="text-[13px] text-zinc-600">
+                      Votre fiche n’a pas été trouvée : ce n’est pas grave. Écrivez vos informations ; la DGRHAS reliera votre demande à votre fiche.
+                    </p>
+                    <Bloc champ="nomManuel" libelle="Vos nom et prénoms *">
+                      <input className={`${GRANDS} uppercase`} value={f.nomComplet} onChange={(e) => maj("nomComplet", e.target.value)} autoComplete="name" />
+                    </Bloc>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Bloc libelle="Genre">
+                        <select className={GRANDS} value={f.genre} onChange={(e) => maj("genre", e.target.value as "M" | "F")}>
+                          <option value="M">Masculin</option>
+                          <option value="F">Féminin</option>
+                        </select>
+                      </Bloc>
+                      <Bloc libelle="Matricule solde">
+                        <input className={GRANDS} value={f.matricule} onChange={(e) => maj("matricule", e.target.value)} placeholder="Si vous l’avez" />
+                      </Bloc>
+                      <Bloc libelle="Grade">
+                        <input className={GRANDS} value={f.grade} onChange={(e) => maj("grade", e.target.value)} placeholder="Ex. Inst, PCEG" />
+                      </Bloc>
+                      <Bloc libelle="Échelon">
+                        <input className={GRANDS} inputMode="numeric" value={f.echelon} onChange={(e) => maj("echelon", e.target.value.replace(/\D/g, ""))} />
+                      </Bloc>
+                    </div>
+                    <Bloc champ="telephone" libelle="Téléphone *" aide="Pour vous joindre si une pièce manque">
+                      <input className={GRANDS} type="tel" inputMode="tel" autoComplete="tel" value={f.telephone} onChange={(e) => maj("telephone", e.target.value)} placeholder="Ex. 06 000 00 00" />
+                    </Bloc>
+                    <button type="button" onClick={() => setManuel(false)} className="text-[13px] text-marque-700 underline">
+                      Réessayer de retrouver ma fiche
+                    </button>
+                  </div>
+                )}
               </>
             ) : (
               <>

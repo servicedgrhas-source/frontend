@@ -9,6 +9,7 @@ import { api, useApi } from "@/lib/api";
 import { CYCLES, dateCourte, ETAT_MUTATION } from "@/lib/libelles";
 import type { DemandeMutation } from "@/lib/types";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
+import { type AgentTrouve, RechercheAgentMutation } from "@/components/recherche-agent-mutation";
 
 const JUSTIFICATIFS: Record<string, string> = {
   RAPPROCHEMENT_CONJOINT: "Acte de mariage (référence)",
@@ -64,6 +65,27 @@ export function FormulaireMutation({ demande, apres }: { demande?: DemandeMutati
   /** Demande déjà créée dont seules les pièces ont échoué : réessayer ne renvoie que les pièces. */
   const [sansPieces, setSansPieces] = useState<DemandeMutation | null>(null);
   const libMotif = (c: string) => refs.motifs.find((m) => m.code === c)?.libelle ?? c;
+  // L’agent retrouvé dans la base du personnel : sa fiche remplit le formulaire (07/11/2026)
+  const [agent, setAgent] = useState<AgentTrouve | null>(null);
+  function utiliser(a: AgentTrouve | null) {
+    setAgent(a);
+    if (!a) return;
+    setF((x) => ({
+      ...x,
+      nomComplet: a.nomComplet,
+      genre: a.genre,
+      grade: a.grade ?? x.grade,
+      echelon: a.echelon != null ? String(a.echelon) : x.echelon,
+      matricule: a.matricule ?? x.matricule,
+      typeAgent: a.typeAgent,
+      statutAgent: a.statutAgent,
+      departementOrigineId: a.departementId ? String(a.departementId) : x.departementOrigineId,
+      lieuService: a.lieuService ?? x.lieuService,
+      specialite: a.specialite ?? x.specialite,
+      datePriseService: a.datePriseService ?? x.datePriseService,
+      cycle: a.cycle ?? x.cycle,
+    }));
+  }
 
   // Recherche des demandes déjà enregistrées pour la même personne (pendant la saisie)
   useEffect(() => {
@@ -126,6 +148,7 @@ export function FormulaireMutation({ demande, apres }: { demande?: DemandeMutati
   return (
     <form onSubmit={enregistrer} className="space-y-4">
       {erreur && <Alerte>{erreur}</Alerte>}
+      {!demande && <RechercheAgentMutation choisi={agent} choisir={utiliser} />}
       {doublons.length > 0 && (
         <Alerte ton="jaune">
           <div className="font-semibold">

@@ -58,6 +58,7 @@ interface Rapport {
   parChamp?: Record<string, number>;
   differences?: Record<string, { cle: string; n: number; remplace: boolean; exemples: { nom: string; registre: string; fichier: string }[] }>;
   plusieursFiches?: Liste30;
+  autreListe?: Liste30;
   introuvables?: Liste30;
   essai: boolean;
 }
@@ -216,6 +217,7 @@ function Reprise({ apres, ouvertParDefaut, population }: { apres: () => void; ou
       {bloc("déjà dans le registre sans note : reliés à cette note", r.relies, "bleu")}
       {bloc("déjà dans le registre (non recréés)", r.dejaDansRegistre, "gris")}
       {r.fichesTrouvees !== undefined && <MiseAJourFiches r={r} remplacer={remplacer} basculer={basculerRemplacer} calcul={calcul} />}
+      {bloc("trouvés seulement sur l’autre liste (volontaires ↔ communautaires) : rien n’est changé. Même nom sur les deux listes : vérifiez s’il s’agit de la même personne inscrite deux fois", r.autreListe, "rouge")}
       {bloc("plusieurs fiches possibles dans le registre : rien n’est changé (à compléter depuis la fiche)", r.plusieursFiches, "jaune")}
       {bloc("pas dans le registre : rien n’est fait (une mise à jour n’ajoute personne)", r.introuvables, "gris")}
     </div>
