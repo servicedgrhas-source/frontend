@@ -2,17 +2,28 @@
 
 import { AlertTriangle, ArrowRight, Banknote, Scale, Send, Users } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 import { fcfa, moisFr, nf } from "@/components/enrolement/volontaires";
 import { useSession } from "@/components/session";
-import { Alerte, Badge, Carte, Chargement, Chiffre, EnTete, Tableau, Vide } from "@/components/ui";
+import { Alerte, Badge, Carte, Chargement, Chiffre, EnTete, Segments, Tableau, Vide } from "@/components/ui";
 import { useApi } from "@/lib/api";
 import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
-interface TableauEnrolement {
+interface Effectifs {
   registre: { enPoste: number; sortis: number; sansCategorie: number; sansDepartement: number };
   parDepCat: { departementId: number | null; categorie: string | null; n: number }[];
   coutMensuel: number;
+  categories: { code: string; libelle: string; bourse: number }[];
+  /** Faux tant que le DG n'a pas fixé le barème (montants à 0). */
+  baremeFixe: boolean;
+}
+
+interface TableauEnrolement {
+  registre: Effectifs["registre"];
+  parDepCat: Effectifs["parDepCat"];
+  coutMensuel: number;
+  communautaires: Effectifs;
   etats: { id: number; mois: string; statut: string; effectif: number; total: string; bloquants: number }[];
   sorties: { mois: string; motif: string; n: number }[];
   regularisations: { enAttente: number; complements: string; retenues: string; aRecouvrer: string };
@@ -25,7 +36,7 @@ interface TableauEnrolement {
 
 /** Tableau de bord de l'enrôlement : effectifs, coût, bourses, sorties et ce qui attend une action. */
 export default function TableauEnrolement() {
-  const { profil, refs } = useSession();
+  const { profil } = useSession();
   const { donnees: t, erreur } = useApi<TableauEnrolement>("/enrolement/tableau");
   if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
   if (erreur) return <Alerte>{erreur}</Alerte>;
@@ -33,9 +44,6 @@ export default function TableauEnrolement() {
 
   const dernier = [...t.etats].reverse()[0];
   const max = Math.max(1, ...t.etats.map((e) => Number(e.total)));
-  const deps = [...new Set(t.parDepCat.map((x) => x.departementId))].sort((a, b) => (refs.departements.find((d) => d.id === a)?.nom ?? "~").localeCompare(refs.departements.find((d) => d.id === b)?.nom ?? "~", "fr"));
-  const cats = t.categories.filter((c) => t.parDepCat.some((x) => x.categorie === c.code));
-  const n = (d: number | null, c: string | null) => t.parDepCat.find((x) => x.departementId === d && x.categorie === c)?.n ?? 0;
   const actions = [
     t.enrolesAIntegrer > 0 && { href: "/enrolement/volontaires", texte: `${nf.format(t.enrolesAIntegrer)} enrôlé(s) de notes signées à intégrer au registre` },
     t.registre.sansCategorie + t.registre.sansDepartement > 0 && { href: "/enrolement/volontaires", texte: `${nf.format(t.registre.sansCategorie)} sans catégorie, ${nf.format(t.registre.sansDepartement)} sans département` },
@@ -112,54 +120,109 @@ export default function TableauEnrolement() {
         </Carte>
       </div>
 
-      <Carte titre="Volontaires en poste par département et catégorie">
-        {!deps.length ? (
-          <Vide>Le registre est vide.</Vide>
-        ) : (
-          <Tableau>
-            <thead>
-              <tr>
-                <th>Département</th>
-                {cats.map((c) => (
-                  <th key={c.code} className="text-right">
-                    {c.libelle}
-                  </th>
-                ))}
-                {t.parDepCat.some((x) => !x.categorie) && <th className="text-right">Sans catégorie</th>}
-                <th className="text-right">Total</th>
-                <th className="text-right">Coût mensuel</th>
-              </tr>
-            </thead>
-            <tbody>
-              {deps.map((d) => {
-                const lignes = t.parDepCat.filter((x) => x.departementId === d);
-                return (
-                  <tr key={String(d)}>
-                    <td>{refs.departements.find((x) => x.id === d)?.nom ?? "Non renseigné"}</td>
-                    {cats.map((c) => (
-                      <td key={c.code} className="text-right tabular-nums">
-                        {nf.format(n(d, c.code))}
-                      </td>
-                    ))}
-                    {t.parDepCat.some((x) => !x.categorie) && <td className="text-right tabular-nums text-rouge-600">{nf.format(n(d, null))}</td>}
-                    <td className="text-right font-medium tabular-nums">{nf.format(lignes.reduce((s, x) => s + x.n, 0))}</td>
-                    <td className="text-right tabular-nums whitespace-nowrap">{fcfa(lignes.reduce((s, x) => s + x.n * (t.categories.find((c) => c.code === x.categorie)?.bourse ?? 0), 0))}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Tableau>
-        )}
-        {t.besoins > 0 && (
-          <p className="mt-3 text-[12px] text-zinc-500">
-            Besoins exprimés par les DDEPPSA : {nf.format(t.besoins)} volontaires —{" "}
-            <Link href="/enrolement/besoins" className="font-medium text-marque-700 hover:underline">
-              voir la couverture
-            </Link>
-            .
-          </p>
-        )}
-      </Carte>
+      <EffectifsParDepartement t={t} />
     </div>
+  );
+}
+
+/**
+ * Effectifs en poste par département et catégorie, pour l'une ou l'autre liste payée chaque mois :
+ * les volontaires (bourse) ou les enseignants communautaires (leur propre barème).
+ */
+function EffectifsParDepartement({ t }: { t: TableauEnrolement }) {
+  const { refs } = useSession();
+  const [liste, setListe] = useState<"VOLONTAIRE" | "COMMUNAUTAIRE">("VOLONTAIRE");
+  const e: Effectifs =
+    liste === "COMMUNAUTAIRE" ? t.communautaires : { registre: t.registre, parDepCat: t.parDepCat, coutMensuel: t.coutMensuel, categories: t.categories, baremeFixe: true };
+  const nom = (id: number | null) => refs.departements.find((d) => d.id === id)?.nom ?? "~";
+  const deps = [...new Set(e.parDepCat.map((x) => x.departementId))].sort((a, b) => nom(a).localeCompare(nom(b), "fr"));
+  const cats = e.categories.filter((c) => e.parDepCat.some((x) => x.categorie === c.code));
+  const sansCat = e.parDepCat.some((x) => !x.categorie);
+  const n = (d: number | null, c: string | null) => e.parDepCat.find((x) => x.departementId === d && x.categorie === c)?.n ?? 0;
+  const parCat = (c: string | null) => e.parDepCat.filter((x) => x.categorie === c).reduce((s, x) => s + x.n, 0);
+  const cout = (lignes: Effectifs["parDepCat"]) => lignes.reduce((s, x) => s + x.n * (e.categories.find((c) => c.code === x.categorie)?.bourse ?? 0), 0);
+  const total = e.parDepCat.reduce((s, x) => s + x.n, 0);
+  const libelle = liste === "COMMUNAUTAIRE" ? "Communautaires" : "Volontaires";
+
+  return (
+    <Carte
+      titre={`${libelle} en poste par département et catégorie`}
+      actions={
+        <Segments
+          valeur={liste}
+          changer={setListe}
+          options={[
+            { valeur: "VOLONTAIRE", libelle: `Volontaires · ${nf.format(t.registre.enPoste)}` },
+            { valeur: "COMMUNAUTAIRE", libelle: `Communautaires · ${nf.format(t.communautaires.registre.enPoste)}` },
+          ]}
+        />
+      }
+    >
+      {liste === "COMMUNAUTAIRE" && (
+        <p className="mb-3 text-[12px] text-zinc-500">
+          {nf.format(e.registre.enPoste)} communautaire(s) en poste, {nf.format(e.registre.sortis)} sorti(s).{" "}
+          {!e.baremeFixe && <span className="font-medium text-or-700">Le barème des communautaires n’est pas encore fixé par le DG : le coût mensuel reste à 0.</span>}
+        </p>
+      )}
+      {!deps.length ? (
+        <Vide>{liste === "COMMUNAUTAIRE" ? "Aucun communautaire en poste dans le registre." : "Le registre est vide."}</Vide>
+      ) : (
+        <Tableau>
+          <thead>
+            <tr>
+              <th>Département</th>
+              {cats.map((c) => (
+                <th key={c.code} className="text-right">
+                  {c.libelle}
+                </th>
+              ))}
+              {sansCat && <th className="text-right">Sans catégorie</th>}
+              <th className="text-right">Total</th>
+              <th className="text-right">Coût mensuel</th>
+            </tr>
+          </thead>
+          <tbody>
+            {deps.map((d) => {
+              const lignes = e.parDepCat.filter((x) => x.departementId === d);
+              return (
+                <tr key={String(d)}>
+                  <td>{refs.departements.find((x) => x.id === d)?.nom ?? "Non renseigné"}</td>
+                  {cats.map((c) => (
+                    <td key={c.code} className="text-right tabular-nums">
+                      {nf.format(n(d, c.code))}
+                    </td>
+                  ))}
+                  {sansCat && <td className="text-right tabular-nums text-rouge-600">{nf.format(n(d, null))}</td>}
+                  <td className="text-right font-medium tabular-nums">{nf.format(lignes.reduce((s, x) => s + x.n, 0))}</td>
+                  <td className="text-right tabular-nums whitespace-nowrap">{fcfa(cout(lignes))}</td>
+                </tr>
+              );
+            })}
+            {deps.length > 1 && (
+              <tr className="bg-marque-50 font-semibold">
+                <td>Total</td>
+                {cats.map((c) => (
+                  <td key={c.code} className="text-right tabular-nums">
+                    {nf.format(parCat(c.code))}
+                  </td>
+                ))}
+                {sansCat && <td className="text-right tabular-nums text-rouge-600">{nf.format(parCat(null))}</td>}
+                <td className="text-right tabular-nums">{nf.format(total)}</td>
+                <td className="text-right tabular-nums whitespace-nowrap">{fcfa(e.coutMensuel)}</td>
+              </tr>
+            )}
+          </tbody>
+        </Tableau>
+      )}
+      {liste === "VOLONTAIRE" && t.besoins > 0 && (
+        <p className="mt-3 text-[12px] text-zinc-500">
+          Besoins exprimés par les DDEPPSA : {nf.format(t.besoins)} volontaires —{" "}
+          <Link href="/enrolement/besoins" className="font-medium text-marque-700 hover:underline">
+            voir la couverture
+          </Link>
+          .
+        </p>
+      )}
+    </Carte>
   );
 }
