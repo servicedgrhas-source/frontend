@@ -278,7 +278,10 @@ function construire(note: NoteDetail, avecVisas: boolean) {
               {SEP}
             </div>
           </div>
-          <h1 className="mt-5 text-center text-[16pt] font-bold tracking-wide">{c.titre}</h1>
+          {/* Une ligne et demie plus bas qu'avant : moins collé au numéro de la note (07/11/2026) */}
+          <h1 className="text-center text-[16pt] font-bold tracking-wide" style={{ marginTop: "38pt" }}>
+            {c.titre}
+          </h1>
         </>
       ),
     },

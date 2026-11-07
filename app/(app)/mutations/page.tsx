@@ -13,6 +13,9 @@ import { CompleterPersonnel, CorrigerPoints, PointsAVerifier } from "@/component
 import { CYCLES, duree, ETAT_MUTATION, GROUPES_MUTATION, peut } from "@/lib/libelles";
 import type { DemandeMutation } from "@/lib/types";
 
+/** Sélection vide (même objet à chaque rendu). */
+const AUCUNE = new Set<string>();
+
 export default function Mutations() {
   const { profil, refs } = useSession();
   const router = useRouter();
@@ -27,11 +30,18 @@ export default function Mutations() {
   const [corriger, setCorriger] = useState<DemandeMutation | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   // Sélection pour compléter le circuit en série (DG, 07/11/2026) ; recommandation depuis la ligne
-  const [coches, setCoches] = useState<Set<string>>(new Set());
+  // Les cases cochées appartiennent aux filtres du moment : un filtre changé repart d'une sélection vide
+  const cleFiltre = [motif, etat, groupe, departementId, recherche, anomalie].join("|");
+  const [selection, setSelection] = useState<{ cle: string; ids: Set<string> }>({ cle: "", ids: new Set() });
+  // Filtre changé : la sélection est vidée (elle ne revient pas si l'on remet l'ancien filtre)
+  if (selection.cle !== cleFiltre && selection.ids.size) setSelection({ cle: cleFiltre, ids: new Set() });
+  const coches = selection.cle === cleFiltre ? selection.ids : AUCUNE;
+  const setCoches = (v: Set<string> | ((s: Set<string>) => Set<string>)) =>
+    setSelection((p) => ({ cle: cleFiltre, ids: typeof v === "function" ? v(p.cle === cleFiltre ? p.ids : new Set()) : v }));
   const [serie, setSerie] = useState<"FAVORABLE" | "DEFAVORABLE" | null>(null);
   const [recommander, setRecommander] = useState<DemandeMutation | null>(null);
   const decide = profil.role === "DG" || profil.role === "ADMIN";
-  const { donnees, erreur, recharger } = useApi<DemandeMutation[]>(`/mutations${qs({ motif, etat, groupe, departementId })}`);
+  const { donnees, erreur, recharger, chargement } = useApi<DemandeMutation[]>(`/mutations${qs({ motif, etat, groupe, departementId })}`);
   const libMotif = useMemo(() => Object.fromEntries(refs.motifs.map((m) => [m.code, m.libelle])), [refs]);
 
   const liste = useMemo(() => {
@@ -43,8 +53,11 @@ export default function Mutations() {
   }, [donnees, recherche, anomalie]);
   // Les demandes qu'on peut encore faire avancer : en circuit, pas retirées, pas dans une note
   const enCircuit = (d: DemandeMutation) => !!d.etapeEnCours && !d.noteId && d.etat !== "RETIREE";
-  const cochables = (liste ?? []).filter(enCircuit);
-  const toutCoche = cochables.length > 0 && cochables.every((d) => coches.has(d.id));
+  // Pendant le chargement d'un nouveau filtre, l'ancienne liste reste affichée : rien à cocher
+  const cochables = chargement ? [] : (liste ?? []).filter(enCircuit);
+  // Seules les demandes cochées ET affichées comptent (et partent dans le circuit en série)
+  const cochees = cochables.filter((d) => coches.has(d.id));
+  const toutCoche = cochables.length > 0 && cochees.length === cochables.length;
   const basculer = (id: string) =>
     setCoches((s) => {
       const n = new Set(s);
@@ -131,9 +144,9 @@ export default function Mutations() {
           <Vide>Aucune demande.</Vide>
         ) : (
           <>
-            {decide && coches.size > 0 && (
+            {decide && cochees.length > 0 && (
               <div className="sticky top-2 z-20 mb-3 flex flex-wrap items-center gap-2 rounded-2xl bg-encre px-4 py-3 text-[13px] text-white shadow-lg">
-                <strong>{coches.size} demande(s) cochée(s)</strong>
+                <strong>{cochees.length} demande(s) cochée(s)</strong>
                 <span className="text-white/60">· compléter tout leur circuit d’approbation d’un coup :</span>
                 <span className="ml-auto flex flex-wrap gap-2">
                   <button type="button" onClick={() => setSerie("FAVORABLE")} className="rounded-xl bg-marque-500 px-3.5 py-2 font-semibold text-white hover:bg-marque-600">
@@ -150,7 +163,12 @@ export default function Mutations() {
             )}
             <div className="mb-2 flex items-center justify-between text-xs text-zinc-400">
               {decide && cochables.length > 0 ? (
-                <span>Cochez des demandes (ou toutes, en haut à gauche) pour compléter leur circuit d’approbation sans ouvrir chaque fiche.</span>
+                <span>
+                  Cochez des demandes (ou toutes, en haut à gauche) pour compléter leur circuit d’approbation sans ouvrir chaque fiche. « Tout cocher » ne prend que les{" "}
+                  {cochables.length} demande(s) de la liste affichée qui sont encore en circuit.
+                </span>
+              ) : decide && chargement ? (
+                <span>Chargement de la liste filtrée…</span>
               ) : (
                 <span />
               )}
@@ -286,7 +304,7 @@ export default function Mutations() {
       {serie && (
         <CircuitEnSerie
           sens={serie}
-          ids={[...coches]}
+          ids={cochees.map((d) => d.id)}
           fermer={() => setSerie(null)}
           apres={(t) => {
             setSerie(null);
