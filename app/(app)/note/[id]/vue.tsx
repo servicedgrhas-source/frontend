@@ -74,7 +74,7 @@ export function VueNote() {
         </div>
         <div className="flex flex-wrap gap-2">
           {/* Police des notes (paramètre commun à toutes les notes), DG 01/11/2026 */}
-          {peut.parametrer(profil.role) && (
+          {peut.modifierConfiguration(profil.role) && (
             <label className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-[13px] ring-1 ring-zinc-200" title="Police de toutes les notes, à l’impression comme dans Word">
               Police
               <select
@@ -445,7 +445,7 @@ function CirculationNote({
   const champ = useRef<HTMLInputElement>(null);
   const avis = note.conformite ?? [];
   const signee = note.statut === "SIGNEE";
-  const peutDonner = ["AGENT", "CHEF_SERVICE", "DIRECTEUR", "BUREAU_ETUDES", "ADMIN"].includes(profil.role);
+  const peutDonner = ["AGENT", "CHEF_SERVICE", "DIRECTEUR", "BUREAU_ETUDES", "ADMIN", "INFORMATIQUE"].includes(profil.role);
   const tousConformes = NIVEAUX.every((n) => avis.some((a) => a.niveau === n.code && a.conforme));
   const dg = peut.decider(profil.role);
 
@@ -505,7 +505,7 @@ function CirculationNote({
                       {a.remarque ? ` · « ${a.remarque} »` : ""}
                     </span>
                   )}
-                  {profil.role === "ADMIN" && (
+                  {(profil.role === "ADMIN" || profil.role === "INFORMATIQUE") && (
                     <span className="ml-auto flex gap-2">
                       <Bouton onClick={() => setAvisPour({ niveau: n.code, conforme: true })}>Conforme</Bouton>
                       <Bouton variante="danger" onClick={() => setAvisPour({ niveau: n.code, conforme: false })}>Pas conforme</Bouton>
@@ -515,7 +515,7 @@ function CirculationNote({
               );
             })}
           </ul>
-          {peutDonner && profil.role !== "ADMIN" && (
+          {peutDonner && !["ADMIN", "INFORMATIQUE"].includes(profil.role) && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Bouton variante="principal" onClick={() => setAvisPour({ conforme: true })}>
                 J’ai lu la note : elle est conforme

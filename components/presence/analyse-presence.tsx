@@ -171,7 +171,7 @@ export function AnalysePresence() {
               « souvent en retard » à partir de {d.reglages.retardsFrequents} retards, « souvent absent » à partir de {d.reglages.absencesFrequentes} absences non justifiées sur la période ; sans
               emploi du temps ni horaire, attendu de {d.reglages.debutDefaut} à {d.reglages.finDefaut} du lundi au vendredi.
             </span>
-            {["DG", "ADMIN"].includes(profil.role) && (
+            {["DG", "ADMIN", "INFORMATIQUE"].includes(profil.role) && (
               <Bouton variante="discret" onClick={() => setReglage(true)}>
                 <Settings2 /> Modifier les réglages
               </Bouton>

@@ -36,7 +36,8 @@ export default function Prestations() {
   const [edition, setEdition] = useState<Type | null>(null);
   const [message, setMessage] = useState<{ ton: "vert" | "rouge"; texte: string } | null>(null);
   if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé à la DGRHAS.</Alerte>;
-  const dg = peut.parametrer(profil.role);
+  // Informatique : le catalogue se consulte seulement (DG, 08/11/2026)
+  const dg = peut.modifierConfiguration(profil.role);
 
   return (
     <div className="space-y-5">

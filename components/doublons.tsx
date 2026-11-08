@@ -31,7 +31,7 @@ export interface FicheDoublon {
 }
 
 /** Supprimer définitivement une fiche : réservé au contrôle (même règle que le serveur). */
-const peutSupprimer = (role: string) => ["ADMIN", "CHEF_SERVICE", "DIRECTEUR", "BUREAU_ETUDES", "DG"].includes(role);
+const peutSupprimer = (role: string) => ["ADMIN", "INFORMATIQUE", "CHEF_SERVICE", "DIRECTEUR", "BUREAU_ETUDES", "DG"].includes(role);
 
 function Colonne({ f, autre, titre }: { f: FicheDoublon; autre: FicheDoublon; titre: string }) {
   const valeurAutre = new Map(autre.lignes.map((l) => [l.libelle, l.valeur]));

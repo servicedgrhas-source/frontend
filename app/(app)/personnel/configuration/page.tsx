@@ -48,7 +48,7 @@ export default function ConfigurationRecensement() {
   const [rubrique, setRubrique] = useState<{ i: number | null; x: ChampFiche } | null>(null);
   const [piece, setPiece] = useState<{ i: number | null; x: PieceExigee } | null>(null);
   const [confirmation, demander] = useConfirmation();
-  const modifiable = peut.parametrer(profil.role);
+  const modifiable = peut.modifierConfiguration(profil.role);
 
   if (rep.donnees && !c) setC(structuredClone(rep.donnees.configuration));
   if (rep.erreur) return <Alerte>{rep.erreur}</Alerte>;

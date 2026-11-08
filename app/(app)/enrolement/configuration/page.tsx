@@ -19,7 +19,7 @@ export default function ConfigurationEnrolement() {
   const [message, setMessage] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [confirmation, demander] = useConfirmation();
-  const modifiable = peut.parametrer(profil.role);
+  const modifiable = peut.modifierConfiguration(profil.role);
 
   // La copie de travail part de la configuration en vigueur (puis on la modifie librement)
   if (rep.donnees && !c) setC(structuredClone(rep.donnees.configuration));

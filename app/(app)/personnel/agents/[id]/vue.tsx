@@ -754,7 +754,7 @@ function Contentieux({ fiche, recharger }: { fiche: Fiche; recharger: () => void
   const [note, setNote] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
-  const dg = profil.role === "DG" || profil.role === "ADMIN";
+  const dg = ["DG", "ADMIN", "INFORMATIQUE"].includes(profil.role);
   const controleur = peutControlerAjout(profil.role);
   if (x.etat === "CONFIRME" || x.etat === "REJETE")
     return (

@@ -38,7 +38,7 @@ export default function Besoins() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [confirmation, demander] = useConfirmation();
   if (!peut.traiter(profil.role) && !ddeppsa && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS et aux DDEPPSA.</Alerte>;
-  const gerer = ddeppsa || ["ADMIN", "CHEF_SERVICE", "DIRECTEUR", "DG"].includes(profil.role);
+  const gerer = ddeppsa || ["ADMIN", "INFORMATIQUE", "CHEF_SERVICE", "DIRECTEUR", "DG"].includes(profil.role);
   const cats = config.donnees?.configuration.categories ?? [];
   const nomCat = (k: string) => cats.find((x) => x.code === k)?.libelle ?? k;
   const nomDep = (d: number) => refs.departements.find((x) => x.id === d)?.nom ?? "—";

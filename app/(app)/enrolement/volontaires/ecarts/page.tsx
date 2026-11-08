@@ -41,7 +41,7 @@ const nf = new Intl.NumberFormat("fr-FR");
 
 function Ecarts() {
   const { profil } = useSession();
-  const decide = profil.role === "DG" || profil.role === "CHEF_SERVICE" || profil.role === "ADMIN";
+  const decide = ["DG", "CHEF_SERVICE", "ADMIN", "INFORMATIQUE"].includes(profil.role);
   const [population, setPopulation] = useState<Population>(() =>
     typeof window !== "undefined" && new URLSearchParams(window.location.search).get("population") === "COMMUNAUTAIRE" ? "COMMUNAUTAIRE" : "VOLONTAIRE",
   );

@@ -298,7 +298,7 @@ export function FichesAValider({ origine, fermer }: { origine?: ModuleRattacheme
   const [erreur, setErreur] = useState<string | null>(null);
   const [confirmer, setConfirmer] = useState<{ id: number; action: "REJETER" | "SUPPRIMER" } | null>(null);
   const [note, setNote] = useState("");
-  const controle = ["ADMIN", "CHEF_SERVICE", "DIRECTEUR", "BUREAU_ETUDES", "DG"].includes(profil.role);
+  const controle = ["ADMIN", "INFORMATIQUE", "CHEF_SERVICE", "DIRECTEUR", "BUREAU_ETUDES", "DG"].includes(profil.role);
   const lignes = (liste.donnees ?? []).filter((f) => !origine || f.origine === origine);
 
   async function agir(id: number, action: "VALIDER" | "REJETER" | "SUPPRIMER") {

@@ -97,10 +97,10 @@ export function useConfigRecensement() {
 }
 
 /** Agents de la DGRHAS, DDEPPSA et comptes d'établissement : saisir, importer, corriger. */
-export const peutRecenser = (r?: Role) => !!r && ["ADMIN", "AGENT", "CHEF_SERVICE", "DIRECTEUR", "BUREAU_ETUDES", "DG", "DDEPPSA", "STRUCTURE"].includes(r);
+export const peutRecenser = (r?: Role) => !!r && ["ADMIN", "INFORMATIQUE", "AGENT", "CHEF_SERVICE", "DIRECTEUR", "BUREAU_ETUDES", "DG", "DDEPPSA", "STRUCTURE"].includes(r);
 
 /** Bureau du contrôle : avis sur les agents ajoutés au recensement, avant la décision du DG. */
-export const peutControlerAjout = (r?: Role) => !!r && ["ADMIN", "CHEF_SERVICE", "DIRECTEUR", "BUREAU_ETUDES"].includes(r);
+export const peutControlerAjout = (r?: Role) => !!r && ["ADMIN", "INFORMATIQUE", "CHEF_SERVICE", "DIRECTEUR", "BUREAU_ETUDES"].includes(r);
 
 /** Où en est un agent ajouté au recensement. */
 export const ETAT_AJOUT: Record<ContentieuxAgent["etat"], { libelle: string; ton: "jaune" | "bleu" | "vert" | "rouge" }> = {

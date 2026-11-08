@@ -47,7 +47,7 @@ export function ProposerRecommandation({
   const cibles = enrole?.notesPossibles ?? [];
   const choix = cibles.find((c) => c.note === typeNote && c.note !== enrole?.noteActuelle) ?? null;
   const [erreur, setErreur] = useState<string | null>(null);
-  const directe = ["DIRECTEUR", "DG", "ADMIN"].includes(profil.role);
+  const directe = ["DIRECTEUR", "DG", "ADMIN", "INFORMATIQUE"].includes(profil.role);
   return (
     <Modale titre={`Recommandation pour ${personne}`} ouverte fermer={fermer} large={!!enrole}>
       <div className="space-y-3">

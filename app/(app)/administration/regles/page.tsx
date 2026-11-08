@@ -101,6 +101,8 @@ export default function ReglesEtGrades() {
   const [confirmation, setConfirmation] = useState<{ titre: string; texte: ReactNode; action: () => Promise<void>; libelle: string } | null>(null);
 
   if (!peut.parametrer(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé au DG et à l’administrateur.</Alerte>;
+  // Compte Informatique (ou rubrique en lecture seule) : les règles se consultent seulement (DG, 08/11/2026)
+  const lecture = !peut.modifierConfiguration(profil.role);
   if (erreur) return <Alerte>{erreur}</Alerte>;
   if (!e) return <Chargement />;
 
@@ -125,7 +127,7 @@ export default function ReglesEtGrades() {
         titre="Règles des diplômes et grades"
         sousTitre="Le diplôme d’un agent détermine son cycle, sa note de service et son grade. Le grade porte la classification (catégorie, échelle, échelon) imprimée sur les notes."
         actions={
-          <>
+          lecture ? undefined : <>
             <Bouton variante="principal" onClick={() => setAssistant({ regle: null })}>
               <Plus /> Ajouter un diplôme
             </Bouton>
@@ -158,7 +160,7 @@ export default function ReglesEtGrades() {
                 </Pastille>
                 <span className="font-medium">« {x.libelle} »</span>
                 <Badge>{x.n} agent(s)</Badge>
-                <span className="ml-auto flex gap-2">
+                <span className={`ml-auto flex gap-2 ${lecture ? "hidden" : ""}`}>
                   <Bouton onClick={() => setRattacher(x.libelle!)}>
                     <Link2 /> Rattacher à un diplôme
                   </Bouton>
@@ -221,7 +223,7 @@ export default function ReglesEtGrades() {
                     )}
                     <div className="mt-2 text-[11px] text-zinc-400">Écrit dans Excel : {r.ecritures.join(", ")}</div>
                   </div>
-                  <div className="flex shrink-0 gap-0.5">
+                  <div className={`flex shrink-0 gap-0.5 ${lecture ? "hidden" : ""}`}>
                     <BoutonIcone libelle="Modifier" onClick={() => setAssistant({ regle: r })}>
                       <PencilLine />
                     </BoutonIcone>
@@ -264,7 +266,7 @@ export default function ReglesEtGrades() {
                   <div className="text-xl font-semibold">{g.abreviation}</div>
                   <div className="text-[12px] text-zinc-500">{g.libelle}</div>
                 </div>
-                <div className="flex gap-0.5">
+                <div className={`flex gap-0.5 ${lecture ? "hidden" : ""}`}>
                   <BoutonIcone libelle="Modifier" onClick={() => setGradeEdite(g)}>
                     <PencilLine />
                   </BoutonIcone>
@@ -314,7 +316,7 @@ export default function ReglesEtGrades() {
         </div>
       </section>
 
-      <div className="flex justify-end">
+      <div className={`flex justify-end ${lecture ? "hidden" : ""}`}>
         <Bouton
           variante="danger"
           onClick={() =>

@@ -3,6 +3,7 @@ import type { EtatMutation, StatutNote } from "./types";
 
 export const ROLES: Record<Role, string> = {
   ADMIN: "Administrateur",
+  INFORMATIQUE: "Informatique (SI du ministère)",
   AGENT: "Chef de bureau (préparation de la base)",
   CHEF_SERVICE: "Chef de service (vérification et traitement)",
   DIRECTEUR: "DRSC (contrôle du traitement)",
@@ -96,23 +97,27 @@ export function duree(mois: number | null | undefined) {
 
 /** Droits d'interface (le serveur vérifie toujours). */
 export const peut = {
-  traiter: (r?: Role) => !!r && ["ADMIN", "AGENT", "CHEF_SERVICE", "DIRECTEUR", "BUREAU_ETUDES", "DG"].includes(r),
-  decider: (r?: Role) => r === "ADMIN" || r === "DG",
-  avisDdeppsa: (r?: Role) => r === "ADMIN" || r === "DDEPPSA",
-  avisDgrhas: (r?: Role) => !!r && ["ADMIN", "DG", "DIRECTEUR"].includes(r),
-  instruction: (r?: Role) => !!r && ["ADMIN", "DG", "CABINET"].includes(r),
-  administrer: (r?: Role) => r === "ADMIN" || r === "DG",
+  traiter: (r?: Role) => !!r && ["ADMIN", "INFORMATIQUE", "AGENT", "CHEF_SERVICE", "DIRECTEUR", "BUREAU_ETUDES", "DG"].includes(r),
+  decider: (r?: Role) => !!r && ["ADMIN", "INFORMATIQUE", "DG"].includes(r),
+  avisDdeppsa: (r?: Role) => !!r && ["ADMIN", "INFORMATIQUE", "DDEPPSA"].includes(r),
+  avisDgrhas: (r?: Role) => !!r && ["ADMIN", "INFORMATIQUE", "DG", "DIRECTEUR"].includes(r),
+  instruction: (r?: Role) => !!r && ["ADMIN", "INFORMATIQUE", "DG", "CABINET"].includes(r),
+  /** Comptes : l'informatique les consulte seulement (le serveur refuse ses enregistrements). */
+  administrer: (r?: Role) => !!r && ["ADMIN", "INFORMATIQUE", "DG"].includes(r),
   /** Contrôle des fiches saisies et envoi à la Fonction Publique. */
-  controler: (r?: Role) => !!r && ["ADMIN", "CHEF_SERVICE", "DIRECTEUR", "BUREAU_ETUDES", "DG"].includes(r),
+  controler: (r?: Role) => !!r && ["ADMIN", "INFORMATIQUE", "CHEF_SERVICE", "DIRECTEUR", "BUREAU_ETUDES", "DG"].includes(r),
   /** Validation finale des fiches et décisions réservées au DG. */
-  valider: (r?: Role) => r === "ADMIN" || r === "DG",
+  valider: (r?: Role) => !!r && ["ADMIN", "INFORMATIQUE", "DG"].includes(r),
   /** Paramètres, règles des diplômes et grades. */
-  parametrer: (r?: Role) => r === "ADMIN" || r === "DG",
+  /** Voir la configuration : l'informatique la consulte en lecture seule (DG, 08/11/2026). */
+  parametrer: (r?: Role) => !!r && ["ADMIN", "INFORMATIQUE", "DG"].includes(r),
+  /** Modifier la configuration (paramètres, règles, référentiels, organigramme, comptes…). */
+  modifierConfiguration: (r?: Role) => r === "ADMIN" || r === "DG",
   /** Budget (salaires, incidence financière) et informations internes DGRHAS. */
-  voirBudget: (r?: Role) => r === "ADMIN" || r === "DG",
+  voirBudget: (r?: Role) => !!r && ["ADMIN", "INFORMATIQUE", "DG"].includes(r),
   /** Import de la base des recrutés : seule entrée sans le circuit. */
-  importerBase: (r?: Role) => !!r && ["ADMIN", "CHEF_SERVICE", "DG"].includes(r),
-  journal: (r?: Role) => !!r && ["ADMIN", "DG", "DIRECTEUR", "BUREAU_ETUDES"].includes(r),
+  importerBase: (r?: Role) => !!r && ["ADMIN", "INFORMATIQUE", "CHEF_SERVICE", "DG"].includes(r),
+  journal: (r?: Role) => !!r && ["ADMIN", "INFORMATIQUE", "DG", "DIRECTEUR", "BUREAU_ETUDES"].includes(r),
 };
 
 /** Lots de réception (règle du DG) : un lot = un quota + un type de texte, dans un paquet. */

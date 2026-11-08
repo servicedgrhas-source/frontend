@@ -13,6 +13,7 @@ export const CLE_PROFIL = "dgrhas.profil";
 
 export type Role =
   | "ADMIN"
+  | "INFORMATIQUE"
   | "AGENT"
   | "CHEF_SERVICE"
   | "DIRECTEUR"

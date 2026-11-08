@@ -117,7 +117,7 @@ const cle = (t: string) =>
 export default function Organigramme() {
   const { profil, refs } = useSession();
   const structures = useApi<Structure[]>("/structures");
-  const comptes = useApi<{ structureId: number | null; actif: boolean }[]>(peut.administrer(profil.role) ? "/utilisateurs" : null);
+  const comptes = useApi<{ structureId: number | null; actif: boolean }[]>(peut.modifierConfiguration(profil.role) ? "/utilisateurs" : null);
   const [vue, setVue] = useState<"departements" | "centrale" | "dgrhas">("departements");
   const [departement, setDepartement] = useState(String(refs.departements[0]?.id ?? ""));
   const [edition, setEdition] = useState<Edition | null>(null);
@@ -135,7 +135,8 @@ export default function Organigramme() {
   const [eclaire, setEclaire] = useState<number | null>(null);
   const minuterie = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => void (minuterie.current && clearTimeout(minuterie.current)), []);
-  const dg = peut.parametrer(profil.role);
+  // Informatique : l'organigramme se consulte seulement (DG, 08/11/2026)
+  const dg = peut.modifierConfiguration(profil.role);
 
   const liste = useMemo(() => (local && local.base === structures.donnees ? local.liste : (structures.donnees ?? [])), [local, structures.donnees]);
   const { parParent, parId } = useMemo(() => {

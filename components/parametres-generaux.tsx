@@ -4,7 +4,9 @@ import { CheckCircle2, Loader2, PencilLine } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { Alerte, Carte, Champ, Chargement, Saisie } from "@/components/ui";
+import { useSession } from "@/components/session";
 import { api, useApi } from "@/lib/api";
+import { peut } from "@/lib/libelles";
 
 /** Paramètres à choisir dans une liste plutôt qu'à écrire. */
 const CHOIX: Record<string, [string, string][]> = {
@@ -69,6 +71,9 @@ type Etat = { ton: "modifie" | "envoi" | "ok" | "erreur"; texte: string };
  */
 export function ParametresGeneraux() {
   const params = useApi<Parametre[]>("/parametres");
+  // Compte Informatique : les paramètres se consultent seulement (DG, 08/11/2026)
+  const { profil } = useSession();
+  const lecture = !peut.modifierConfiguration(profil.role);
   const [etats, setEtats] = useState<Record<string, Etat>>({});
   const changer = (cle: string, e: Etat | null) =>
     setEtats((s) => {
@@ -79,6 +84,7 @@ export function ParametresGeneraux() {
     });
 
   async function enregistrer(p: Parametre, champ: HTMLInputElement) {
+    if (lecture) return;
     // Dernière valeur enregistrée depuis ce champ (Entrée puis clic ailleurs : un seul envoi)
     const reference = champ.dataset.enregistre ?? p.valeur;
     if (champ.value.trim() === reference) {
@@ -139,6 +145,7 @@ export function ParametresGeneraux() {
                                   ? "NON"
                                   : "OUI"
                             }
+                            disabled={lecture}
                             onChange={async (ev) => {
                               changer(p.cle, { ton: "envoi", texte: "Enregistrement…" });
                               try {
@@ -159,6 +166,7 @@ export function ParametresGeneraux() {
                         ) : (
                         <Saisie
                           defaultValue={p.valeur}
+                          readOnly={lecture}
                           className={e?.ton === "modifie" ? "ring-2 ring-or-400" : e?.ton === "erreur" ? "ring-2 ring-rouge-400" : ""}
                           onChange={(ev) => changer(p.cle, ev.target.value.trim() === (ev.target.dataset.enregistre ?? p.valeur) ? null : { ton: "modifie", texte: "Modifié, pas encore enregistré : appuyez sur Entrée." })}
                           onKeyDown={(ev) => {

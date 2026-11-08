@@ -40,7 +40,7 @@ export default function Mutations() {
     setSelection((p) => ({ cle: cleFiltre, ids: typeof v === "function" ? v(p.cle === cleFiltre ? p.ids : new Set()) : v }));
   const [serie, setSerie] = useState<"FAVORABLE" | "DEFAVORABLE" | null>(null);
   const [recommander, setRecommander] = useState<DemandeMutation | null>(null);
-  const decide = profil.role === "DG" || profil.role === "ADMIN";
+  const decide = ["DG", "ADMIN", "INFORMATIQUE"].includes(profil.role);
   const { donnees, erreur, recharger, chargement } = useApi<DemandeMutation[]>(`/mutations${qs({ motif, etat, groupe, departementId })}`);
   const libMotif = useMemo(() => Object.fromEntries(refs.motifs.map((m) => [m.code, m.libelle])), [refs]);
 

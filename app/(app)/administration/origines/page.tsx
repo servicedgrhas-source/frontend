@@ -24,7 +24,8 @@ export default function Origines() {
   const benefs = useApi<{ id: number; nom: string; commission: boolean }[]>(dgOuAdmin ? "/pilotage/beneficiaires" : null);
   const [nouvelle, setNouvelle] = useState("");
   const [message, setMessage] = useState<{ ton: "vert" | "rouge"; texte: string } | null>(null);
-  const dg = peut.valider(profil.role);
+  // Informatique : les origines se consultent seulement (DG, 08/11/2026)
+  const dg = peut.modifierConfiguration(profil.role);
   if (!peut.parametrer(profil.role) && !accesDonne(profil)) return <Alerte>Page réservée au DG.</Alerte>;
 
   const agir = async (fn: () => Promise<unknown>, texte: string) => {
@@ -46,6 +47,7 @@ export default function Origines() {
       <Annonce ton={message?.ton} fermer={() => setMessage(null)}>
         {message?.texte}
       </Annonce>
+      {dg && (
       <Carte titre="Ajouter une origine">
         <form
           className="flex flex-wrap gap-3"
@@ -66,6 +68,7 @@ export default function Origines() {
           saisie, « Autre » permet toujours d’écrire une origine qui n’est pas dans la liste (elle ne compte alors pour aucun bénéficiaire).
         </p>
       </Carte>
+      )}
       <Carte titre="Liste proposée à la saisie">
         {!liste.donnees ? (
           <Chargement />

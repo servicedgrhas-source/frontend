@@ -302,7 +302,7 @@ export function Coquille({ children }: { children: ReactNode }) {
           {/* Chaque page apparaît en fondu léger lors de la navigation */}
           <div key={chemin} className="animate-apparition">
             <FilAriane chemin={chemin} profil={p} />
-            {!p.aCode && (p.role === "ADMIN" || p.role === "DG") && chemin !== "/administration" && (
+            {!p.aCode && ["ADMIN", "DG"].includes(p.role) && chemin !== "/administration" && (
               <div className="no-print mb-5">
                 <Alerte ton="jaune">
                   Votre compte n’a pas encore de <strong>code personnel</strong> : il ne tient qu’à votre mot de passe.{" "}

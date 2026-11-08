@@ -118,7 +118,7 @@ export const deMois = (m: string | null | undefined) => {
 };
 
 /** Fiches modifiables (sorties, réintégrations, corrections) : chef de service, directeur, DG. */
-export const peutGerer = (r?: Role) => !!r && ["ADMIN", "CHEF_SERVICE", "DIRECTEUR", "DG"].includes(r);
+export const peutGerer = (r?: Role) => !!r && ["ADMIN", "INFORMATIQUE", "CHEF_SERVICE", "DIRECTEUR", "DG"].includes(r);
 
 export function useConfigEnrolement() {
   return useApi<ReponseConfiguration>("/enrolement/configuration");

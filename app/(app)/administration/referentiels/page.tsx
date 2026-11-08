@@ -58,7 +58,8 @@ export default function Referentiels() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [confirmation, demander] = useConfirmation();
   if (!peut.traiter(profil.role) && profil.role !== "DDEPPSA" && !accesDonne(profil)) return <Alerte>Accès réservé à la DGRHAS.</Alerte>;
-  const dg = profil.role === "DG" || profil.role === "ADMIN";
+  // Configuration : l'informatique la consulte seulement (DG, 08/11/2026)
+  const dg = peut.modifierConfiguration(profil.role);
   const t = resume.donnees?.types.find((x) => x.code === type);
   const parCycle = ["NIVEAU", "MATIERE", "PROGRAMME"].includes(type);
 

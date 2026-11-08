@@ -116,6 +116,8 @@ export default function MenuReglage() {
 }
 
 function Edition({ depart, recharger }: { depart: ConfigMenu; recharger: () => void }) {
+  // Compte Informatique : le menu se consulte, rien ne s'enregistre (DG, 08/11/2026)
+  const lecture = !peut.modifierConfiguration(useSession().profil.role);
   const initial = useMemo(() => depuisConfig(depart), [depart]);
   const [e, setE] = useState<Etat>(initial);
   const [message, setMessage] = useState<string | null>(null);
@@ -536,7 +538,7 @@ function Edition({ depart, recharger }: { depart: ConfigMenu; recharger: () => v
         </aside>
       </div>
 
-      <div className="sticky bottom-4 z-10 flex flex-wrap items-center justify-end gap-3 rounded-2xl bg-white/95 px-5 py-3 shadow-lg ring-1 ring-zinc-200 backdrop-blur">
+      <div className={`sticky bottom-4 z-10 flex flex-wrap items-center justify-end gap-3 rounded-2xl bg-white/95 px-5 py-3 shadow-lg ring-1 ring-zinc-200 backdrop-blur ${lecture ? "!hidden" : ""}`}>
         {modifie && <span className="mr-auto text-[13px] font-medium text-or-700">Modifications non enregistrées</span>}
         <Bouton disabled={!modifie || envoi} onClick={() => setE(initial)}>
           <Undo2 /> Annuler les changements

@@ -24,7 +24,7 @@ interface ConfigDroits {
 type Reglages = Pick<ConfigDroits, "roles" | "utilisateurs" | "rolesPerso" | "attributions">;
 
 /** Rôles qui ne servent pas de départ à un rôle créé (ils voient tout, ou ce sont des écoles). */
-const BASES_INTERDITES: Role[] = ["ADMIN", "DG", "STRUCTURE", "VISITEUR"];
+const BASES_INTERDITES: Role[] = ["ADMIN", "INFORMATIQUE", "DG", "STRUCTURE", "VISITEUR"];
 /** Recherche sans accents ni majuscules (« Ngoma » trouve « NGOMA »). */
 const simple = (t: string) =>
   t
@@ -77,6 +77,8 @@ const SOURCE: Record<Acces["source"], string> = { origine: "d’origine", role: 
  */
 export default function Droits() {
   const { profil } = useSession();
+  // Compte Informatique : les droits se consultent, rien ne s'enregistre (DG, 08/11/2026)
+  const lecture = !peut.modifierConfiguration(profil.role);
   const config = useApi<ConfigDroits>(peut.parametrer(profil.role) ? "/droits" : null);
   const comptes = useApi<Compte[]>(peut.parametrer(profil.role) ? "/utilisateurs" : null);
   const [mode, setMode] = useState<"role" | "personne">(() => (personneDemandee() ? "personne" : "role"));
@@ -319,7 +321,7 @@ export default function Droits() {
                   ]}
                 />
               </div>
-              <Bouton variante="secondaire" onClick={() => setNouveauRole({ libelle: "", base: "AGENT" })}>
+              <Bouton variante="secondaire" disabled={lecture} onClick={() => setNouveauRole({ libelle: "", base: "AGENT" })}>
                 <Plus className="size-4" /> Créer un rôle
               </Bouton>
             </div>
@@ -568,7 +570,7 @@ export default function Droits() {
         </Carte>
       )}
 
-      <div className="no-print sticky bottom-0 z-10 -mx-2 flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
+      <div className={`no-print sticky bottom-0 z-10 -mx-2 ${lecture ? "hidden" : "flex"} flex-wrap items-center gap-2 rounded-2xl border border-zinc-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur`}>
         <span className="mr-auto text-[13px] text-zinc-600">{modifie ? "Des changements ne sont pas encore enregistrés." : "Tout est enregistré."}</span>
         <Bouton variante="discret" disabled={!modifie || enCours} onClick={() => setModifs(null)}>
           <Undo2 className="size-4" /> Annuler les changements

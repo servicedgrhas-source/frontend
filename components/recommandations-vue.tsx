@@ -66,7 +66,7 @@ export function RecommandationsVue({ operationFixe }: { operationFixe?: "AFFECTA
     refs.typesNote.find((t) => t.code === c)?.libelle ??
     c ??
     "—";
-  const directeur = profil.role === "DIRECTEUR" || profil.role === "ADMIN";
+  const directeur = ["DIRECTEUR", "ADMIN", "INFORMATIQUE"].includes(profil.role);
   // Décision groupée (DG, 01/11/2026) : cocher des dossiers, puis les valider ou les rejeter ensemble
   const decideur = peut.decider(profil.role);
   const [cochees, setCochees] = useState<string[]>([]);

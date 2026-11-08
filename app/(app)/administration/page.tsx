@@ -63,6 +63,8 @@ export default function Utilisateurs() {
     }
   }
   const codes = useCodesPersonnels(() => users.recharger());
+  // Compte Informatique : les comptes se consultent seulement ; il ne gère que son propre code (DG, 08/11/2026)
+  const gere = peut.modifierConfiguration(profil.role);
 
   if (!peut.administrer(profil.role)) return <Alerte>Accès réservé au DG et à l’administrateur.</Alerte>;
 
@@ -74,7 +76,7 @@ export default function Utilisateurs() {
       />
       <Annonce ton={message?.ton} fermer={() => setMessage(null)}>{message?.texte}</Annonce>
 
-      {peut.administrer(profil.role) &&
+      {gere &&
         (() => {
           const sansBureau = (users.donnees ?? []).filter((u) => u.actif && ["AGENT", "CHEF_SERVICE", "DIRECTEUR", "BUREAU_ETUDES"].includes(u.role) && !u.structureId);
           return sansBureau.length ? (
@@ -90,6 +92,7 @@ export default function Utilisateurs() {
       <Carte
         titre="Utilisateurs"
         actions={
+          !gere ? undefined : (
           <div className="flex flex-wrap gap-2">
             <Bouton onClick={() => codes.demander({ action: "regenerer", libelle: "Un nouveau code de 12 caractères sera créé pour tous les comptes, sauf le vôtre." })}>
               <KeyRound /> Régénérer les codes de tous les comptes
@@ -103,9 +106,10 @@ export default function Utilisateurs() {
             </Link>
             <Bouton variante="principal" onClick={() => setEdition("nouveau")}>Ajouter un utilisateur</Bouton>
           </div>
+          )
         }
       >
-        {(users.donnees ?? []).some((u) => u.actif && !u.aCode) && (
+        {gere && (users.donnees ?? []).some((u) => u.actif && !u.aCode) && (
           <div className="mb-3">
             <Alerte ton="jaune">
               <strong>{(users.donnees ?? []).filter((u) => u.actif && !u.aCode).length} compte(s) sans code personnel</strong> : ils se connectent encore avec l’e-mail et
@@ -165,6 +169,7 @@ export default function Utilisateurs() {
                   </td>
                   <td>
                     <div className="flex flex-wrap justify-end gap-1">
+                      {(gere || u.id === profil.id) && <>
                       {u.aCode && (
                         <Bouton variante="discret" onClick={() => codes.demander({ action: "voir", ids: [u.id], libelle: `Le code de ${u.nom} va s’afficher.` })}>
                           Voir le code
@@ -182,6 +187,8 @@ export default function Utilisateurs() {
                       >
                         {u.aCode ? "Nouveau code" : "Créer le code"}
                       </Bouton>
+                      </>}
+                      {gere && <>
                       {estBloque(u) && (
                         <Bouton variante="discret" onClick={() => action(`/utilisateurs/${u.id}/debloquer`, `${u.nom} peut de nouveau se connecter.`)}>
                           Débloquer
@@ -202,6 +209,7 @@ export default function Utilisateurs() {
                         </Link>
                       )}
                       <Bouton variante="discret" onClick={() => setEdition(u)}>Modifier</Bouton>
+                      </>}
                     </div>
                   </td>
                 </tr>
