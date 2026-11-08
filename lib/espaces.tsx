@@ -39,6 +39,7 @@ import {
   UserPlus,
   Users,
   type LucideIcon,
+  ScanSearch,
 } from "lucide-react";
 import type { Profil } from "./api";
 import { peut } from "./libelles";
@@ -618,6 +619,13 @@ export const ESPACES: Espace[] = [
         icone: CopyCheck,
         visible: traiter,
         explication: "Jusqu’à 4 fichiers Excel comparés entre eux et avec la base : doublons, mêmes personnes, homonymes. Une vérification : rien n’est enregistré.",
+      },
+      {
+        href: "/rapprochement?onglet=doublons",
+        libelle: "Rapprochement et détection des doublons",
+        icone: ScanSearch,
+        visible: traiter,
+        explication: "Fichiers comparés entre eux et avec toutes les bases (sauf les enrôlés) : vous tranchez les cas douteux, puis vous téléchargez le fichier des doublons et le fichier nettoyé. Rien n’est enregistré.",
       },
       {
         href: "/rapprochement?onglet=annees",
