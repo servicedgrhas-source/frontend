@@ -147,10 +147,11 @@ function construire(d: DossierCarriere) {
           {ligne("Statut", d.agent.libelleStatut)}
           {ligne("Grade", val("GRADE"))}
           {ligne("Catégorie · échelle · échelon", [val("CATEGORIE"), val("ECHELLE"), val("ECHELON")].join(" · "))}
-          {ligne(LIBELLE_ENTREE, dateEntree(d) ?? "—")}
+          {ligne(`${LIBELLE_ENTREE}/engagement`, dateEntree(d) ?? "—")}
           {av &&
             ligne(
-              av.libelle,
+              // Libellés du dossier imprimable (DG, 08/11/2026) : promotion (fonctionnaire) ou avancement (contractuel)
+              "Date de dernière promotion/avancement",
               av.origine === "DERNIER"
                 ? dateFr(av.depuis)
                 : d.situation.dateManquante
@@ -161,7 +162,7 @@ function construire(d: DossierCarriere) {
           {av &&
             !!d.situation.attendues?.length &&
             ligne(
-              av.nature === "AVANCEMENT" ? "Avancements attendus" : "Promotions attendues",
+              "Promotions attendues/avancements attendus",
               d.situation.attendues
                 .map((x) => `${dateFr(x.date)}${x.echelon ? ` (${x.echelle ? `${x.echelle}, ` : ""}${x.echelonLibelle ? echelonEnClair(x.echelonLibelle, d.situation.echelle?.libelleHorsClasse) : `${ordinal(x.echelon)} échelon`})` : ""}`)
                 .join(" ; "),

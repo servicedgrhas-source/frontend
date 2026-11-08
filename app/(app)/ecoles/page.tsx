@@ -4,6 +4,7 @@ import { School } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { BarreExport } from "@/components/export-liste";
 import { Pagination } from "@/components/pagination";
 import { useSession } from "@/components/session";
 import { Alerte, Badge, Carte, Chargement, EnTete, Liste, Saisie, Tableau, Vide } from "@/components/ui";
@@ -33,6 +34,7 @@ export default function Ecoles() {
   const [cycle, setCycle] = useState("");
   const [recherche, setRecherche] = useState("");
   const [page, setPage] = useState(1);
+  const [erreurExport, setErreurExport] = useState<string | null>(null);
   const central = !["DDEPPSA", "STRUCTURE"].includes(profil.role);
   const d = useApi<{ annee: string; page: number; pages: number; total: number; lignes: Ligne[] }>(
     `/etablissements?q=${encodeURIComponent(recherche)}&departement=${departement}&cycle=${cycle}&page=${page}&taille=${TAILLE}`,
@@ -73,7 +75,14 @@ export default function Ecoles() {
           }} vide="Tous les cycles" options={Object.entries(CYCLES).map(([k, v]) => ({ valeur: k, libelle: v }))} />
       </div>
       {d.erreur && <Alerte>{d.erreur}</Alerte>}
-      <Carte titre={d.donnees ? `Année scolaire ${d.donnees.annee}` : "Écoles"}>
+      {erreurExport && <Alerte>{erreurExport}</Alerte>}
+      <Carte
+        titre={d.donnees ? `Année scolaire ${d.donnees.annee}` : "Écoles"}
+        actions={
+          // Toutes les écoles du filtre choisi (recherche, département, cycle), pas seulement la page affichée
+          <BarreExport chemin="/etablissements/export" impression="/impression/ecoles" nom="Liste des écoles" filtres={{ q: recherche, departement, cycle }} erreur={setErreurExport} />
+        }
+      >
         {!d.donnees ? (
           <Chargement />
         ) : !d.donnees.lignes.length ? (

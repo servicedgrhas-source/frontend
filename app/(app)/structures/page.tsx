@@ -3,8 +3,9 @@
 import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, School, Search, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { BarreExport } from "@/components/export-liste";
 import { useSession } from "@/components/session";
-import { Alerte, Bouton, Carte, Chargement, EnTete, Saisie, Vide, cx } from "@/components/ui";
+import { Alerte, Bouton, Carte, Chargement, EnTete, Liste, Saisie, Vide, cx } from "@/components/ui";
 import { useApi } from "@/lib/api";
 import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
@@ -38,9 +39,20 @@ const cle = (t: string) =>
  * replie ; un clic sur une structure ouvre sa fiche (son responsable, ce qui en dépend, son personnel).
  */
 export default function Structures() {
-  const { profil } = useSession();
+  const { profil, refs } = useSession();
   const arbre = useApi<Noeud[]>("/structures/arbre");
   const [q, setQ] = useState("");
+  // Liste à exporter : la recherche, plus un type et un département au choix
+  const [typeExport, setTypeExport] = useState("");
+  const [depExport, setDepExport] = useState("");
+  const [erreurExport, setErreurExport] = useState<string | null>(null);
+  const typesPresents = useMemo(
+    () =>
+      [...new Set((arbre.donnees ?? []).map((x) => x.type))]
+        .map((t) => ({ valeur: t, libelle: typeStructure(t).libelle }))
+        .sort((a, b) => typeStructure(a.valeur).rang - typeStructure(b.valeur).rang),
+    [arbre.donnees],
+  );
   // Ce que l'on a déplié (gardé pour le retour d'une fiche) ; rien de gardé : le haut de l'organisation
   const [garde, setOuverts] = useState<Set<number> | null>(() => {
     try {
@@ -199,6 +211,19 @@ export default function Structures() {
             <ChevronsDownUp /> Tout replier
           </Bouton>
         </div>
+        {/* Exporter la liste : recherche ci-dessus, type et département au choix (DG, 08/11/2026) */}
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl bg-zinc-50 px-4 py-3 text-[12px]">
+          <span className="font-semibold text-zinc-600">Exporter la liste</span>
+          <Liste className="w-52 py-1.5 text-[12px]" value={typeExport} onChange={(e) => setTypeExport(e.target.value)} vide="Tous les types" options={typesPresents} />
+          {!["DDEPPSA", "STRUCTURE"].includes(profil.role) && (
+            <Liste className="w-52 py-1.5 text-[12px]" value={depExport} onChange={(e) => setDepExport(e.target.value)} vide="Tous les départements" options={refs.departements.map((x) => ({ valeur: x.id, libelle: x.nom }))} />
+          )}
+          <span className="text-zinc-400">{q.trim() ? `· recherche « ${q.trim()} »` : ""}</span>
+          <div className="ml-auto">
+            <BarreExport chemin="/structures/export" impression="/impression/structures" nom="Liste des structures administratives" filtres={{ q: q.trim(), type: typeExport, departement: depExport }} erreur={setErreurExport} />
+          </div>
+        </div>
+        {erreurExport && <Alerte>{erreurExport}</Alerte>}
         {arbre.erreur && <Alerte>{arbre.erreur}</Alerte>}
         {!arbre.donnees ? (
           <Chargement />
