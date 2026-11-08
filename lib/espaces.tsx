@@ -123,6 +123,8 @@ const parties = (...p: [number, string][]) =>
 
 const traiter = (p: Profil) => peut.traiter(p.role);
 const parametrer = (p: Profil) => peut.parametrer(p.role);
+/** Notes de service : la DGRHAS, et le secrétariat du DG qui les imprime pour la signature. */
+const lireNotes = (p: Profil) => peut.traiter(p.role) || p.role === "SECRETARIAT";
 /** Personnel : DGRHAS, DDEPPSA (leur département), comptes d’établissement (leurs agents). */
 const recenser = (p: Profil) => peut.traiter(p.role) || p.role === "DDEPPSA" || p.role === "STRUCTURE";
 
@@ -163,6 +165,7 @@ export const ESPACES: Espace[] = [
       },
       {
         href: "/recrutement",
+        visible: traiter,
         libelle: "Base des recrutés",
         icone: Users,
         explication: "Toutes les personnes recrutées et leur texte de la FP ; reprise de la fiche de suivi Excel (travail fait hors du système).",
@@ -192,6 +195,7 @@ export const ESPACES: Espace[] = [
     rubriques: [
       {
         href: "/lots",
+        visible: traiter,
         libelle: "Lots de textes",
         icone: Layers,
         explication: "Les paquets de textes reçus de la FP : dates de signature et avancement des affectations, lot par lot.",
@@ -199,6 +203,7 @@ export const ESPACES: Espace[] = [
       },
       {
         href: "/affectations",
+        visible: traiter,
         libelle: "Traitement des affectations",
         icone: ClipboardCheck,
         explication: "Vérifier et compléter chaque personne, régler les problèmes en rouge, puis préparer les notes du lot.",
@@ -206,6 +211,7 @@ export const ESPACES: Espace[] = [
       },
       {
         href: "/recommandations",
+        visible: traiter,
         libelle: "Recommandations",
         icone: Stamp,
         explication: "Les changements à la règle (autre département, établissement, note) pour une affectation, une mutation ou un enrôlement : proposés par le chef de service, avis du directeur, décision du DG.",
@@ -213,6 +219,7 @@ export const ESPACES: Espace[] = [
       },
       {
         href: "/statistiques",
+        visible: traiter,
         libelle: "Statistiques de suivi",
         icone: BarChart3,
         explication: "Par quota : dossiers envoyés, textes reçus, affectés et restes ; textes reçus par cycle et par département.",
@@ -277,6 +284,7 @@ export const ESPACES: Espace[] = [
       {
         groupe: "Chaque année : enrôler",
         href: "/notes/enrolement",
+        visible: lireNotes,
         libelle: "Notes d’enrôlement",
         icone: FileText,
         explication: "Préparer les notes de service des volontaires retenus (on choisit l’année), puis validation et signature.",
@@ -444,6 +452,7 @@ export const ESPACES: Espace[] = [
       },
       {
         href: "/mutations/statistiques",
+        visible: (p) => peut.traiter(p.role) || p.role === "DDEPPSA" || p.role === "CABINET",
         libelle: "Statistiques",
         icone: BarChart3,
         explication: "Les chiffres des mutations par motif et par département.",
@@ -557,6 +566,7 @@ export const ESPACES: Espace[] = [
     rubriques: [
       {
         href: "/notes/affectation",
+        visible: lireNotes,
         libelle: "Notes d’affectation",
         icone: FileText,
         explication: "Relire les notes préparées, les soumettre au DG, puis reporter le numéro et la date de signature.",
@@ -564,6 +574,7 @@ export const ESPACES: Espace[] = [
       },
       {
         href: "/notes/mutation",
+        visible: lireNotes,
         libelle: "Notes de mutation",
         icone: FileText,
         explication: "Les notes des mutations accordées, préparées automatiquement.",
@@ -571,6 +582,7 @@ export const ESPACES: Espace[] = [
       },
       {
         href: "/notes/enrolement",
+        visible: lireNotes,
         libelle: "Notes d’enrôlement",
         icone: FileText,
         explication: "Les notes de service des volontaires retenus à l’enrôlement : une par type (préscolaire, primaire, collège, lycée, administration), additifs et rectificatifs.",
