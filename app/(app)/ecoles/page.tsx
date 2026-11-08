@@ -4,6 +4,7 @@ import { School } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Pagination } from "@/components/pagination";
 import { useSession } from "@/components/session";
 import { Alerte, Badge, Carte, Chargement, EnTete, Liste, Saisie, Tableau, Vide } from "@/components/ui";
 import { useApi } from "@/lib/api";
@@ -21,6 +22,8 @@ interface Ligne {
   agents: number;
 }
 
+const TAILLE = 50;
+
 /** Écoles du périmètre : un chef d'établissement arrive directement sur la sienne. */
 export default function Ecoles() {
   const { profil, refs } = useSession();
@@ -29,11 +32,19 @@ export default function Ecoles() {
   const [departement, setDepartement] = useState("");
   const [cycle, setCycle] = useState("");
   const [recherche, setRecherche] = useState("");
+  const [page, setPage] = useState(1);
   const central = !["DDEPPSA", "STRUCTURE"].includes(profil.role);
-  const d = useApi<{ annee: string; lignes: Ligne[] }>(`/etablissements?q=${encodeURIComponent(recherche)}&departement=${departement}&cycle=${cycle}`);
+  const d = useApi<{ annee: string; page: number; pages: number; total: number; lignes: Ligne[] }>(
+    `/etablissements?q=${encodeURIComponent(recherche)}&departement=${departement}&cycle=${cycle}&page=${page}&taille=${TAILLE}`,
+  );
   useEffect(() => {
-    const t = setTimeout(() => setRecherche(q), 300);
+    // Une autre recherche, un autre filtre : retour à la première page
+    const t = setTimeout(() => {
+      setRecherche(q);
+      if (q !== recherche) setPage(1);
+    }, 300);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
   // Compte d'une école : sa fiche directement
   useEffect(() => {
@@ -49,11 +60,17 @@ export default function Ecoles() {
       <div className="grid gap-3 sm:grid-cols-[1fr_14rem_12rem]">
         <Saisie value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher une école (nom, localité)…" />
         {central ? (
-          <Liste value={departement} onChange={(e) => setDepartement(e.target.value)} vide="Tous les départements" options={refs.departements.map((x) => ({ valeur: x.id, libelle: x.nom }))} />
+          <Liste value={departement} onChange={(e) => {
+              setDepartement(e.target.value);
+              setPage(1);
+            }} vide="Tous les départements" options={refs.departements.map((x) => ({ valeur: x.id, libelle: x.nom }))} />
         ) : (
           <span />
         )}
-        <Liste value={cycle} onChange={(e) => setCycle(e.target.value)} vide="Tous les cycles" options={Object.entries(CYCLES).map(([k, v]) => ({ valeur: k, libelle: v }))} />
+        <Liste value={cycle} onChange={(e) => {
+            setCycle(e.target.value);
+            setPage(1);
+          }} vide="Tous les cycles" options={Object.entries(CYCLES).map(([k, v]) => ({ valeur: k, libelle: v }))} />
       </div>
       {d.erreur && <Alerte>{d.erreur}</Alerte>}
       <Carte titre={d.donnees ? `Année scolaire ${d.donnees.annee}` : "Écoles"}>
@@ -63,7 +80,9 @@ export default function Ecoles() {
           <Vide>Aucune école trouvée.</Vide>
         ) : (
           <>
-            <p className="-mt-2 mb-3 text-[12px] text-zinc-500">Les écoles qui ont déjà des classes saisies viennent en premier (200 au plus : précisez la recherche).</p>
+            <p className="-mt-2 mb-3 text-[12px] text-zinc-500">
+              {d.donnees.total.toLocaleString("fr-FR")} école{d.donnees.total > 1 ? "s" : ""}, rangées par cycle puis par nom · {TAILLE} par page.
+            </p>
             <Tableau>
               <thead>
                 <tr>
@@ -95,6 +114,14 @@ export default function Ecoles() {
                 ))}
               </tbody>
             </Tableau>
+            <Pagination
+              page={d.donnees.page}
+              pages={d.donnees.pages}
+              aller={(p) => {
+                setPage(p);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+            />
           </>
         )}
       </Carte>

@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useMemo } from "react";
 import { EnteteOfficielle, SignatureOfficielle, editeLe } from "@/components/impression-officielle";
 import { PagesA4, StyleImpressionA4, type Bloc, type Tableau } from "@/components/pages-a4";
-import { dateFr, type DossierCarriere, echelonEnClair, GENRES } from "@/components/recensement/carriere";
+import { dateEntree, dateFr, type DossierCarriere, echelonEnClair, GENRES, LIBELLE_ENTREE } from "@/components/recensement/carriere";
 import { Alerte, Bouton, Chargement } from "@/components/ui";
 import { lireSession, useApi } from "@/lib/api";
 
@@ -147,6 +147,7 @@ function construire(d: DossierCarriere) {
           {ligne("Statut", d.agent.libelleStatut)}
           {ligne("Grade", val("GRADE"))}
           {ligne("Catégorie · échelle · échelon", [val("CATEGORIE"), val("ECHELLE"), val("ECHELON")].join(" · "))}
+          {ligne(LIBELLE_ENTREE, dateEntree(d) ?? "—")}
           {av &&
             ligne(
               av.libelle,

@@ -105,6 +105,13 @@ export interface DossierCarriere {
 
 export const dateFr = (d: string | null | undefined) => (d ? d.slice(0, 10).split("-").reverse().join("/") : "");
 
+/** Date d'entrée dans l'administration ou d'intégration (rubrique « Date de recrutement / d'intégration »). */
+export const LIBELLE_ENTREE = "Date d’entrée dans l’administration ou d’intégration";
+export const dateEntree = (d: DossierCarriere) => {
+  const x = d.situation.valeurs.DATE_RECRUTEMENT?.valeur;
+  return x ? (/^\d{4}-\d{2}-\d{2}/.test(x) ? dateFr(x) : x) : null;
+};
+
 export const GENRES: Record<ElementCarriere["genre"], { libelle: string; ton: Ton }> = {
   STATUT: { libelle: "Entrée", ton: "vert" },
   GRADE: { libelle: "Grade et échelon", ton: "jaune" },
@@ -324,6 +331,7 @@ export function Situation({ d }: { d: DossierCarriere }) {
     { l: "Matricule solde", v: d.agent.matricule ?? "—" },
     { l: "Grade", v: val("GRADE") ?? "—" },
     { l: "Classement", v: classement || "—" },
+    { l: LIBELLE_ENTREE, v: dateEntree(d) ?? <span className="text-zinc-500">non renseignée</span> },
     {
       l: av?.libelle ?? (d.agent.statut === "CONTRACTUEL" ? "Date du dernier avancement" : "Date de dernière promotion"),
       v: av ? (
