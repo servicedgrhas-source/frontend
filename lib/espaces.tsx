@@ -32,6 +32,7 @@ import {
   Send,
   Settings,
   ShieldCheck,
+  ShieldAlert,
   Stamp,
   Network,
   UserCheck,
@@ -45,6 +46,8 @@ import { type ConfigMenu, construireMenu, idRubrique, type OrigineMenu } from ".
 
 /** Travail en attente, renvoyé par « /menu/compteurs ». */
 export interface Compteurs {
+  /** Comptes suspendus par l'outil de détection (DG et administrateur seulement). */
+  comptesSignales?: number;
   aControler: number;
   aValider: number;
   contentieux: number;
@@ -639,6 +642,15 @@ export const ESPACES: Espace[] = [
         icone: Settings,
         visible: parametrer,
         explication: "Régler les notes de service (année scolaire, signataire…), le statut contractuel, les âges et calculs, l’envoi à la FP et la fiche de mutation.",
+      },
+      {
+        href: "/administration/securite",
+        libelle: "Comptes signalés",
+        icone: ShieldAlert,
+        // Le DG et l'administrateur seulement (jamais le compte Informatique, jamais par délégation)
+        visible: (p) => p.role === "DG" || p.role === "ADMIN",
+        compteur: (c) => ({ n: c.comptesSignales ?? 0, texte: `${c.comptesSignales ?? 0} compte(s) suspendu(s) à vérifier` }),
+        explication: "Les comptes suspendus par l’outil de détection, ce qu’ils ont fait, et les réglages de l’outil : rétablir après vérification.",
       },
       {
         href: "/administration/sauvegarde",

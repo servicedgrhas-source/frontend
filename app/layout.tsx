@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { EcranCompteSignale } from "@/components/compte-signale";
 import { GardeVisiteur } from "@/components/garde-visiteur";
 import "./globals.css";
 
@@ -30,6 +31,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Compte visiteur : ni impression ni téléchargement (DG, 04/11/2026) */}
         <GardeVisiteur />
         {children}
+        {/* Compte suspendu par l'outil de détection : écran de vérification (08/11/2026) */}
+        <EcranCompteSignale />
       </body>
     </html>
   );

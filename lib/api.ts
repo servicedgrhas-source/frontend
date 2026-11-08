@@ -68,6 +68,7 @@ const signalerProfil = () => typeof window !== "undefined" && window.dispatchEve
 
 export function ouvrirSession(jeton: string, profil: Profil) {
   viderMemoire();
+  oublierSignalement();
   localStorage.setItem(CLE_JETON, jeton);
   localStorage.setItem(CLE_PROFIL, JSON.stringify(profil));
   signalerProfil();
@@ -98,6 +99,56 @@ export function surSessionExpiree(g: GestionnaireExpiration) {
   return () => {
     if (gestionnaireExpiration === g) gestionnaireExpiration = null;
   };
+}
+
+/** Le serveur a suspendu ce compte : l'écran de vérification s'affiche par-dessus tout. */
+export const COMPTE_SIGNALE = "dgrhas:compte-signale";
+const CLE_SIGNALE = "dgrhas.signale";
+
+export function compteSignale(): boolean {
+  try {
+    return sessionStorage.getItem(CLE_SIGNALE) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function signalerCompte() {
+  try {
+    sessionStorage.setItem(CLE_SIGNALE, "1");
+  } catch {
+    /* stockage indisponible */
+  }
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(COMPTE_SIGNALE));
+}
+
+export function oublierSignalement() {
+  try {
+    sessionStorage.removeItem(CLE_SIGNALE);
+  } catch {
+    /* stockage indisponible */
+  }
+}
+
+/* État de l'application joint à chaque appel : la page ouverte, l'activité depuis l'appel précédent,
+   l'onglet au premier plan ou non (aide le serveur à servir la bonne page). */
+let activite = 0;
+if (typeof window !== "undefined") {
+  const compter = () => {
+    activite++;
+  };
+  for (const ev of ["pointerdown", "keydown", "wheel", "touchstart"]) window.addEventListener(ev, compter, { passive: true, capture: true });
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && compter());
+}
+function etatApplication(): string {
+  if (typeof window === "undefined") return "";
+  const etat = JSON.stringify({ p: window.location.pathname, i: activite, v: document.visibilityState === "visible" ? 1 : 0 });
+  activite = 0;
+  try {
+    return btoa(unescape(encodeURIComponent(etat)));
+  } catch {
+    return "";
+  }
 }
 
 /** Événement envoyé après une reconnexion : les données affichées sont relues. */
@@ -182,6 +233,8 @@ async function envoyer<T>(
     ...(options.headers as Record<string, string>),
   };
   if (jeton) entetes.Authorization = `Bearer ${jeton}`;
+  const etat = etatApplication();
+  if (etat) entetes["X-App-State"] = etat;
   if (options.body && !(options.body instanceof FormData))
     entetes["Content-Type"] = "application/json";
 
@@ -197,7 +250,7 @@ async function envoyer<T>(
   }
   prendreNouveauJeton(rep);
   const texte = await rep.text();
-  let corps: { message?: string | string[] } | null = null;
+  let corps: { message?: string | string[]; code?: string } | null = null;
   try {
     corps = texte ? JSON.parse(texte) : null;
   } catch {
@@ -211,6 +264,7 @@ async function envoyer<T>(
     throw new ErreurApi(`Erreur ${rep.status}`, rep.status);
   }
   if (!rep.ok) {
+    if (corps?.code === "COMPTE_SIGNALE") signalerCompte();
     const m = corps?.message;
     const message = Array.isArray(m) ? m.join(" ; ") : (m ?? `Erreur ${rep.status}`);
     if (rep.status === 401 && !chemin.startsWith("/auth/connexion")) sessionExpiree(message);
@@ -228,7 +282,7 @@ async function fichier(chemin: string, init: RequestInit = {}): Promise<Blob> {
   try {
     rep = await fetch(`${API_URL}${chemin}`, {
       ...init,
-      headers: { ...(init.headers as Record<string, string>), ...(jeton ? { Authorization: `Bearer ${jeton}` } : {}) },
+      headers: { ...(init.headers as Record<string, string>), ...(jeton ? { Authorization: `Bearer ${jeton}` } : {}), "X-App-State": etatApplication() },
     });
   } catch {
     throw new ErreurApi(SERVEUR_INJOIGNABLE, 0);
@@ -237,7 +291,8 @@ async function fichier(chemin: string, init: RequestInit = {}): Promise<Blob> {
   if (!rep.ok) {
     let message = rep.status === 404 ? "Fichier introuvable" : `Téléchargement impossible (erreur ${rep.status})`;
     try {
-      const corps = (await rep.json()) as { message?: string | string[] };
+      const corps = (await rep.json()) as { message?: string | string[]; code?: string };
+      if (corps?.code === "COMPTE_SIGNALE") signalerCompte();
       if (corps?.message) message = Array.isArray(corps.message) ? corps.message.join(" ; ") : corps.message;
     } catch {
       /* réponse non JSON */
