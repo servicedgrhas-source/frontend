@@ -17,6 +17,8 @@ interface Membre {
 
 type Doute = "NOM_PROCHE" | "DATE_DIFFERENTE" | "DATE_MANQUANTE";
 type Decision = "MEME" | "DIFFERENTE";
+/** Où en est un cas : pas tranché, proposé par le système (à revoir), ou décidé. */
+type Etat = "atrancher" | "propose" | "MEME" | "DIFFERENTE" | "tous";
 
 interface Douteux {
   id: string;
@@ -74,7 +76,12 @@ export function DetectionDoublons() {
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   // Décisions prises à la main (les autres sont des propositions du système)
   const [touchees, setTouchees] = useState<Set<string>>(new Set());
-  const [vue, setVue] = useState<"tous" | "restants" | Doute>("restants");
+  // Deux filtres distincts : la sorte de doute, et où en est la décision
+  const [sorte, setSorte] = useState<"tous" | Doute | "MEME_DATE">("tous");
+  const [etat, setEtat] = useState<Etat>("atrancher");
+  // Décision en bloc : demandée (confirmation), puis faite (message)
+  const [enBloc, setEnBloc] = useState<{ ids: string[]; d: Decision } | null>(null);
+  const [fait, setFait] = useState<string | null>(null);
   const [recherche, setRecherche] = useState("");
   const [page, setPage] = useState(1);
   const [voirSurs, setVoirSurs] = useState(false);
@@ -126,7 +133,10 @@ export function DetectionDoublons() {
       setDecisions(Object.fromEntries(x.douteux.filter((d) => d.suggestion).map((d) => [d.id, d.suggestion as Decision])));
       setTouchees(new Set());
       setPage(1);
-      setVue("restants");
+      setSorte("tous");
+      // Rien à trancher : on montre d'abord les propositions du système, à vérifier
+      setEtat(x.douteux.some((d) => !d.suggestion) ? "atrancher" : "propose");
+      setFait(null);
     } catch (e) {
       oublier();
       setErreur((e as Error).message);
@@ -153,15 +163,32 @@ export function DetectionDoublons() {
   const douteux = useMemo(() => r?.douteux ?? [], [r]);
   const restants = douteux.filter((d) => !decisions[d.id]).length;
   const q = recherche.trim().toUpperCase();
-  const visibles = douteux.filter(
-    (d) =>
-      (vue === "tous" || (vue === "restants" ? !decisions[d.id] : d.doute === vue)) &&
-      (!q || [...d.a, ...d.b].some((m) => m.nom.toUpperCase().includes(q))),
-  );
+  // Où en est un cas : à trancher, proposé par le système (pas encore vu), ou décidé
+  const etatDe = (d: Douteux): Exclude<Etat, "tous"> =>
+    !decisions[d.id] ? "atrancher" : decisions[d.id] === d.suggestion && !touchees.has(d.id) ? "propose" : decisions[d.id] === "MEME" ? "MEME" : "DIFFERENTE";
+  const dansSorte = (d: Douteux) => sorte === "tous" || (sorte === "MEME_DATE" ? d.memeNaissance : d.doute === sorte);
+  const dansRecherche = (d: Douteux) => !q || [...d.a, ...d.b].some((m) => m.nom.toUpperCase().includes(q));
+  const deLaSorte = douteux.filter((d) => dansSorte(d) && dansRecherche(d));
+  const visibles = deLaSorte.filter((d) => etat === "tous" || etatDe(d) === etat);
   const pages = Math.max(1, Math.ceil(visibles.length / PAR_PAGE));
   const pageVue = Math.min(page, pages);
-  const compte = (doute: Doute) => douteux.filter((d) => d.doute === doute).length;
+  const compteSorte = (s: Doute | "MEME_DATE") => douteux.filter((d) => (s === "MEME_DATE" ? d.memeNaissance : d.doute === s)).length;
+  const compteEtat = (e: Exclude<Etat, "tous">) => deLaSorte.filter((d) => etatDe(d) === e).length;
   const memes = Object.values(decisions).filter((d) => d === "MEME").length;
+  const LIBELLE_SORTE = { tous: "tous les types", NOM_PROCHE: "nom écrit autrement", DATE_MANQUANTE: "date absente", DATE_DIFFERENTE: "date différente", MEME_DATE: "même date de naissance" };
+  const LIBELLE_ETAT = { tous: "tous les états", atrancher: "à trancher", propose: "proposés par le système", MEME: "même personne", DIFFERENTE: "pas la même personne" };
+  const confirmerBloc = () => {
+    if (!enBloc) return;
+    decider(enBloc.ids, enBloc.d);
+    const n = enBloc.ids.length;
+    setFait(
+      `${nf.format(n)} cas marqué${n > 1 ? "s" : ""} « ${enBloc.d === "MEME" ? "même personne" : "pas la même personne"} ». ` +
+        (etat !== "tous" && etat !== enBloc.d ? `Ils quittent cette liste : retrouvez-les sous « ${enBloc.d === "MEME" ? "Même personne" : "Pas la même personne"} ». ` : "") +
+        `Vous pouvez encore les changer un par un.`,
+    );
+    setEnBloc(null);
+    setPage(1);
+  };
 
   return (
     <div className="space-y-5">
@@ -313,6 +340,35 @@ export function DetectionDoublons() {
         </div>
       </Modale>
 
+      <Modale titre="Décider pour toute la liste ?" ouverte={!!enBloc} fermer={() => setEnBloc(null)}>
+        {enBloc && (
+          <div className="space-y-3 text-[13px] leading-relaxed text-zinc-600">
+            <p>
+              Vous allez marquer <strong className="text-encre">{nf.format(enBloc.ids.length)} cas</strong> ({LIBELLE_SORTE[sorte]}, {LIBELLE_ETAT[etat]}
+              {q ? `, nom « ${recherche.trim()} »` : ""}) comme <strong className="text-encre">« {enBloc.d === "MEME" ? "même personne" : "pas la même personne"} »</strong>.
+            </p>
+            <p>
+              {enBloc.d === "MEME"
+                ? "Pour chacun : une seule ligne reste dans le fichier nettoyé (la plus complète) ; si la personne est déjà dans une base, ses lignes sont retirées. Les autres vont dans le fichier des doublons."
+                : "Pour chacun : les deux personnes restent dans le fichier nettoyé (sauf autre doublon)."}
+            </p>
+            {enBloc.d === "MEME" && enBloc.ids.some((id) => douteux.find((d) => d.id === id)?.doute === "DATE_DIFFERENTE") && (
+              <Alerte>
+                Cette liste contient des cas « date différente » : ce sont souvent deux personnes différentes portant le même nom (homonymes). Vérifiez-les plutôt
+                un par un.
+              </Alerte>
+            )}
+            <p className="text-[12px] text-zinc-500">Rien n’est enregistré dans le système, et vous pourrez changer chaque cas ensuite.</p>
+            <div className="flex justify-end gap-2 pt-2">
+              <Bouton onClick={() => setEnBloc(null)}>Annuler</Bouton>
+              <Bouton variante="principal" onClick={confirmerBloc}>
+                <Check /> Oui, marquer ces {nf.format(enBloc.ids.length)} cas
+              </Bouton>
+            </div>
+          </div>
+        )}
+      </Modale>
+
       {r && (
         <>
           <Carte titre="Ce qui a été trouvé">
@@ -400,34 +456,69 @@ export function DetectionDoublons() {
                     </>
                   )}
                 </div>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <Segments
-                    valeur={vue}
-                    changer={(v) => {
-                      setVue(v);
-                      setPage(1);
-                    }}
-                    options={[
-                      { valeur: "restants", libelle: `À trancher (${nf.format(restants)})` },
-                      { valeur: "NOM_PROCHE", libelle: `Nom écrit autrement (${nf.format(compte("NOM_PROCHE"))})` },
-                      { valeur: "DATE_MANQUANTE", libelle: `Date absente (${nf.format(compte("DATE_MANQUANTE"))})` },
-                      { valeur: "DATE_DIFFERENTE", libelle: `Date différente (${nf.format(compte("DATE_DIFFERENTE"))})` },
-                      { valeur: "tous", libelle: "Tous" },
-                    ]}
-                  />
+                <div className="space-y-2 rounded-2xl bg-zinc-50 px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                    <span className="w-24 shrink-0 text-[12px] font-semibold text-zinc-500">Type de doute</span>
+                    <Segments
+                      valeur={sorte}
+                      changer={(v) => {
+                        setSorte(v);
+                        setPage(1);
+                        setFait(null);
+                      }}
+                      options={[
+                        { valeur: "tous", libelle: `Tous (${nf.format(douteux.length)})` },
+                        { valeur: "NOM_PROCHE", libelle: `Nom écrit autrement (${nf.format(compteSorte("NOM_PROCHE"))})` },
+                        { valeur: "MEME_DATE", libelle: `…dont même date de naissance (${nf.format(compteSorte("MEME_DATE"))})` },
+                        { valeur: "DATE_MANQUANTE", libelle: `Date absente (${nf.format(compteSorte("DATE_MANQUANTE"))})` },
+                        { valeur: "DATE_DIFFERENTE", libelle: `Date différente (${nf.format(compteSorte("DATE_DIFFERENTE"))})` },
+                      ]}
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                    <span className="w-24 shrink-0 text-[12px] font-semibold text-zinc-500">Décision</span>
+                    <Segments
+                      valeur={etat}
+                      changer={(v) => {
+                        setEtat(v);
+                        setPage(1);
+                        setFait(null);
+                      }}
+                      options={[
+                        { valeur: "atrancher", libelle: `À trancher (${nf.format(compteEtat("atrancher"))})` },
+                        { valeur: "propose", libelle: `Proposés par le système (${nf.format(compteEtat("propose"))})` },
+                        { valeur: "MEME", libelle: `Même personne (${nf.format(compteEtat("MEME"))})` },
+                        { valeur: "DIFFERENTE", libelle: `Pas la même personne (${nf.format(compteEtat("DIFFERENTE"))})` },
+                        { valeur: "tous", libelle: `Tous (${nf.format(deLaSorte.length)})` },
+                      ]}
+                    />
+                  </div>
                   {visibles.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      <Bouton variante="discret" onClick={() => decider(visibles.map((d) => d.id), "MEME")} title="Pour tous les cas de cette liste (filtre et recherche compris)">
-                        Tous ceux-ci : même personne
+                    <div className="flex flex-wrap items-center gap-2 border-t border-zinc-200 pt-2 text-[12px] text-zinc-500">
+                      <span>
+                        Pour les <strong className="text-encre">{nf.format(visibles.length)}</strong> cas affichés ({LIBELLE_SORTE[sorte]}, {LIBELLE_ETAT[etat]}
+                        {q ? `, nom « ${recherche.trim()} »` : ""}) :
+                      </span>
+                      <Bouton variante="discret" onClick={() => setEnBloc({ ids: visibles.map((d) => d.id), d: "MEME" })}>
+                        Tous : même personne
                       </Bouton>
-                      <Bouton variante="discret" onClick={() => decider(visibles.map((d) => d.id), "DIFFERENTE")} title="Pour tous les cas de cette liste (filtre et recherche compris)">
-                        Tous ceux-ci : pas la même
+                      <Bouton variante="discret" onClick={() => setEnBloc({ ids: visibles.map((d) => d.id), d: "DIFFERENTE" })}>
+                        Tous : pas la même personne
                       </Bouton>
                     </div>
                   )}
                 </div>
+                {fait && (
+                  <div className="flex items-start gap-2 rounded-2xl bg-marque-50 px-4 py-3 text-[13px] text-marque-700">
+                    <Check className="mt-0.5 size-4 shrink-0" />
+                    <span className="flex-1">{fait}</span>
+                    <button type="button" title="Fermer" className="text-marque-700/60 hover:text-marque-700" onClick={() => setFait(null)}>
+                      <X className="size-4" />
+                    </button>
+                  </div>
+                )}
                 {!visibles.length ? (
-                  <p className="text-[13px] text-zinc-500">Aucun cas dans cette liste.</p>
+                  <p className="text-[13px] text-zinc-500">{etat === "atrancher" ? "Plus rien à trancher dans cette liste." : "Aucun cas dans cette liste."}</p>
                 ) : (
                   <div className="space-y-2">
                     {visibles.slice((pageVue - 1) * PAR_PAGE, pageVue * PAR_PAGE).map((d) => {
@@ -441,7 +532,14 @@ export function DetectionDoublons() {
                           <div className="mb-2 flex flex-wrap items-center gap-2">
                             <Badge ton={d.doute === "DATE_DIFFERENTE" ? "bleu" : "jaune"}>{d.libelle}</Badge>
                             {d.memeNaissance && <Badge ton="gris">même date de naissance</Badge>}
-                            {propose && <Badge ton="gris">réponse proposée</Badge>}
+                            {/* Où en est ce cas, en clair */}
+                            <span
+                              className={`ml-auto rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${!choix ? "bg-or-100 text-or-700" : choix === "MEME" ? "bg-rouge-100 text-rouge-600" : "bg-marque-100 text-marque-700"}`}
+                            >
+                              {!choix
+                                ? "À trancher"
+                                : `${choix === "MEME" ? "Même personne (doublon)" : "Pas la même personne"} · ${propose ? "proposé par le système" : "décidé par vous"}`}
+                            </span>
                           </div>
                           <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr]">
                             <Cote membres={d.a} />
