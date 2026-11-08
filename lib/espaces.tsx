@@ -654,11 +654,11 @@ export const ESPACES: Espace[] = [
       },
       {
         href: "/administration/sauvegarde",
-        libelle: "Sauvegarde de la base",
+        libelle: "Sauvegarde",
         icone: DatabaseBackup,
-        // Toutes les données nominatives : le DG et l'administrateur seulement, jamais par délégation
-        visible: (p) => peut.administrer(p.role),
-        explication: "Télécharger un fichier avec toutes les données du système, à garder en lieu sûr : de quoi tout remettre en place si la base est perdue.",
+        // Seulement les comptes que le serveur y autorise (DG, compte de départ, comptes exemptés)
+        visible: (p) => !!p.sauvegarde,
+        explication: "Réservé.",
       },
       {
         href: "/administration/regles",

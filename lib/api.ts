@@ -41,6 +41,8 @@ export interface Profil {
   droits?: Record<string, NiveauDroit>;
   /** Nom du rôle créé par le DG et donné à ce compte (« Secrétariat DRSC »). */
   rolePerso?: string | null;
+  /** Le serveur ouvre la page de sauvegarde à ce compte (08/11/2026). */
+  sauvegarde?: boolean;
   /** Dernier jour d'accès (comptes visiteurs surtout), sinon sans fin. */
   finAcces?: string | null;
 }
