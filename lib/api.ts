@@ -68,7 +68,7 @@ const signalerProfil = () => typeof window !== "undefined" && window.dispatchEve
 
 export function ouvrirSession(jeton: string, profil: Profil) {
   viderMemoire();
-  oublierSignalement();
+  oublierSuspension();
   localStorage.setItem(CLE_JETON, jeton);
   localStorage.setItem(CLE_PROFIL, JSON.stringify(profil));
   signalerProfil();
@@ -101,30 +101,32 @@ export function surSessionExpiree(g: GestionnaireExpiration) {
   };
 }
 
-/** Le serveur a suspendu ce compte : l'écran de vérification s'affiche par-dessus tout. */
-export const COMPTE_SIGNALE = "dgrhas:compte-signale";
-const CLE_SIGNALE = "dgrhas.signale";
+/* Accès suspendu par le serveur (code E423) : un écran s'affiche par-dessus tout, avec le texte que
+   le serveur envoie (l'interface n'en contient aucun). */
+export const ACCES_SUSPENDU = "dgrhas:e423";
+const CLE_E423 = "dgrhas.e423";
 
-export function compteSignale(): boolean {
+export function accesSuspendu(): { titre: string; message: string } | null {
   try {
-    return sessionStorage.getItem(CLE_SIGNALE) === "1";
+    const v = sessionStorage.getItem(CLE_E423);
+    return v ? (JSON.parse(v) as { titre: string; message: string }) : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-function signalerCompte() {
+function suspendreAcces(corps: { titre?: string; message?: string | string[] }) {
   try {
-    sessionStorage.setItem(CLE_SIGNALE, "1");
+    sessionStorage.setItem(CLE_E423, JSON.stringify({ titre: corps.titre ?? "", message: Array.isArray(corps.message) ? corps.message.join(" ") : (corps.message ?? "") }));
   } catch {
     /* stockage indisponible */
   }
-  if (typeof window !== "undefined") window.dispatchEvent(new Event(COMPTE_SIGNALE));
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(ACCES_SUSPENDU));
 }
 
-export function oublierSignalement() {
+export function oublierSuspension() {
   try {
-    sessionStorage.removeItem(CLE_SIGNALE);
+    sessionStorage.removeItem(CLE_E423);
   } catch {
     /* stockage indisponible */
   }
@@ -250,7 +252,7 @@ async function envoyer<T>(
   }
   prendreNouveauJeton(rep);
   const texte = await rep.text();
-  let corps: { message?: string | string[]; code?: string } | null = null;
+  let corps: { message?: string | string[]; code?: string; titre?: string } | null = null;
   try {
     corps = texte ? JSON.parse(texte) : null;
   } catch {
@@ -264,7 +266,7 @@ async function envoyer<T>(
     throw new ErreurApi(`Erreur ${rep.status}`, rep.status);
   }
   if (!rep.ok) {
-    if (corps?.code === "COMPTE_SIGNALE") signalerCompte();
+    if (corps?.code === "E423") suspendreAcces(corps);
     const m = corps?.message;
     const message = Array.isArray(m) ? m.join(" ; ") : (m ?? `Erreur ${rep.status}`);
     if (rep.status === 401 && !chemin.startsWith("/auth/connexion")) sessionExpiree(message);
@@ -291,8 +293,8 @@ async function fichier(chemin: string, init: RequestInit = {}): Promise<Blob> {
   if (!rep.ok) {
     let message = rep.status === 404 ? "Fichier introuvable" : `Téléchargement impossible (erreur ${rep.status})`;
     try {
-      const corps = (await rep.json()) as { message?: string | string[]; code?: string };
-      if (corps?.code === "COMPTE_SIGNALE") signalerCompte();
+      const corps = (await rep.json()) as { message?: string | string[]; code?: string; titre?: string };
+      if (corps?.code === "E423") suspendreAcces(corps);
       if (corps?.message) message = Array.isArray(corps.message) ? corps.message.join(" ; ") : corps.message;
     } catch {
       /* réponse non JSON */

@@ -3,25 +3,25 @@
 import { ShieldAlert } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { COMPTE_SIGNALE, compteSignale, fermerSession, oublierSignalement } from "@/lib/api";
+import { ACCES_SUSPENDU, accesSuspendu, fermerSession, oublierSuspension } from "@/lib/api";
 
 /**
- * Écran du compte suspendu par l'outil de détection (DG, 08/11/2026) : par-dessus toute
- * l'application, jusqu'à la vérification par un humain (le DG ou l'administrateur).
+ * Écran d'un accès suspendu par le serveur (08/11/2026) : par-dessus toute l'application, avec le
+ * texte envoyé par le serveur (aucun texte n'est écrit ici).
  */
 export function EcranCompteSignale() {
-  const [signale, setSignale] = useState(false);
+  const [texte, setTexte] = useState<{ titre: string; message: string } | null>(null);
 
   useEffect(() => {
-    const voir = () => setSignale(compteSignale());
+    const voir = () => setTexte(accesSuspendu());
     voir();
-    window.addEventListener(COMPTE_SIGNALE, voir);
-    return () => window.removeEventListener(COMPTE_SIGNALE, voir);
+    window.addEventListener(ACCES_SUSPENDU, voir);
+    return () => window.removeEventListener(ACCES_SUSPENDU, voir);
   }, []);
 
-  if (!signale) return null;
+  if (!texte) return null;
   return (
-    <div role="alertdialog" aria-modal="true" aria-labelledby="titre-signale" className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto bg-[radial-gradient(ellipse_at_top,#14532d_0%,#0b2e1c_55%,#06170f_100%)] px-4 py-10">
+    <div role="alertdialog" aria-modal="true" aria-labelledby="titre-e423" className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto bg-[radial-gradient(ellipse_at_top,#14532d_0%,#0b2e1c_55%,#06170f_100%)] px-4 py-10">
       <div className="pointer-events-none absolute inset-x-0 top-0 flex h-1.5" aria-hidden>
         <span className="flex-1 bg-[#009543]" />
         <span className="flex-1 bg-[#fbde4a]" />
@@ -34,15 +34,15 @@ export function EcranCompteSignale() {
         <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-2xl bg-or-100 text-or-700">
           <ShieldAlert className="size-6" aria-hidden />
         </div>
-        <h1 id="titre-signale" className="text-[19px] font-semibold leading-snug text-encre sm:text-[21px]">
-          Votre compte a été signalé par nos outils de détection.
+        <h1 id="titre-e423" className="text-[19px] font-semibold leading-snug text-encre sm:text-[21px]">
+          {texte.titre}
         </h1>
-        <p className="mx-auto mt-3 max-w-md text-[14px] leading-relaxed text-zinc-600">Veuillez patienter pendant qu’un humain vérifie votre compte.</p>
+        <p className="mx-auto mt-3 max-w-md text-[14px] leading-relaxed text-zinc-600">{texte.message}</p>
         <div className="mx-auto mt-6 flex w-fit items-center gap-2 rounded-full bg-marque-50 px-4 py-1.5 text-[12px] font-semibold tracking-[0.2em] text-marque-700">SIGRHAS-MEPPSA</div>
         <button
           type="button"
           onClick={() => {
-            oublierSignalement();
+            oublierSuspension();
             fermerSession();
             window.location.href = "/connexion";
           }}

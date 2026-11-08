@@ -46,7 +46,7 @@ import { type ConfigMenu, construireMenu, idRubrique, type OrigineMenu } from ".
 
 /** Travail en attente, renvoyé par « /menu/compteurs ». */
 export interface Compteurs {
-  /** Comptes suspendus par l'outil de détection (DG et administrateur seulement). */
+  /** Comptes à vérifier (DG et administrateur seulement). */
   comptesSignales?: number;
   aControler: number;
   aValider: number;
@@ -645,12 +645,12 @@ export const ESPACES: Espace[] = [
       },
       {
         href: "/administration/securite",
-        libelle: "Comptes signalés",
+        libelle: "Sécurité",
         icone: ShieldAlert,
         // Le DG et l'administrateur seulement (jamais le compte Informatique, jamais par délégation)
         visible: (p) => p.role === "DG" || p.role === "ADMIN",
-        compteur: (c) => ({ n: c.comptesSignales ?? 0, texte: `${c.comptesSignales ?? 0} compte(s) suspendu(s) à vérifier` }),
-        explication: "Les comptes suspendus par l’outil de détection, ce qu’ils ont fait, et les réglages de l’outil : rétablir après vérification.",
+        compteur: (c) => ({ n: c.comptesSignales ?? 0, texte: `${c.comptesSignales ?? 0} compte(s) à vérifier` }),
+        explication: "Réservé au DG et à l’administrateur.",
       },
       {
         href: "/administration/sauvegarde",
