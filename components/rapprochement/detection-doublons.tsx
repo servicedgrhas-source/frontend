@@ -60,7 +60,7 @@ function Cote({ membres }: { membres: Membre[] }) {
 }
 
 /**
- * Rapprochement et détection des doublons (DG, 08/11/2026). Jusqu'à 4 fichiers Excel comparés
+ * Rapprochement et détection des doublons (DG, 08/11/2026). Jusqu'à 5 fichiers Excel comparés
  * entre eux et avec toutes les bases du système, sauf la base des enrôlés. Les doublons sûrs sont
  * écartés d'office ; les cas douteux sont tranchés ici. On télécharge ensuite le fichier des
  * doublons (avec la raison) et le fichier nettoyé. Rien n'est enregistré.
@@ -82,6 +82,8 @@ export function DetectionDoublons() {
   // Décision en bloc : demandée (confirmation), puis faite (message)
   const [enBloc, setEnBloc] = useState<{ ids: string[]; d: Decision } | null>(null);
   const [fait, setFait] = useState<string | null>(null);
+  // Fichier en préparation (bouton grisé avec une roue)
+  const [prepare, setPrepare] = useState<"doublons" | "nettoye" | null>(null);
   const [recherche, setRecherche] = useState("");
   const [page, setPage] = useState(1);
   const [voirSurs, setVoirSurs] = useState(false);
@@ -147,11 +149,18 @@ export function DetectionDoublons() {
 
   async function telecharger(quoi: "doublons" | "nettoye") {
     setErreur(null);
+    setPrepare(quoi);
     const le = new Date().toLocaleDateString("fr-FR").replaceAll("/", "-");
     try {
-      await api.telechargerPost(`/rapprochement/doublons/${quoi}`, donnees(true), quoi === "doublons" ? `Doublons détectés ${le}.xlsx` : `Fichier nettoyé sans doublons ${le}.xlsx`);
+      const fd = donnees(true);
+      // Fichier nettoyé : le serveur calcule d'abord les lignes à retirer, puis recopie les feuilles
+      // dans un second temps (deux requêtes plus légères : le serveur en ligne manquait de mémoire)
+      if (quoi === "nettoye") fd.append("plan", JSON.stringify(await api.post<unknown>("/rapprochement/doublons/plan", donnees(true))));
+      await api.telechargerPost(`/rapprochement/doublons/${quoi}`, fd, quoi === "doublons" ? `Doublons détectés ${le}.xlsx` : `Fichier nettoyé sans doublons ${le}.xlsx`);
     } catch (e) {
       setErreur(`Le fichier n’a pas pu être préparé : ${(e as Error).message}`);
+    } finally {
+      setPrepare(null);
     }
   }
 
@@ -196,7 +205,7 @@ export function DetectionDoublons() {
         <div className="space-y-4">
           <div className="space-y-2 text-[13px] leading-relaxed text-zinc-600">
             <p>
-              Déposez <strong>jusqu’à 4 fichiers Excel</strong> (listes d’enrôlement, listes reçues…). Le système cherche chaque personne{" "}
+              Déposez <strong>jusqu’à 5 fichiers Excel</strong> (listes d’enrôlement, listes reçues…). Le système cherche chaque personne{" "}
               <strong>dans le même fichier</strong>, <strong>d’un fichier à l’autre</strong>, et <strong>dans toutes les bases du système</strong> si vous le cochez :
               personnel, recrutés, recrutés des années passées, volontaires et communautaires, états de la bourse, demandes de mutation et de prestation,
               nominations. <strong>La base des enrôlés n’est jamais comparée.</strong>
@@ -216,7 +225,7 @@ export function DetectionDoublons() {
             className="hidden"
             onChange={(e) => {
               const nouveaux = [...(e.target.files ?? [])];
-              setFichiers((f) => [...f, ...nouveaux].slice(0, 4));
+              setFichiers((f) => [...f, ...nouveaux].slice(0, 5));
               setFeuilles(null);
               oublier();
               e.target.value = "";
@@ -241,9 +250,9 @@ export function DetectionDoublons() {
                 </button>
               </span>
             ))}
-            {fichiers.length < 4 && (
+            {fichiers.length < 5 && (
               <Bouton onClick={() => champ.current?.click()}>
-                <FileSpreadsheet /> {fichiers.length ? "Ajouter un fichier" : "Choisir les fichiers"} ({fichiers.length} / 4)
+                <FileSpreadsheet /> {fichiers.length ? "Ajouter un fichier" : "Choisir les fichiers"} ({fichiers.length} / 5)
               </Bouton>
             )}
           </div>
@@ -577,10 +586,10 @@ export function DetectionDoublons() {
                 </li>
               </ul>
               <div className="flex flex-wrap justify-end gap-2">
-                <Bouton disabled={restants > 0} title={restants ? "Tranchez d’abord les cas douteux" : undefined} onClick={() => telecharger("doublons")}>
+                <Bouton disabled={restants > 0 || !!prepare} chargement={prepare === "doublons"} title={restants ? "Tranchez d’abord les cas douteux" : undefined} onClick={() => telecharger("doublons")}>
                   <Download /> Fichier des doublons (Excel)
                 </Bouton>
-                <Bouton variante="principal" disabled={restants > 0} title={restants ? "Tranchez d’abord les cas douteux" : undefined} onClick={() => telecharger("nettoye")}>
+                <Bouton variante="principal" disabled={restants > 0 || !!prepare} chargement={prepare === "nettoye"} title={restants ? "Tranchez d’abord les cas douteux" : undefined} onClick={() => telecharger("nettoye")}>
                   <Download /> Fichier nettoyé (Excel)
                 </Bouton>
               </div>
