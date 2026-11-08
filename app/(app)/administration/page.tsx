@@ -1,5 +1,6 @@
 "use client";
 
+import { SaisieMotDePasse } from "@/components/mot-de-passe";
 import { KeyRound, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -374,7 +375,7 @@ function EditionUtilisateur({ u, fermer, apres }: { u: Utilisateur | null; ferme
           <Saisie type="date" value={f.finAcces} onChange={(e) => setF({ ...f, finAcces: e.target.value })} />
         </Champ>
         <Champ libelle={u ? "Nouveau mot de passe (facultatif)" : "Mot de passe"} aide="8 caractères minimum" className="col-span-2">
-          <Saisie type="password" autoComplete="new-password" value={f.motDePasse} onChange={(e) => setF({ ...f, motDePasse: e.target.value })} />
+          <SaisieMotDePasse autoComplete="new-password" value={f.motDePasse} onChange={(e) => setF({ ...f, motDePasse: e.target.value })} />
         </Champ>
         {u && (
           <label className="col-span-2 flex items-center gap-2 text-sm">

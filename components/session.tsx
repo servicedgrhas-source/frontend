@@ -1,5 +1,6 @@
 "use client";
 
+import { SaisieMotDePasse } from "./mot-de-passe";
 import { Bell, Inbox, KeyRound, LayoutDashboard, Lock, LogOut, UserRound, type LucideIcon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -745,8 +746,8 @@ function Reconnexion({
         </div>
         <Champ libelle="Mot de passe">
           <div className="relative">
-            <Lock className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-400" />
-            <Saisie type="password" autoComplete="current-password" required autoFocus value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} className="w-full pl-9" />
+            <Lock className="pointer-events-none absolute top-1/2 left-3 z-10 size-4 -translate-y-1/2 text-zinc-400" />
+            <SaisieMotDePasse autoComplete="current-password" required autoFocus value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} className="pl-9" />
           </div>
         </Champ>
         <Champ libelle="Code personnel" aide="Laissez vide si vous n’en avez pas reçu.">

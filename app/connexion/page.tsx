@@ -4,6 +4,7 @@ import { KeyRound, Lock, Mail } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { SaisieMotDePasse } from "@/components/mot-de-passe";
 import { Alerte, Bouton, Champ, Saisie } from "@/components/ui";
 import { api, lireSession, ouvrirSession, type Profil } from "@/lib/api";
 
@@ -93,8 +94,8 @@ export default function Connexion() {
           </Champ>
           <Champ libelle="Mot de passe">
             <div className="relative">
-              <Lock className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-400" />
-              <Saisie type="password" autoComplete="current-password" required maxLength={128} value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} className="w-full pl-9" />
+              <Lock className="pointer-events-none absolute top-1/2 left-3 z-10 size-4 -translate-y-1/2 text-zinc-400" />
+              <SaisieMotDePasse autoComplete="current-password" required maxLength={128} value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} className="pl-9" />
             </div>
           </Champ>
           <Champ libelle="Code personnel" aide="Les 12 caractères remis par l’administrateur (ex. T3G8-GH6J-FG3U). Laissez vide si vous n’en avez pas reçu.">

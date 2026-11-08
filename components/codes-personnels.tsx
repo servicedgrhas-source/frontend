@@ -1,5 +1,6 @@
 "use client";
 
+import { SaisieMotDePasse } from "./mot-de-passe";
 import { KeyRound, Printer } from "lucide-react";
 import { useState } from "react";
 import { Alerte, Bouton, Champ, Modale, Saisie, Tableau } from "@/components/ui";
@@ -89,7 +90,7 @@ export function useCodesPersonnels(apres: () => void) {
           </p>
           <p className="text-[13px] text-zinc-600">Pour continuer, confirmez que c’est bien vous :</p>
           <Champ libelle="Votre mot de passe">
-            <Saisie type="password" autoComplete="current-password" autoFocus value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} />
+            <SaisieMotDePasse autoComplete="current-password" autoFocus value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} />
           </Champ>
           <Champ libelle="Votre code personnel" aide="Laissez vide si votre compte n’a pas encore de code">
             <Saisie value={code} onChange={(e) => setCode(formater(e.target.value))} placeholder="XXXX-XXXX-XXXX" className="font-mono tracking-wider" />
