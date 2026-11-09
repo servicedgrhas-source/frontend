@@ -45,7 +45,7 @@ interface Props {
   blocs: Bloc[];
   tableaux: Record<string, Tableau>;
   /** mention : une ligne en petite police sous le pied (ex. « Généré par le Système d’Information… »). */
-  pied: { gauche: string; droite: string; mention?: string };
+  pied: { gauche: string; droite: string; mention?: string; /** La mention sous le texte de gauche plutôt qu'au centre. */ mentionAGauche?: boolean };
   /** Classe de la feuille (police, taille du texte). */
   classeFeuille: string;
   margeHaut?: number;
@@ -209,7 +209,7 @@ export function PagesA4({ blocs, tableaux, pied, classeFeuille, margeHaut = 12, 
               Page {i + 1} sur {pages!.length}
             </span>
             <span className="text-right">{pied.droite}</span>
-            {pied.mention && <span className="col-span-3 whitespace-normal text-center text-[6.5pt] italic text-zinc-500">{pied.mention}</span>}
+            {pied.mention && <span className={`col-span-3 whitespace-normal text-[6.5pt] italic text-zinc-500 ${pied.mentionAGauche ? "text-left" : "text-center"}`}>{pied.mention}</span>}
           </div>
         </div>
       ))}

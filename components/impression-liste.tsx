@@ -6,6 +6,7 @@ import { EnteteOfficielle, editeLe } from "@/components/impression-officielle";
 import { PagesA4, StyleImpressionA4, type Bloc, type Tableau } from "@/components/pages-a4";
 import { Alerte, Bouton, Chargement } from "@/components/ui";
 import { lireSession, qs, useApi } from "@/lib/api";
+import { GENERE_PAR } from "@/lib/prestations";
 
 export interface ColonneImprimee<L> {
   titre: string;
@@ -127,7 +128,7 @@ export function ImpressionListe<L>({
           Imprimer / Enregistrer en PDF
         </Bouton>
       </div>
-      <PagesA4 paysage blocs={contenu.blocs} tableaux={contenu.tableaux} pied={{ gauche: pied, droite: "MEPPSA · DGRHAS" }} classeFeuille="feuille-liste" margeHaut={10} margeCote={10} margeBas={18} />
+      <PagesA4 paysage blocs={contenu.blocs} tableaux={contenu.tableaux} pied={{ gauche: pied, droite: "MEPPSA · DGRHAS", mention: GENERE_PAR, mentionAGauche: true }} classeFeuille="feuille-liste" margeHaut={10} margeCote={10} margeBas={18} />
     </div>
   );
 }
