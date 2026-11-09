@@ -27,6 +27,8 @@ export function ImpressionListe<L>({
   colonnes,
   arrete,
   pied,
+  adapter,
+  pret = true,
 }: {
   /** Adresse du serveur qui renvoie { lignes, … } (les filtres de l'adresse de la page y sont passés). */
   chemin: string;
@@ -36,10 +38,19 @@ export function ImpressionListe<L>({
   /** « Arrêtée la présente liste à … » */
   arrete: (n: number) => string;
   pied: string;
+  /** Mise en forme des données reçues avant l'impression (ex. le journal, décrit ici). */
+  adapter?: (d: unknown) => { lignes: L[] } & Record<string, unknown>;
+  /** Faux tant que ce qu'il faut pour mettre en forme n'est pas chargé. */
+  pret?: boolean;
 }) {
   const params = useSearchParams();
   const filtres = Object.fromEntries(params.entries());
-  const r = useApi<{ lignes: L[] } & Record<string, unknown>>(`${chemin}${qs(filtres)}`);
+  const brut = useApi<unknown>(`${chemin}${qs(filtres)}`);
+  const donnees = useMemo(
+    () => (brut.donnees && pret ? (adapter ? adapter(brut.donnees) : (brut.donnees as { lignes: L[] } & Record<string, unknown>)) : null),
+    [brut.donnees, pret, adapter],
+  );
+  const r = { donnees, erreur: brut.erreur };
   useEffect(() => {
     if (!lireSession().jeton) window.location.href = "/connexion";
     document.title = titre.charAt(0) + titre.slice(1).toLowerCase();
