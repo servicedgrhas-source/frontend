@@ -227,6 +227,12 @@ export default function BourseMensuelle() {
             <Bouton onClick={() => api.telecharger(`/enrolement/bourse/${e.id}/word`, `${population === "VOLONTAIRE" ? "Bourse" : "Communautaires"} ${e.mois}${e.statut === "VALIDE" ? "" : " (projet)"}.docx`).catch((x: Error) => setErreur(x.message))}>
               <FileText /> Word
             </Bouton>
+            <Bouton
+              onClick={() => api.telecharger(`/enrolement/bourse/${e.id}/prise-en-charge`, `Fiche de prise en charge ${e.mois}.xlsx`).catch((x: Error) => setErreur(x.message))}
+              title="Par département et par cycle (alphabétisation et post-alpha comprises) : effectif, taux, montant, puis montants mensuel, trimestriel et annuel"
+            >
+              <Download /> Fiche de prise en charge
+            </Bouton>
             <Bouton onClick={() => window.open(`/impression/bourse/${e.id}`, "_blank")} title="État à imprimer ou à enregistrer en PDF : en-tête, CNI, émargement, total et signature">
               <Printer /> Imprimer / PDF
             </Bouton>

@@ -10,6 +10,7 @@ import { api, qs, useApi } from "@/lib/api";
 import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
+import { RemplacerDepartement } from "@/components/enrolement/remplacer-departement";
 
 interface Page {
   lignes: Volontaire[];
@@ -709,6 +710,7 @@ export default function RegistreVolontaires() {
   const config = useConfigEnrolement();
   const [recherche, setRecherche] = useState("");
   const [population, setPopulation] = useState<Population>("VOLONTAIRE");
+  const [remplacer, setRemplacer] = useState(false);
   const [vague, setVague] = useState("");
   const [statut, setStatut] = useState("EN_POSTE");
   const [departement, setDepartement] = useState("");
@@ -766,6 +768,12 @@ export default function RegistreVolontaires() {
                   <Aide>Ce que le registre et la base du personnel ne disent pas pareil : naissance, sexe, téléphone, département, établissement, diplôme, prise de service… On reprend d’un clic ce que la fiche du personnel connaît, et on choisit la bonne valeur quand elles diffèrent.</Aide>
                 </Bouton>
               </Link>
+              {population === "COMMUNAUTAIRE" && profil.role !== "DIRECTEUR" && (
+                <Bouton onClick={() => setRemplacer(true)}>
+                  Remplacer un département
+                  <Aide>La nouvelle liste d’un département (ex. la note de la préfecture de la Likouala), une feuille par cycle : ceux qui y sont restent ou entrent, les autres de ce département sortent. On vérifie d’abord, rien n’est enregistré tant qu’on n’a pas confirmé.</Aide>
+                </Bouton>
+              )}
               <Bouton onClick={() => setSerie(true)}>
                 Corriger en série
                 <Aide>Corrige d’un coup une même faute répétée sur beaucoup de fiches (ex. la vague « 2022022 » en « 2021-2022 », un établissement écrit de deux façons). Le système signale les valeurs suspectes et propose la correction ; vous vérifiez, puis vous corrigez. Chaque fiche garde l’ancienne valeur dans son historique.</Aide>
@@ -988,6 +996,7 @@ export default function RegistreVolontaires() {
           }}
         />
       )}
+      {remplacer && <RemplacerDepartement fermer={() => setRemplacer(false)} apres={() => liste.recharger()} />}
     </div>
   );
 }
