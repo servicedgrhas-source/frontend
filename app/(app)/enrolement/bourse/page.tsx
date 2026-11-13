@@ -93,6 +93,23 @@ export default function BourseMensuelle() {
     }
   };
   const avecPolice = (c: string) => (police === "gill" ? `${c}${c.includes("?") ? "&" : "?"}police=gill` : c);
+  // Orientation des états en Word et en PDF : paysage (habituel) ou portrait, retenue sur ce poste (13/11/2026)
+  const [orientation, setOrientation] = useState<"paysage" | "portrait">(() => {
+    try {
+      return typeof window !== "undefined" && localStorage.getItem("orientation-etats") === "portrait" ? "portrait" : "paysage";
+    } catch {
+      return "paysage";
+    }
+  });
+  const choisirOrientation = (o: "paysage" | "portrait") => {
+    setOrientation(o);
+    try {
+      localStorage.setItem("orientation-etats", o);
+    } catch {
+      /* stockage indisponible : le choix vaut pour cette page */
+    }
+  };
+  const avecOrientation = (c: string) => (orientation === "portrait" ? `${c}${c.includes("?") ? "&" : "?"}orientation=portrait` : c);
   const [confirmation, demander] = useConfirmation();
   /** Lignes cochées d'un contrôle, pour décider en masse (DG, 27/10 puis 13/11/2026). */
   const [coches, setCoches] = useState<Set<string>>(new Set());
@@ -253,13 +270,22 @@ export default function BourseMensuelle() {
               ]}
               changer={choisirPolice}
             />
+            <span className="ml-2 text-sm text-zinc-600" title="Orientation des états en Word et en PDF (l’Excel garde la mise en page du DG)">Word et PDF :</span>
+            <Segments
+              valeur={orientation}
+              options={[
+                { valeur: "paysage", libelle: "Paysage" },
+                { valeur: "portrait", libelle: "Portrait" },
+              ]}
+              changer={choisirOrientation}
+            />
           </div>
           <div className="flex flex-wrap gap-2">
             <Bouton onClick={() => api.telecharger(avecPolice(`/enrolement/bourse/${e.id}/excel`), `${nomEtat(population, e.mois, e.statut)}.xlsx`).catch((x: Error) => setErreur(x.message))}>
               <Download /> État de paiement Excel
             </Bouton>
-            <Bouton onClick={() => api.telecharger(avecPolice(`/enrolement/bourse/${e.id}/word`), `${nomEtat(population, e.mois, e.statut)}.docx`).catch((x: Error) => setErreur(x.message))}>
-              <FileText /> Word
+            <Bouton onClick={() => api.telecharger(avecOrientation(avecPolice(`/enrolement/bourse/${e.id}/word`)), `${nomEtat(population, e.mois, e.statut)}.docx`).catch((x: Error) => setErreur(x.message))}>
+              <FileText /> État en Word
             </Bouton>
             <Bouton
               onClick={() => api.telecharger(avecPolice(`/enrolement/bourse/${e.id}/prise-en-charge`), `Fiche de prise en charge ${population === "VOLONTAIRE" ? "Volontaires" : "Communautaires"} ${moisMajuscule(e.mois)}${e.statut === "VALIDE" ? "" : " (projet)"}.xlsx`).catch((x: Error) => setErreur(x.message))}
@@ -267,7 +293,7 @@ export default function BourseMensuelle() {
             >
               <Download /> Fiche de prise en charge
             </Bouton>
-            <Bouton onClick={() => window.open(avecPolice(`/impression/bourse/${e.id}`), "_blank")} title="État à imprimer ou à enregistrer en PDF : en-tête, CNI, émargement, total et signature">
+            <Bouton onClick={() => window.open(avecOrientation(avecPolice(`/impression/bourse/${e.id}`)), "_blank")} title="État à imprimer ou à enregistrer en PDF : en-tête, CNI, émargement, total et signature">
               <Printer /> Imprimer / PDF
             </Bouton>
             {gerer && e.statut === "BROUILLON" && (

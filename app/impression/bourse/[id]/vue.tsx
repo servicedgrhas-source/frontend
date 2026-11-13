@@ -30,7 +30,10 @@ const nf = new Intl.NumberFormat("fr-FR");
 export function ImpressionEtatPaiement() {
   const { id } = useParams<{ id: string }>();
   // ?police=gill : l'état en Gill Sans MT, au choix de la page Paiement mensuel (13/11/2026)
-  const gill = useSearchParams().get("police") === "gill";
+  const params = useSearchParams();
+  const gill = params.get("police") === "gill";
+  // ?orientation=portrait : l'état en portrait ; en paysage sinon (13/11/2026)
+  const paysage = params.get("orientation") !== "portrait";
   const d = useApi<EtatPaiement>(`/enrolement/bourse/${id}/etat-paiement`);
   useEffect(() => {
     if (!lireSession().jeton) window.location.href = "/connexion";
@@ -47,11 +50,14 @@ export function ImpressionEtatPaiement() {
     e.sections.forEach((s, k) => {
       const t = `t${k}`;
       tableaux[t] = {
-        className: "text-[7.5pt]",
+        // En portrait, la page est plus étroite : le tableau un peu plus petit
+        className: paysage ? "text-[7.5pt]" : "text-[6.5pt] [&_td]:[overflow-wrap:anywhere]",
         colonnes: (
           <colgroup>
             {/* La CNI s'écrit à la main : une colonne large (DG, 28/10/2026) */}
-            {[3, 19, 7, 7, 14, 4, 7, 14, 11, 7, 7].map((w, i) => (
+            {/* En portrait, la page est plus étroite : N°, cycle, téléphone et observation un peu
+                plus larges, pour que rien ne déborde (13/11/2026) */}
+            {(paysage ? [3, 19, 7, 7, 14, 4, 7, 14, 11, 7, 7] : [5, 18, 9, 7, 12, 4, 8, 11, 10, 8, 8]).map((w, i) => (
               <col key={i} style={{ width: `${w}%` }} />
             ))}
           </colgroup>
@@ -166,7 +172,7 @@ export function ImpressionEtatPaiement() {
       });
     });
     return { blocs, tableaux };
-  }, [d.donnees]);
+  }, [d.donnees, paysage]);
 
   if (d.erreur)
     return (
@@ -177,8 +183,8 @@ export function ImpressionEtatPaiement() {
   if (!contenu || !d.donnees) return <Chargement texte="Préparation de l’état de paiement…" />;
   return (
     <div className={`min-h-screen bg-zinc-200 py-6 print:bg-white print:py-0${gill ? " police-gill" : ""}`}>
-      <StyleImpressionA4 paysage />
-      <div className="no-print mx-auto mb-4 flex w-[297mm] flex-wrap items-center justify-between gap-2">
+      <StyleImpressionA4 paysage={paysage} />
+      <div className={`no-print mx-auto mb-4 flex ${paysage ? "w-[297mm]" : "w-[210mm]"} flex-wrap items-center justify-between gap-2`}>
         <span className="text-sm text-zinc-700">
           {d.donnees.titre} — {d.donnees.sousTitre}
         </span>
@@ -191,7 +197,7 @@ export function ImpressionEtatPaiement() {
           </div>
         )}
       </div>
-      <PagesA4 paysage blocs={contenu.blocs} tableaux={contenu.tableaux} pied={{ gauche: d.donnees.sousTitre, droite: "MEPPSA · DGRHAS" }} classeFeuille="feuille-liste" margeHaut={10} margeCote={10} margeBas={18} />
+      <PagesA4 paysage={paysage} blocs={contenu.blocs} tableaux={contenu.tableaux} pied={{ gauche: d.donnees.sousTitre, droite: "MEPPSA · DGRHAS" }} classeFeuille="feuille-liste" margeHaut={10} margeCote={10} margeBas={18} />
     </div>
   );
 }
