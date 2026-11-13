@@ -686,6 +686,21 @@ const TITRES: Record<string, [string, string, Ton]> = {
     "UserCog",
     "gris"
   ],
+  "ENROLES_DEJA_CONNUS_GARDES": [
+    "Enrôlés « déjà connus » gardés malgré tout",
+    "UserCog",
+    "jaune"
+  ],
+  "ENROLES_ECARTES_REMIS": [
+    "Écartés remis parmi les retenus",
+    "RotateCcw",
+    "jaune"
+  ],
+  "ENROLES_DEJA_CONNUS_ECARTES": [
+    "Enrôlés « déjà connus » écartés",
+    "Ban",
+    "rouge"
+  ],
   "EXPORT_CONFIGURATION": [
     "Configuration exportée",
     "FileText",

@@ -6,7 +6,9 @@ import { ChampOrigine } from "@/components/champ-origine";
 import { Pagination } from "@/components/pagination";
 import { ImportEnrolement } from "@/components/enrolement/import-enrolement";
 import { ChangerNote, EcrireSpecialite, PastilleSpecialite, SpecialitesACompleter } from "@/components/enrolement/changer-note";
-import { type Enrole, FicheEnrole, SelecteurCampagne, useCampagne } from "@/components/enrolement/commun";
+import { CelluleAge, type Enrole, FicheEnrole, SelecteurCampagne, useCampagne } from "@/components/enrolement/commun";
+import { useConfigEnrolement } from "@/components/enrolement/volontaires";
+import { BarreExport } from "@/components/export-liste";
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, Zone } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
@@ -276,6 +278,8 @@ export default function SaisieEnrolement() {
   const controleur = peut.controler(profil.role);
   const dg = peut.valider(profil.role);
   const { campagnes, liste, campagne, choisir } = useCampagne();
+  const conf = useConfigEnrolement().donnees?.configuration;
+  const limites = conf ? { min: conf.ageMinimum, max: conf.ageMaximum } : null;
   const [etat, setEtat] = useState<Etat>("A_CONTROLER");
   const [recherche, setRecherche] = useState("");
   const dossiers = useApi<Enrole[]>(campagne ? `/enrolement/dossiers${qs({ campagne: campagne.id, etat, recherche })}` : null);
@@ -426,7 +430,7 @@ export default function SaisieEnrolement() {
                   </Bouton>
                 )}
                 {etat === "RETENU" && (
-                  <Bouton onClick={() => api.telecharger(`/enrolement/dossiers/excel${qs({ campagne: campagne.id, etat: "RETENU" })}`, `Enrolement ${campagne.annee} - retenus.xlsx`)}>Excel des retenus</Bouton>
+                  <BarreExport chemin="/enrolement/listes/retenus" impression="/impression/enrolement-retenus" nom={`Liste des retenus ${campagne.annee}`} filtres={{ campagne: campagne.id }} erreur={(m) => setMessage({ ton: "rouge", texte: m })} />
                 )}
               </span>
             </div>
@@ -462,6 +466,7 @@ export default function SaisieEnrolement() {
                       <input type="checkbox" className="size-4 accent-marque-600" aria-label="Tout cocher" checked={tousCoches} onChange={() => setCoches((c) => { const n = new Set(c); for (const l of visibles) { if (tousCoches) n.delete(l.id); else n.add(l.id); } return n; })} />
                     </th>
                     <th>Nom et prénoms</th>
+                    <th title="Âge au 31 décembre de l’année de la campagne ; en rouge : hors des limites d’âge">Âge</th>
                     <th>Diplôme</th>
                     <th>Départements souhaités → retenu</th>
                     <th>Origine</th>
@@ -484,6 +489,9 @@ export default function SaisieEnrolement() {
                         {e.remarqueControle && <div className="text-[11px] font-medium text-rouge-600">À corriger : {e.remarqueControle}</div>}
                         {e.motifDecision && <div className="text-[11px] text-zinc-500">Motif : {e.motifDecision}</div>}
                         {e.recommandationEnAttente && <div className="mt-0.5 inline-flex rounded-full bg-or-100 px-2 py-0.5 text-[11px] font-medium text-or-700">Recommandation en attente</div>}
+                      </td>
+                      <td className="whitespace-nowrap text-[12px]">
+                        <CelluleAge naissance={e.dateNaissance} annee={campagne.annee} limites={limites} />
                       </td>
                       <td className="text-[12px]">
                         {e.diplomeLibelle}

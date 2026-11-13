@@ -4,7 +4,9 @@ import { ArrowRightLeft, MapPin, Stamp } from "lucide-react";
 import { useState } from "react";
 import { ChoixEtablissement } from "@/components/choix-etablissement";
 import { ChangerNote, EcrireSpecialite, PastilleSpecialite, SpecialitesACompleter } from "@/components/enrolement/changer-note";
-import { type Enrole, FicheEnrole, SelecteurCampagne, useCampagne } from "@/components/enrolement/commun";
+import { CelluleAge, type Enrole, FicheEnrole, SelecteurCampagne, useCampagne } from "@/components/enrolement/commun";
+import { useConfigEnrolement } from "@/components/enrolement/volontaires";
+import { BarreExport } from "@/components/export-liste";
 import { useSession } from "@/components/session";
 import { ProposerRecommandation } from "@/components/recommandation";
 import { Aide, Alerte, Annonce, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Modale, Saisie, Tableau, Vide } from "@/components/ui";
@@ -60,6 +62,9 @@ function Placement({ e, fermer, apres }: { e: Enrole; fermer: () => void; apres:
 export default function BaseEnroles() {
   const { profil, refs } = useSession();
   const { campagnes, liste, campagne, choisir } = useCampagne();
+  const conf = useConfigEnrolement().donnees?.configuration;
+  const limites = conf ? { min: conf.ageMinimum, max: conf.ageMaximum } : null;
+  const [erreurExport, setErreurExport] = useState<string | null>(null);
   const diplomes = useApi<{ code: string; libelle: string }[]>("/enrolement/diplomes");
   const [recherche, setRecherche] = useState("");
   const [diplome, setDiplome] = useState("");
@@ -112,6 +117,7 @@ export default function BaseEnroles() {
             <Bouton onClick={() => api.telecharger(`/enrolement/dossiers/excel${qs({ campagne: campagne.id, etat: "RETENU" })}`, `Enrolement ${campagne.annee} - base des enroles.xlsx`)}>
               Télécharger en Excel
             </Bouton>
+            <BarreExport chemin="/enrolement/listes/retenus" impression="/impression/enrolement-retenus" nom={`Liste des retenus ${campagne.annee}`} filtres={{ campagne: campagne.id }} erreur={setErreurExport} />
             </span>
           }
         >
@@ -130,6 +136,7 @@ export default function BaseEnroles() {
             </div>
           )}
           {dossiers.erreur && <Alerte>{dossiers.erreur}</Alerte>}
+          {erreurExport && <Alerte>{erreurExport}</Alerte>}
           <SpecialitesACompleter dossiers={lignes} apres={(t) => { setMessage(t); dossiers.recharger(); }} />
           {!dossiers.donnees ? (
             <Chargement />
@@ -141,6 +148,9 @@ export default function BaseEnroles() {
                 <tr>
                   <th>N°</th>
                   <th>Nom et prénoms</th>
+                  <th>
+                    Âge <Aide>Âge au 31 décembre {campagne.annee}, juste après la date de naissance. En rouge : hors des limites d’âge de la configuration{limites ? ` (${limites.min}–${limites.max} ans)` : ""}.</Aide>
+                  </th>
                   <th>Diplôme</th>
                   <th>Département retenu</th>
                   <th>Établissement</th>
@@ -157,6 +167,9 @@ export default function BaseEnroles() {
                         {e.nomComplet}
                       </button>
                       <div className="text-[11px] text-zinc-400">{e.dateNaissance ? e.dateNaissance.split("-").reverse().join("/") : "date ?"}</div>
+                    </td>
+                    <td className="whitespace-nowrap text-[12px]">
+                      <CelluleAge naissance={e.dateNaissance} annee={campagne.annee} limites={limites} />
                     </td>
                     <td className="text-[12px]">
                       {e.diplomeLibelle}

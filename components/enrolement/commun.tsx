@@ -171,3 +171,26 @@ export function FicheEnrole({ e, fermer }: { e: Enrole; fermer: () => void }) {
     </Modale>
   );
 }
+
+/**
+ * Âge au 31 décembre de l'année de la campagne (DG, 12/11/2026) : une date fixe, l'âge ne change
+ * pas d'un jour à l'autre. Hors des limites de la configuration (18–45 ans par défaut) : en rouge.
+ */
+export function ageAuFinDAnnee(naissance: string | null, annee: number): number | null {
+  const an = naissance ? Number(naissance.slice(0, 4)) : NaN;
+  return Number.isFinite(an) && an > 1900 ? annee - an : null;
+}
+
+export function CelluleAge({ naissance, annee, limites }: { naissance: string | null; annee: number; limites: { min: number; max: number } | null }) {
+  const age = ageAuFinDAnnee(naissance, annee);
+  if (age === null) return <span className="text-zinc-400">—</span>;
+  const hors = !!limites && (age < limites.min || age > limites.max);
+  return (
+    <span
+      className={hors ? "inline-flex rounded-full bg-rouge-100 px-2 py-0.5 font-semibold text-rouge-600" : "tabular-nums"}
+      title={`Âge au 31/12/${annee}${limites ? ` · limites ${limites.min}–${limites.max} ans${hors ? " : hors des limites" : ""}` : ""}`}
+    >
+      {age} ans
+    </span>
+  );
+}
