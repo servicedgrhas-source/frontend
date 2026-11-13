@@ -151,13 +151,23 @@ export function BarreDecisions({
           />
           Tout cocher ({nf.format(ids.length)})
         </label>
-        <span className="text-zinc-500">{n ? `${nf.format(n)} coché(s)` : "Cochez des lignes (ou tout), puis décidez."}</span>
+        {/* Les boutons ne comptent que les lignes cochées : sans case cochée, ils restent gris (13/11/2026) */}
+        {n ? (
+          <span className="text-zinc-500">{nf.format(n)} coché(s)</span>
+        ) : (
+          <span className="rounded-lg bg-amber-100 px-2 py-0.5 font-medium text-amber-900">Aucune ligne cochée : cochez « Tout cocher » ou la case à gauche des noms pour activer les boutons.</span>
+        )}
       </div>
       {peutSortir && (
         <div className="flex flex-wrap items-end gap-2">
           <Liste className="w-64" value={motif} onChange={(x) => setMotif(x.target.value)} vide="Motif de sortie…" options={motifs.map((m) => ({ valeur: m.code, libelle: m.libelle }))} />
           <Saisie type="date" className="w-40" value={date} onChange={(x) => setDate(x.target.value)} title="Date de sortie (le 1er du mois : pas payé ce mois-ci)" />
-          <Bouton variante="danger" disabled={!n || !motif || !date || envoi} onClick={sortir}>
+          <Bouton
+            variante="danger"
+            disabled={!n || !motif || !date || envoi}
+            onClick={sortir}
+            title={!n ? "Cochez d’abord des lignes" : !motif ? "Choisissez le motif de sortie" : !date ? "Indiquez la date de sortie" : undefined}
+          >
             <LogOut /> Sortir du registre ({nf.format(n)})
           </Bouton>
         </div>
