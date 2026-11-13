@@ -1080,6 +1080,16 @@ const TITRES: Record<string, [string, string, Ton]> = {
     "Volontaires intégrés au personnel",
     "UserPlus",
     "vert"
+  ],
+  "VOLONTAIRES_ALIGNES_BOURSE": [
+    "Registre des volontaires aligné sur la bourse d’un mois",
+    "ClipboardCheck",
+    "jaune"
+  ],
+  "COMMUNAUTAIRES_DEPARTEMENT_REMPLACES": [
+    "Communautaires d’un département remplacés",
+    "ArrowLeftRight",
+    "jaune"
   ]
 };
 
@@ -1133,7 +1143,7 @@ export const DOMAINES = [
     test: (a: string) => /CANDIDAT|TRANSMISSION|RECEPTION|CONTENTIEUX_AGE|QUOTA_AUTRES|MEMBRE_COMMISSION(?!_ENROLEMENT)|MISE_DE_COTE|REPORT_QUOTA|ANNULATION_REPORT|ANCIENS_RECRUTES|RETOUR_FP|^AJOUT_PIECE|^MODIFICATION_PIECE|^SUPPRESSION_PIECE|AJOUT_MANUEL_RECRUTE/.test(a),
   },
   { valeur: "enrolement", libelle: "Enrôlement", test: (a: string) => /ENROLE|REPARTITION_PROPOSEE|REPARTITION_VALIDEE/.test(a) },
-  { valeur: "volontaires", libelle: "Volontaires, bourse et mise en route", test: (a: string) => /VOLONTAIRE|BOURSE|MISE_EN_ROUTE|REGULARISATION|RETENUES|ECARTS_REGISTRE/.test(a) },
+  { valeur: "volontaires", libelle: "Volontaires, bourse et mise en route", test: (a: string) => /VOLONTAIRE|COMMUNAUTAIRE|BOURSE|MISE_EN_ROUTE|REGULARISATION|RETENUES|ECARTS_REGISTRE/.test(a) },
   { valeur: "notes", libelle: "Notes de service", test: (a: string) => a.startsWith("NOTE") || a.startsWith("PREPARATION") || a === "MODIFICATION_NOTE" || /RECTIFICATIF/.test(a) },
   { valeur: "mutations", libelle: "Mutations", test: (a: string) => /MUTATION|AVIS_DDEPPSA|AVIS_DGRHAS|AVIS_MINISTRE|JUSTIFICATIF|DEMANDE_RETIREE|DEMANDE_REINTEGREE|RATTACHEMENT/.test(a) },
   { valeur: "prestations", libelle: "Demandes de prestation", test: (a: string) => /PRESTATION|DEMANDE|AVIS_CIRCUIT|INSTRUCTION|ETAPE_FRANCHIE|PIECES_AJOUTEES|PIECE_RETIREE|CIRCUIT/.test(a) },

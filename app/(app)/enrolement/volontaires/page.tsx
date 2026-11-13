@@ -10,6 +10,7 @@ import { api, qs, useApi } from "@/lib/api";
 import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
+import { AlignerBourse } from "@/components/enrolement/aligner-bourse";
 import { RemplacerDepartement } from "@/components/enrolement/remplacer-departement";
 
 interface Page {
@@ -711,6 +712,7 @@ export default function RegistreVolontaires() {
   const [recherche, setRecherche] = useState("");
   const [population, setPopulation] = useState<Population>("VOLONTAIRE");
   const [remplacer, setRemplacer] = useState(false);
+  const [aligner, setAligner] = useState(false);
   const [vague, setVague] = useState("");
   const [statut, setStatut] = useState("EN_POSTE");
   const [departement, setDepartement] = useState("");
@@ -768,6 +770,12 @@ export default function RegistreVolontaires() {
                   <Aide>Ce que le registre et la base du personnel ne disent pas pareil : naissance, sexe, téléphone, département, établissement, diplôme, prise de service… On reprend d’un clic ce que la fiche du personnel connaît, et on choisit la bonne valeur quand elles diffèrent.</Aide>
                 </Bouton>
               </Link>
+              {population === "VOLONTAIRE" && profil.role !== "DIRECTEUR" && (
+                <Bouton onClick={() => setAligner(true)}>
+                  Aligner sur la bourse d’un mois
+                  <Aide>Le fichier de la bourse payée d’un mois (septembre, puis octobre…) : les payés restent ou entrent, ceux du registre qui ne sont plus payés sortent avec le motif de la feuille RETRAITS. On vérifie d’abord, rien n’est enregistré tant qu’on n’a pas confirmé.</Aide>
+                </Bouton>
+              )}
               {population === "COMMUNAUTAIRE" && profil.role !== "DIRECTEUR" && (
                 <Bouton onClick={() => setRemplacer(true)}>
                   Remplacer un département
@@ -997,6 +1005,7 @@ export default function RegistreVolontaires() {
         />
       )}
       {remplacer && <RemplacerDepartement fermer={() => setRemplacer(false)} apres={() => liste.recharger()} />}
+      {aligner && <AlignerBourse fermer={() => setAligner(false)} apres={() => liste.recharger()} />}
     </div>
   );
 }
