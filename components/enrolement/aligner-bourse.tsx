@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, FileSpreadsheet, RefreshCw } from "lucide-react";
+import { Check, Download, FileSpreadsheet, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { Alerte, Bouton, Champ, ChoixMois, Liste, Modale } from "@/components/ui";
 import { api, qs } from "@/lib/api";
@@ -13,6 +13,19 @@ interface Court {
 interface Feuille {
   nom: string;
   personnes: number;
+  /** Feuille masquée dans Excel : souvent une ancienne version de la liste. */
+  masquee: boolean;
+}
+
+interface PayeRetire {
+  nom: string;
+  ligne: number;
+  departement: string | null;
+  etablissement: string | null;
+  cycle: string | null;
+  montant: number;
+  motifRetrait: string;
+  ligneRetrait: number | null;
 }
 
 interface Rapport {
@@ -28,6 +41,7 @@ interface Rapport {
   sortants: Court;
   sortantsParMotif: { motif: string; n: number }[];
   payesMaisRetires: Court;
+  payesMaisRetiresDetail: PayeRetire[];
   doublonsDansListe: Court;
   plusieursFiches: Court;
   rapproches: Court;
@@ -106,11 +120,13 @@ export function AlignerBourse({ fermer, apres }: { fermer: () => void; apres: ()
       setFichier(f);
       setFeuilles(r);
       // La liste payée : « Liste générale … » la plus longue, sinon la feuille la plus longue
-      const listes = r.filter((x) => !/retrait/i.test(x.nom));
+      // Les feuilles masquées sont souvent d'anciennes versions (septembre 2026 : « Liste générale (2) »)
+      const visibles = r.filter((x) => !x.masquee);
+      const listes = (visibles.length ? visibles : r).filter((x) => !/retrait/i.test(x.nom));
       const generales = listes.filter((x) => /liste\s*g[ée]n[ée]rale/i.test(x.nom));
       const plusLongue = (t: Feuille[]) => t.reduce<Feuille | null>((a, x) => (!a || x.personnes > a.personnes ? x : a), null);
       setFeuille(plusLongue(generales.length ? generales : listes)?.nom ?? "");
-      setRetraits(r.find((x) => /retrait/i.test(x.nom))?.nom ?? "");
+      setRetraits((r.find((x) => /retrait/i.test(x.nom) && !x.masquee) ?? r.find((x) => /retrait/i.test(x.nom)))?.nom ?? "");
       const d = moisDuNom(f.name);
       if (d) setMois(d);
     } catch (e) {
@@ -150,7 +166,30 @@ export function AlignerBourse({ fermer, apres }: { fermer: () => void; apres: ()
   const aReverifier = !!rapport?.essai && verifie !== [...memes].sort().join("|");
   const avant = rapport ? rapport.gardes + rapport.sortants.n : 0;
   const beaucoupDeSorties = !!rapport?.essai && avant > 0 && rapport.sortants.n > Math.max(50, avant * 0.2);
-  const options = feuilles.map((x) => ({ valeur: x.nom, libelle: `${x.nom} (${nf.format(x.personnes)})` }));
+  // Beaucoup de réintégrés : souvent une ancienne liste (feuille masquée) qui ramène des sortis
+  const beaucoupDeReintegres = !!rapport?.essai && rapport.reintegres.n > Math.max(50, rapport.personnes * 0.1);
+  const alerte = beaucoupDeSorties || beaucoupDeReintegres;
+  const feuilleChoisie = feuilles.find((x) => x.nom === feuille);
+  // Visibles d'abord, les masquées à la fin et signalées
+  const options = [...feuilles.filter((x) => !x.masquee), ...feuilles.filter((x) => x.masquee)].map((x) => ({
+    valeur: x.nom,
+    libelle: `${x.nom} (${nf.format(x.personnes)})${x.masquee ? " — masquée" : ""}`,
+  }));
+  /** La liste des payés qui sont aussi dans les RETRAITS, à ouvrir dans Excel (CSV). */
+  const telechargerRetires = (r: Rapport) => {
+    const champ = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const lignes = [
+      ["N°", "Noms et prénoms", "Ligne (liste payée)", "Département", "Établissement", "Cycle", "Montant payé", "Motif du retrait", "Ligne (RETRAITS)"],
+      ...r.payesMaisRetiresDetail.map((p, i) => [i + 1, p.nom, p.ligne, p.departement, p.etablissement, p.cycle, p.montant, p.motifRetrait, p.ligneRetrait]),
+    ];
+    // BOM : Excel lit les accents ; « ; » : séparateur d'Excel en français
+    const csv = "﻿" + lignes.map((l) => l.map(champ).join(";")).join("\r\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    a.download = `Payés mais dans RETRAITS - ${libelleMois(r.mois)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
 
   return (
     <Modale titre="Aligner le registre sur la bourse d’un mois" ouverte fermer={fermer} large>
@@ -179,7 +218,7 @@ export function AlignerBourse({ fermer, apres }: { fermer: () => void; apres: ()
           />
         </label>
         {feuilles.length > 0 && (
-          <div className="grid gap-3 md:grid-cols-[1.3fr_1.3fr_1fr]">
+          <div className="grid gap-3 md:grid-cols-2">
             <Champ libelle="Feuille des payés">
               <Liste
                 value={feuille}
@@ -202,7 +241,7 @@ export function AlignerBourse({ fermer, apres }: { fermer: () => void; apres: ()
                 options={options}
               />
             </Champ>
-            <Champ libelle="Mois payé">
+            <Champ libelle="Mois payé" className="md:col-span-2 md:max-w-sm">
               <ChoixMois
                 value={mois}
                 onChange={(m) => {
@@ -212,6 +251,12 @@ export function AlignerBourse({ fermer, apres }: { fermer: () => void; apres: ()
               />
             </Champ>
           </div>
+        )}
+        {feuilleChoisie?.masquee && (
+          <Alerte ton="jaune">
+            La feuille « {feuilleChoisie.nom} » est <strong>masquée</strong> dans le fichier : c’est souvent une ancienne version de la liste. La liste payée est
+            en général la feuille visible (ex. « Liste générale (3) »).
+          </Alerte>
         )}
         {erreur && <Alerte>{erreur}</Alerte>}
 
@@ -277,11 +322,22 @@ export function AlignerBourse({ fermer, apres }: { fermer: () => void; apres: ()
                 </div>
               </div>
             )}
+            {rapport.payesMaisRetires.n > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-rouge-100/50 px-3 py-2 text-[12px]">
+                <span className="text-rouge-600">
+                  <strong>{nf.format(rapport.payesMaisRetires.n)}</strong> payé(s) qui sont aussi dans la feuille des retraits : ils restent en poste, à vérifier
+                  avec le service de la bourse.
+                </span>
+                <Bouton variante="discret" onClick={() => telechargerRetires(rapport)}>
+                  <Download /> Télécharger la liste (Excel)
+                </Bouton>
+              </div>
+            )}
             <ListeCourte
               titre="Payés mais aussi dans les RETRAITS (à vérifier)"
               c={rapport.payesMaisRetires}
               ton="rouge"
-              aide="Ils sont sur la liste payée : ils restent en poste. Vérifiez auprès du service de la bourse s’ils devaient être retirés."
+              aide="Ils sont sur la liste payée : ils restent en poste. Vérifiez auprès du service de la bourse s’ils devaient être retirés. La liste complète, avec le département, l’établissement et le motif du retrait : « Télécharger la liste »."
             />
             <ListeCourte titre="Sortent (plus payés)" c={rapport.sortants} ton="rouge" />
             <ListeCourte titre="Entrent (nouveaux)" c={rapport.nouveaux} />
@@ -293,11 +349,14 @@ export function AlignerBourse({ fermer, apres }: { fermer: () => void; apres: ()
             <ListeCourte titre="Nouveaux sans cycle reconnu" c={rapport.sansCategorie} ton="or" />
             <ListeCourte titre="Nouveaux sans département reconnu" c={rapport.sansDepartement} ton="or" />
             <ListeCourte titre="Montant payé différent du barème" c={rapport.montantsDifferents} ton="or" />
-            {beaucoupDeSorties && (
+            {alerte && (
               <div className="space-y-2 rounded-xl bg-rouge-100/60 px-3 py-2 text-rouge-600">
                 <div className="font-semibold">
-                  Attention : {nf.format(rapport.sortants.n)} des {nf.format(avant)} volontaires en poste sortiraient. Vérifiez que c’est le bon fichier, la bonne
-                  feuille et le bon mois.
+                  Attention :{" "}
+                  {beaucoupDeSorties ? `${nf.format(rapport.sortants.n)} des ${nf.format(avant)} volontaires en poste sortiraient` : ""}
+                  {beaucoupDeSorties && beaucoupDeReintegres ? " et " : ""}
+                  {beaucoupDeReintegres ? `${nf.format(rapport.reintegres.n)} volontaires sortis seraient réintégrés` : ""}. Vérifiez que c’est le bon fichier, la
+                  bonne feuille (pas une feuille masquée) et le bon mois.
                 </div>
                 <label className="flex items-center gap-2">
                   <input type="checkbox" className="size-4 accent-rouge-600" checked={accepteSorties} onChange={(e) => setAccepteSorties(e.target.checked)} />
@@ -316,7 +375,7 @@ export function AlignerBourse({ fermer, apres }: { fermer: () => void; apres: ()
               <Bouton chargement={envoi && !!feuilles.length && !rapport?.essai} disabled={!fichier || !feuille || envoi} onClick={() => envoyer(true)}>
                 <RefreshCw /> Vérifier
               </Bouton>
-              <Bouton variante="principal" chargement={envoi && !!rapport?.essai} disabled={!rapport?.essai || envoi || aReverifier || (beaucoupDeSorties && !accepteSorties)} onClick={() => envoyer(false)}>
+              <Bouton variante="principal" chargement={envoi && !!rapport?.essai} disabled={!rapport?.essai || envoi || aReverifier || (alerte && !accepteSorties)} onClick={() => envoyer(false)}>
                 <Check /> Aligner pour de bon
               </Bouton>
             </>

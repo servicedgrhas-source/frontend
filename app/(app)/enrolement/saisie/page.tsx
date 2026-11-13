@@ -29,7 +29,16 @@ interface Doublon {
   naissance: string | null;
   detail: string;
   probable: boolean;
+  /** Dossier d'enrôlement trouvé : on peut l'ouvrir à sa bonne étape. */
+  dossier?: { id: string; campagneId: number; etat: Etat };
 }
+
+const ETAPES: Record<Etat, string> = {
+  A_CONTROLER: "1. À contrôler",
+  CONTROLE: "2. À décider par la DGRHAS",
+  RETENU: "3. Retenus",
+  NON_RETENU: "Non retenus",
+};
 
 const vide = {
   nomComplet: "",
@@ -76,7 +85,7 @@ const valeursDe = (e?: Enrole): Valeurs =>
     : vide;
 
 /** Formulaire d'un dossier d'enrôlement (création ou correction). */
-function FormulaireEnrole({ campagneId, dossier, apres, annuler }: { campagneId: number; dossier?: Enrole; apres: (texte: string) => void; annuler?: () => void }) {
+function FormulaireEnrole({ campagneId, dossier, apres, annuler, voir }: { campagneId: number; dossier?: Enrole; apres: (texte: string) => void; annuler?: () => void; voir?: (d: Doublon) => void }) {
   const { refs } = useSession();
   const diplomes = useApi<Diplome[]>("/enrolement/diplomes");
   const referentiel = useApi<{ cycles: string[]; specialites: string[] }>("/enrolement/referentiel");
@@ -228,10 +237,22 @@ function FormulaireEnrole({ campagneId, dossier, apres, annuler }: { campagneId:
       {doublons.length > 0 && (
         <Alerte ton={doublons.some((d) => d.probable) ? "rouge" : "jaune"}>
           <div className="font-semibold">{doublons.some((d) => d.probable) ? "Cette personne semble déjà enregistrée :" : "Personnes qui ressemblent :"}</div>
-          <ul className="mt-1 text-[12px]">
+          <p className="mt-0.5 text-[12px] font-normal opacity-80">
+            {doublons.some((d) => d.probable)
+              ? "Mêmes noms (ou noms très proches) et même date de naissance : c’est sans doute la même personne."
+              : "Un nom en commun, ou la même date de naissance : ce n’est peut-être pas la même personne. Vérifiez avant d’enregistrer."}
+          </p>
+          <ul className="mt-1 space-y-1 text-[12px]">
             {doublons.map((d, i) => (
-              <li key={i}>
-                {d.nom} · {d.naissance ? d.naissance.split("-").reverse().join("/") : "date ?"} — {d.source} ({d.detail})
+              <li key={i} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span>
+                  {d.nom} · {d.naissance ? d.naissance.split("-").reverse().join("/") : "date ?"} — {d.source} ({d.detail})
+                </span>
+                {voir && d.dossier && d.dossier.campagneId === campagneId && (
+                  <button type="button" className="rounded-full bg-white/70 px-2 py-0.5 font-medium underline-offset-2 ring-1 ring-current/30 hover:bg-white" onClick={() => voir(d)}>
+                    Voir ce dossier ({ETAPES[d.dossier.etat]})
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -283,6 +304,20 @@ export default function SaisieEnrolement() {
   const [etat, setEtat] = useState<Etat>("A_CONTROLER");
   const [recherche, setRecherche] = useState("");
   const dossiers = useApi<Enrole[]>(campagne ? `/enrolement/dossiers${qs({ campagne: campagne.id, etat, recherche })}` : null);
+  // La recherche ne regarde que l'étape ouverte : on dit aussi combien sont trouvés dans les autres étapes
+  const rechercheAilleurs = recherche.trim().length >= 2;
+  const ailleurs = useApi<Enrole[]>(campagne && rechercheAilleurs ? `/enrolement/dossiers${qs({ campagne: campagne.id, recherche })}` : null);
+  const autresEtapes = (Object.keys(ETAPES) as Etat[])
+    .filter((x) => x !== etat)
+    .map((x) => ({ etat: x, n: (ailleurs.donnees ?? []).filter((d) => d.etat === x).length }))
+    .filter((x) => x.n > 0);
+  /** Ouvrir un dossier signalé par la saisie : sa bonne étape, son nom dans la recherche. */
+  const voirDossier = (d: Doublon) => {
+    if (!d.dossier) return;
+    setEtat(d.dossier.etat);
+    setRecherche(d.nom);
+    setTimeout(() => document.getElementById("liste-dossiers")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  };
   const [coches, setCoches] = useState<Set<string>>(new Set());
   // 100 dossiers par page : avec 5 000 lignes d'un coup, le navigateur ne dessinait plus le bas de la page
   // La page revient à 1 quand l'étape, la recherche ou la campagne change
@@ -351,7 +386,7 @@ export default function SaisieEnrolement() {
         <>
           {campagne.ouverte ? (
             <Carte titre="Nouveau dossier">
-              <FormulaireEnrole campagneId={campagne.id} apres={(t) => { setMessage({ ton: "vert", texte: t }); recharger(); }} />
+              <FormulaireEnrole campagneId={campagne.id} voir={voirDossier} apres={(t) => { setMessage({ ton: "vert", texte: t }); recharger(); }} />
             </Carte>
           ) : (
             <Alerte ton="jaune">La campagne {campagne.annee} est fermée : on ne saisit plus de nouveaux dossiers (le DG peut la rouvrir).</Alerte>
@@ -369,6 +404,7 @@ export default function SaisieEnrolement() {
           {/* Doublons probables et déjà connus : à trancher par la DGRHAS (06/11/2026) */}
           <ATrancher campagneId={campagne.id} apres={(t, ton = "vert") => { setMessage({ ton, texte: t }); recharger(); }} />
 
+          <div id="liste-dossiers" className="scroll-mt-4" />
           <Carte titre="Dossiers" actions={<Saisie className="w-64" placeholder="Rechercher un nom…" value={recherche} onChange={(e) => setRecherche(e.target.value)} />}>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <Segments
@@ -386,6 +422,18 @@ export default function SaisieEnrolement() {
               />
               <span className="text-[12px] text-zinc-500">{coches.size ? `${coches.size} coché(s)` : ""}</span>
             </div>
+            {rechercheAilleurs && autresEtapes.length > 0 && (
+              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl bg-sky-50 px-4 py-2.5 text-[13px] text-sky-800 ring-1 ring-sky-200">
+                <span>
+                  La recherche ne regarde que l’étape ouverte. « {recherche.trim()} » est aussi trouvé dans :
+                </span>
+                {autresEtapes.map((x) => (
+                  <button key={x.etat} type="button" className="rounded-full bg-white px-3 py-1 font-medium ring-1 ring-sky-200 hover:bg-sky-100" onClick={() => setEtat(x.etat)}>
+                    {ETAPES[x.etat]} ({x.n})
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-zinc-50 px-4 py-3 text-[13px]">
               <span className="text-zinc-600">
                 {
