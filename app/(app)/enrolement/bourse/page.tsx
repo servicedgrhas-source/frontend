@@ -11,6 +11,14 @@ import { api, qs, useApi } from "@/lib/api";
 import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
+/** « Septembre 2026 » : le mois avec sa majuscule, comme dans les noms des fichiers du DG. */
+const moisMajuscule = (m: string) => moisFr(m).charAt(0).toUpperCase() + moisFr(m).slice(1);
+
+/** Les noms des fichiers du DG (13/11/2026) : « Fiche de répartition Bourse Volontaire_Septembre 2026 »,
+ *  « ETATS DE PAIEMENT DES ENSEIGNANTS COMMUNAUTAIRES SEPTEMBRE 2026 ». */
+const nomEtat = (population: Population, mois: string, statut: string) =>
+  `${population === "VOLONTAIRE" ? `Fiche de répartition Bourse Volontaire_${moisMajuscule(mois)}` : `ETATS DE PAIEMENT DES ENSEIGNANTS COMMUNAUTAIRES ${moisFr(mois).toUpperCase()}`}${statut === "VALIDE" ? "" : " (projet)"}`;
+
 interface Anomalie {
   code: string;
   gravite: "BLOQUANT" | "SIGNALE";
@@ -68,6 +76,23 @@ export default function BourseMensuelle() {
   const [motif, setMotif] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
+  // Police des documents (Excel, Word, PDF) : l'actuelle ou Gill Sans MT, retenue sur ce poste (13/11/2026)
+  const [police, setPolice] = useState<"actuelle" | "gill">(() => {
+    try {
+      return typeof window !== "undefined" && localStorage.getItem("police-documents") === "gill" ? "gill" : "actuelle";
+    } catch {
+      return "actuelle";
+    }
+  });
+  const choisirPolice = (p: "actuelle" | "gill") => {
+    setPolice(p);
+    try {
+      localStorage.setItem("police-documents", p);
+    } catch {
+      /* stockage indisponible : le choix vaut pour cette page */
+    }
+  };
+  const avecPolice = (c: string) => (police === "gill" ? `${c}${c.includes("?") ? "&" : "?"}police=gill` : c);
   const [confirmation, demander] = useConfirmation();
   /** Lignes cochées d'un contrôle, pour décider en masse (DG, 27/10 puis 13/11/2026). */
   const [coches, setCoches] = useState<Set<string>>(new Set());
@@ -218,20 +243,31 @@ export default function BourseMensuelle() {
             <Chiffre ton={bloquants.length ? "rouge" : "gris"} libelle="Contrôles bloquants" valeur={nf.format(bloquants.length)} detail={`${nf.format(anomalies.length - bloquants.length)} signalés`} />
           </div>
 
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-zinc-600" title="Police des fichiers Excel et Word et de l’impression (PDF)">Police des documents :</span>
+            <Segments
+              valeur={police}
+              options={[
+                { valeur: "actuelle", libelle: "Actuelle" },
+                { valeur: "gill", libelle: <span style={{ fontFamily: "'Gill Sans MT', 'Gill Sans', sans-serif" }}>Gill Sans MT</span> },
+              ]}
+              changer={choisirPolice}
+            />
+          </div>
           <div className="flex flex-wrap gap-2">
-            <Bouton onClick={() => api.telecharger(`/enrolement/bourse/${e.id}/excel`, `${population === "VOLONTAIRE" ? "Bourse" : "Communautaires"} ${e.mois}${e.statut === "VALIDE" ? "" : " (projet)"}.xlsx`).catch((x: Error) => setErreur(x.message))}>
+            <Bouton onClick={() => api.telecharger(avecPolice(`/enrolement/bourse/${e.id}/excel`), `${nomEtat(population, e.mois, e.statut)}.xlsx`).catch((x: Error) => setErreur(x.message))}>
               <Download /> État de paiement Excel
             </Bouton>
-            <Bouton onClick={() => api.telecharger(`/enrolement/bourse/${e.id}/word`, `${population === "VOLONTAIRE" ? "Bourse" : "Communautaires"} ${e.mois}${e.statut === "VALIDE" ? "" : " (projet)"}.docx`).catch((x: Error) => setErreur(x.message))}>
+            <Bouton onClick={() => api.telecharger(avecPolice(`/enrolement/bourse/${e.id}/word`), `${nomEtat(population, e.mois, e.statut)}.docx`).catch((x: Error) => setErreur(x.message))}>
               <FileText /> Word
             </Bouton>
             <Bouton
-              onClick={() => api.telecharger(`/enrolement/bourse/${e.id}/prise-en-charge`, `Fiche de prise en charge ${e.mois}.xlsx`).catch((x: Error) => setErreur(x.message))}
-              title="Par département et par cycle (alphabétisation et post-alpha comprises) : effectif, taux, montant, puis montants mensuel, trimestriel et annuel"
+              onClick={() => api.telecharger(avecPolice(`/enrolement/bourse/${e.id}/prise-en-charge`), `Fiche de prise en charge ${population === "VOLONTAIRE" ? "Volontaires" : "Communautaires"} ${moisMajuscule(e.mois)}${e.statut === "VALIDE" ? "" : " (projet)"}.xlsx`).catch((x: Error) => setErreur(x.message))}
+              title="Par département et par cycle (alphabétisation et post-alpha comprises) : effectif et montant (le taux dans le titre du cycle), puis montants mensuel, trimestriel et annuel"
             >
               <Download /> Fiche de prise en charge
             </Bouton>
-            <Bouton onClick={() => window.open(`/impression/bourse/${e.id}`, "_blank")} title="État à imprimer ou à enregistrer en PDF : en-tête, CNI, émargement, total et signature">
+            <Bouton onClick={() => window.open(avecPolice(`/impression/bourse/${e.id}`), "_blank")} title="État à imprimer ou à enregistrer en PDF : en-tête, CNI, émargement, total et signature">
               <Printer /> Imprimer / PDF
             </Bouton>
             {gerer && e.statut === "BROUILLON" && (
@@ -342,7 +378,7 @@ export default function BourseMensuelle() {
                       mois={e?.mois ?? moisCourant()}
                       gerer={decider}
                       ouvrir={(x) => setFiche({ id: x.id })}
-                      exporter={() => api.telecharger(`/enrolement/bourse/${id}/payes-deux-fois/excel`, `Payés deux fois - ${e ? moisFr(e.mois) : ""}.xlsx`).catch((x: Error) => setErreur(x.message))}
+                      exporter={() => api.telecharger(avecPolice(`/enrolement/bourse/${id}/payes-deux-fois/excel`), `Payés deux fois - ${e ? moisFr(e.mois) : ""}.xlsx`).catch((x: Error) => setErreur(x.message))}
                       apres={apresDecision}
                       demander={demander}
                     />

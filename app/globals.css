@@ -184,6 +184,12 @@ div.page-a4:last-of-type {
   }
 }
 
+/* Police « Gill Sans MT » choisie pour l’impression de la bourse (13/11/2026) */
+.police-gill .feuille-liste,
+.police-gill .feuille-note {
+  font-family: "Gill Sans MT", "Gill Sans", "Gill Sans Nova", Calibri, sans-serif;
+}
+
 /* Listes envoyées à la Fonction Publique avec les dossiers */
 .feuille-liste {
   font-family: Arial, Helvetica, sans-serif;

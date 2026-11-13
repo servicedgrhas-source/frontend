@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo } from "react";
 import { PagesA4, StyleImpressionA4, type Bloc, type Tableau } from "@/components/pages-a4";
 import { Alerte, Bouton, Chargement } from "@/components/ui";
@@ -29,6 +29,8 @@ const nf = new Intl.NumberFormat("fr-FR");
  */
 export function ImpressionEtatPaiement() {
   const { id } = useParams<{ id: string }>();
+  // ?police=gill : l'état en Gill Sans MT, au choix de la page Paiement mensuel (13/11/2026)
+  const gill = useSearchParams().get("police") === "gill";
   const d = useApi<EtatPaiement>(`/enrolement/bourse/${id}/etat-paiement`);
   useEffect(() => {
     if (!lireSession().jeton) window.location.href = "/connexion";
@@ -174,7 +176,7 @@ export function ImpressionEtatPaiement() {
     );
   if (!contenu || !d.donnees) return <Chargement texte="Préparation de l’état de paiement…" />;
   return (
-    <div className="min-h-screen bg-zinc-200 py-6 print:bg-white print:py-0">
+    <div className={`min-h-screen bg-zinc-200 py-6 print:bg-white print:py-0${gill ? " police-gill" : ""}`}>
       <StyleImpressionA4 paysage />
       <div className="no-print mx-auto mb-4 flex w-[297mm] flex-wrap items-center justify-between gap-2">
         <span className="text-sm text-zinc-700">
