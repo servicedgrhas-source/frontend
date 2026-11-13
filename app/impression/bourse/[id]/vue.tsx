@@ -77,11 +77,26 @@ export function ImpressionEtatPaiement() {
         nouvellePage: k > 0,
         contenu: (
           <div className="mb-3 text-center leading-tight">
-            <div className="text-[9.5pt] font-bold">RÉPUBLIQUE DU CONGO</div>
-            <div className="text-[8pt]">Unité * Travail * Progrès</div>
-            <div className="mt-1 text-[9pt] font-bold">MINISTÈRE DE L’ENSEIGNEMENT PRÉSCOLAIRE, PRIMAIRE, SECONDAIRE ET DE L’ALPHABÉTISATION</div>
-            <div className="text-[8.5pt] font-bold">DIRECTION GÉNÉRALE DES RESSOURCES HUMAINES ET DE L’ADMINISTRATION SCOLAIRE</div>
-            <div className="mt-3 text-[13pt] font-bold">{e.titre}</div>
+            {/* L'en-tête officiel, celui du récapitulatif mis en forme par le DG (13/11/2026) : le
+                ministère, le cabinet et la DGRHAS à gauche, la République à droite */}
+            <div className="flex items-start justify-between gap-6 text-[9.5pt] font-bold">
+              <div className="w-[56%]">
+                <div>MINISTERE DE L’ENSEIGNEMENT PRESCOLAIRE,</div>
+                <div>PRIMAIRE, SECONDAIRE ET DE L’ALPHABETISATION</div>
+                <div>-----------</div>
+                <div>CABINET</div>
+                <div>-----------</div>
+                <div>DIRECTION GENERALE DES RESSOURCES HUMAINES</div>
+                <div>ET DE L’ADMINISTRATION SCOLAIRE</div>
+                <div>-----------</div>
+              </div>
+              <div className="w-[32%]">
+                <div>REPUBLIQUE DU CONGO</div>
+                <div>Unité - Travail - Progrès</div>
+                <div>-----------</div>
+              </div>
+            </div>
+            <div className="mt-4 text-[13pt] font-bold">{e.titre}</div>
             <div className="text-[10pt] font-bold">
               {e.sousTitre} — {s.titre}
             </div>
