@@ -214,6 +214,12 @@ export default function ConfigurationEnrolement() {
               <Champ libelle="Âge maximum">
                 <Saisie inputMode="numeric" value={String(c.ageMaximum)} onChange={(e) => maj({ ageMaximum: nombre(e.target.value) ?? 0 })} />
               </Champ>
+              <Champ libelle="Âge minimum des communautaires">
+                <Saisie inputMode="numeric" value={String(c.ageMinimumCommunautaires ?? 18)} onChange={(e) => maj({ ageMinimumCommunautaires: nombre(e.target.value) ?? 0 })} />
+              </Champ>
+              <Champ libelle="Âge maximum des communautaires" aide="« âge improbable » au-delà">
+                <Saisie inputMode="numeric" value={String(c.ageMaximumCommunautaires ?? 60)} onChange={(e) => maj({ ageMaximumCommunautaires: nombre(e.target.value) ?? 0 })} />
+              </Champ>
               <Champ libelle="Téléphone partagé à partir de" aide="volontaires payés">
                 <Saisie inputMode="numeric" value={String(c.telephonePartage)} onChange={(e) => maj({ telephonePartage: nombre(e.target.value) ?? 0 })} />
               </Champ>

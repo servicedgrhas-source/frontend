@@ -1101,6 +1101,16 @@ const TITRES: Record<string, [string, string, Ton]> = {
     "ClipboardCheck",
     "jaune"
   ],
+  "DATES_SORTIE_CORRIGEES": [
+    "Dates de sortie corrigées en série",
+    "CalendarDays",
+    "jaune"
+  ],
+  "CONTROLES_BOURSE_DECIDES": [
+    "Décisions sur les contrôles de la bourse",
+    "ClipboardCheck",
+    "jaune"
+  ],
   "COMMUNAUTAIRES_ALIGNES_ETAT": [
     "Communautaires alignés sur un état de paiement",
     "ClipboardCheck",

@@ -1,9 +1,10 @@
 "use client";
 
-import { CheckCircle2, Download, FileText, LogOut, Printer, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import { CheckCircle2, Download, FileText, Printer, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { categoriesDe, FicheVolontaire, type ProblemeBourse, deMois, fcfa, LISTES, moisFr, nf, peutGerer, type Population, useConfigEnrolement } from "@/components/enrolement/volontaires";
+import { BarreDecisions, DecisionsDeuxFois, type DeuxFois } from "@/components/enrolement/controles-bourse";
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, Chiffre, ChoixMois, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, Zone, useConfirmation } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
@@ -42,20 +43,6 @@ interface Detail {
   controles: Record<string, { libelle: string; gravite: "BLOQUANT" | "SIGNALE" }>;
 }
 
-/** Une personne d'une paire « payés deux fois » ; `paye` : montant de cet état (null : pas payée sur cette liste ce mois-ci). */
-interface PersonneDeuxFois {
-  id: string;
-  nomComplet: string;
-  liste: string;
-  etablissement: string | null;
-  departement: string | null;
-  categorie: string | null;
-  paye: number | null;
-}
-interface DeuxFois {
-  personnes: number;
-  paires: { code: string; controle: string; a: PersonneDeuxFois; b: PersonneDeuxFois | null }[];
-}
 /** Filtre des contrôles qui réunit « Inscrit deux fois » et « Payé aussi sur l'autre liste ». */
 const DEUX_FOIS = "DEUX_FOIS";
 
@@ -82,9 +69,8 @@ export default function BourseMensuelle() {
   const [message, setMessage] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [confirmation, demander] = useConfirmation();
-  /** « Déjà recruté à la FP » cochés, à sortir du registre d'un coup (DG, 27/10/2026). */
+  /** Lignes cochées d'un contrôle, pour décider en masse (DG, 27/10 puis 13/11/2026). */
   const [coches, setCoches] = useState<Set<string>>(new Set());
-  const [sortie, setSortie] = useState(false);
   const id = choisi ?? etats.donnees?.[0]?.id ?? null;
   const detail = useApi<Detail>(id ? `/enrolement/bourse/${id}${qs({ recherche, departement, page, taille: 50 })}` : null);
   // « Payés deux fois » (DG, 28/10/2026) : inscrits deux fois ou payés sur les deux listes, une ligne par paire
@@ -113,13 +99,9 @@ export default function BourseMensuelle() {
   const visibles = anomalies.filter((a) => !code || a.code === code);
   // Une paire par cas (le doublon est signalé des deux côtés) : le nombre affiché sur le filtre
   const casDeuxFois = new Set(anomalies.filter((a) => a.code === "DOUBLON" || a.code === "AUTRE_LISTE").map((a) => `${a.code}|${[a.volontaireId, a.autreId ?? ""].sort().join("|")}`)).size;
-  const sortieGroupee = code === "RECRUTE_FP" && gerer && e?.statut === "BROUILLON";
-  const recrutes = sortieGroupee ? visibles.slice(0, 300) : [];
-  const motifFP = c?.motifsSortie.find((x) => x.code === "RECRUTE_FP");
-  const precedent = (m: string) => {
-    const [a, mm] = m.split("-").map(Number);
-    return mm === 1 ? `${a - 1}-12` : `${a}-${String(mm - 1).padStart(2, "0")}`;
-  };
+  // Décider : seulement sur un projet, et pour un contrôle choisi (cases à cocher, décisions en masse)
+  const decider = gerer && e?.statut === "BROUILLON";
+  const avecCases = decider && !!code && code !== DEUX_FOIS;
 
   async function agir(f: () => Promise<unknown>, ok: string) {
     setErreur(null);
@@ -145,6 +127,14 @@ export default function BourseMensuelle() {
     } catch (x) {
       setErreur((x as Error).message);
     }
+  }
+
+  /** Après des décisions sur les contrôles : la bourse est recalculée, puis l'annonce. */
+  async function apresDecision(texte: string, echec = false) {
+    if (e) await preparer(e.mois, true);
+    deuxFois.recharger();
+    if (echec) setErreur(texte);
+    else setMessage(texte);
   }
 
   const pages = detail.donnees ? Math.max(1, Math.ceil(detail.donnees.total / detail.donnees.taille)) : 1;
@@ -327,29 +317,41 @@ export default function BourseMensuelle() {
                       </button>
                     ))}
                   </div>
-                  {sortieGroupee && !!recrutes.length && (
-                    <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl bg-zinc-50 p-3 text-[13px] ring-1 ring-zinc-200">
-                      <span className="text-zinc-600">Cochez ceux qui sont bien recrutés (vérifiez le matricule), puis sortez-les du registre en une fois.</span>
-                      <Bouton onClick={() => setCoches(coches.size === recrutes.length ? new Set() : new Set(recrutes.map((a) => a.volontaireId)))}>{coches.size === recrutes.length ? "Tout décocher" : `Tout cocher (${nf.format(recrutes.length)})`}</Bouton>
-                      <Bouton variante="principal" disabled={!coches.size} onClick={() => setSortie(true)}>
-                        <LogOut /> Sortir du registre ({nf.format(coches.size)})
-                      </Bouton>
-                    </div>
+                  {!code && decider && <p className="mb-3 text-[12px] text-zinc-500">Choisissez un contrôle ci-dessus pour décider en masse (cases à cocher), ou ouvrez une fiche avec « Régler ».</p>}
+                  {avecCases && e && (
+                    <BarreDecisions
+                      key={code}
+                      code={code}
+                      libelle={detail.donnees?.controles[code]?.libelle ?? code}
+                      anomalies={visibles}
+                      coches={coches}
+                      setCoches={setCoches}
+                      config={c}
+                      population={population}
+                      mois={e.mois}
+                      apres={apresDecision}
+                      demander={demander}
+                    />
                   )}
                   {code === DEUX_FOIS ? (
-                    <TableauDeuxFois
+                    <DecisionsDeuxFois
+                      key={id ?? 0}
                       r={deuxFois.donnees}
                       erreur={deuxFois.erreur}
-                      regler={gerer && e?.statut === "BROUILLON" ? (x) => setFiche({ id: x.id }) : null}
+                      population={population}
+                      mois={e?.mois ?? moisCourant()}
+                      gerer={decider}
                       ouvrir={(x) => setFiche({ id: x.id })}
                       exporter={() => api.telecharger(`/enrolement/bourse/${id}/payes-deux-fois/excel`, `Payés deux fois - ${e ? moisFr(e.mois) : ""}.xlsx`).catch((x: Error) => setErreur(x.message))}
+                      apres={apresDecision}
+                      demander={demander}
                     />
                   ) : (
                   <>
                   <Tableau>
                     <thead>
                       <tr>
-                        {sortieGroupee && <th className="w-8" aria-label="Cocher" />}
+                        {avecCases && <th className="w-8" aria-label="Cocher" />}
                         <th>Volontaire</th>
                         <th>Contrôle</th>
                         <th>Détail</th>
@@ -359,7 +361,7 @@ export default function BourseMensuelle() {
                     <tbody>
                       {visibles.slice(0, 300).map((a, i) => (
                         <tr key={`${a.code}-${a.volontaireId}-${i}`}>
-                          {sortieGroupee && (
+                          {avecCases && (
                             <td>
                               <input
                                 type="checkbox"
@@ -539,54 +541,6 @@ export default function BourseMensuelle() {
           apres={() => setFiche((f) => (f ? { ...f, modifiee: true } : f))}
         />
       )}
-      {e && (
-        <Modale titre="Sortir du registre les recrutés cochés" ouverte={sortie} fermer={() => setSortie(false)}>
-          <div className="space-y-3 text-[13px] text-zinc-700">
-            <p>
-              <strong>{nf.format(coches.size)}</strong> {L.des} sortiront du registre avec le motif « {motifFP?.libelle ?? "Recruté à la Fonction Publique"} ».
-            </p>
-            <p>
-              Date de sortie : <strong>01/{e.mois.slice(5)}/{e.mois.slice(0, 4)}</strong>, le 1er du mois de cette bourse.{" "}
-              {motifFP?.dernierMoisPaye === "MOIS_DE_SORTIE" ? (
-                <>
-                  Le motif est configuré pour payer le mois de la sortie : ils sont encore payés en <strong>{moisFr(e.mois)}</strong>, leur dernier mois.
-                </>
-              ) : (
-                <>
-                  Ils ne sont donc <strong>pas payés en {moisFr(e.mois)}</strong> ; leur dernier mois payé est <strong>{moisFr(precedent(e.mois))}</strong>.
-                </>
-              )}
-            </p>
-            <p className="text-zinc-500">Ce que le contrôle a retrouvé (fiche, matricule) est noté dans l’historique de chacun. La bourse est ensuite recalculée.</p>
-          </div>
-          <div className="mt-6 flex justify-end gap-2">
-            <Bouton onClick={() => setSortie(false)}>Annuler</Bouton>
-            <Bouton
-              variante="principal"
-              onClick={async () => {
-                setSortie(false);
-                setErreur(null);
-                try {
-                  const ids = [...coches];
-                  const r = await api.post<{ sortis: number; erreurs: string[] }>("/enrolement/volontaires/sortie", {
-                    ids,
-                    motif: "RECRUTE_FP",
-                    date: `${e.mois}-01`,
-                    observations: Object.fromEntries(recrutes.filter((a) => coches.has(a.volontaireId)).map((a) => [a.volontaireId, a.message.replace(/ S’il est recruté.*$/, "")])),
-                  });
-                  setCoches(new Set());
-                  await preparer(e.mois, true);
-                  setMessage(`${nf.format(r.sortis)} ${L.des} sorti(s) du registre.${r.erreurs.length ? ` ${r.erreurs.length} non sorti(s) : ${r.erreurs.slice(0, 5).join(" ; ")}` : ""}`);
-                } catch (x) {
-                  setErreur((x as Error).message);
-                }
-              }}
-            >
-              Sortir du registre
-            </Bouton>
-          </div>
-        </Modale>
-      )}
       <Modale titre="Rouvrir l’état validé" ouverte={rouvrir} fermer={() => setRouvrir(false)}>
         <Champ libelle="Pourquoi rouvrir cet état ?">
           <Zone value={motif} onChange={(x) => setMotif(x.target.value)} placeholder="Ex. : un recruté payé à tort, à retirer avant paiement." />
@@ -610,70 +564,3 @@ export default function BourseMensuelle() {
   );
 }
 
-/**
- * Payés deux fois (DG, 28/10/2026 : « il faut les identifier, les lister ») : une ligne par cas, les
- * deux fiches côte à côte, pour vérifier puis retirer la personne de la prochaine bourse.
- */
-function TableauDeuxFois({
-  r,
-  erreur,
-  regler,
-  ouvrir,
-  exporter,
-}: {
-  r: DeuxFois | null;
-  erreur: string | null;
-  regler: ((p: PersonneDeuxFois) => void) | null;
-  ouvrir: (p: PersonneDeuxFois) => void;
-  exporter: () => void;
-}) {
-  if (erreur) return <Alerte>{erreur}</Alerte>;
-  if (!r) return <Chargement />;
-  const cote = (p: PersonneDeuxFois | null) =>
-    p ? (
-      <div className="text-[12px]">
-        <button type="button" className="text-left font-medium underline decoration-zinc-300 decoration-dotted underline-offset-2 hover:text-marque-700" onClick={() => (regler ?? ouvrir)(p)}>
-          {p.nomComplet}
-        </button>
-        <div className="text-[11px] text-zinc-500">{[p.liste, p.etablissement, p.departement, p.categorie].filter(Boolean).join(" · ")}</div>
-        <div className={`text-[11px] ${p.paye === null ? "text-zinc-400" : "font-medium"}`}>{p.paye === null ? "pas payé sur cette liste ce mois-ci" : `payé ${fcfa(p.paye)}`}</div>
-      </div>
-    ) : (
-      <span className="text-zinc-400">—</span>
-    );
-  return (
-    <>
-      <div className="mb-3 flex flex-wrap items-center gap-3 rounded-2xl bg-rouge-50 p-3 text-[13px] ring-1 ring-rouge-100">
-        <span className="text-zinc-700">
-          <strong>{nf.format(r.paires.length)} cas</strong>, {nf.format(r.personnes)} personne(s). Vérifiez chaque cas (même nom, même date de naissance) ; gardez la bonne fiche et sortez l’autre du registre
-          (motif « Doublon ») : elle ne sera plus payée à la prochaine bourse.
-        </span>
-        <Bouton onClick={exporter}>
-          <Download /> Liste Excel
-        </Bouton>
-      </div>
-      <Tableau>
-        <thead>
-          <tr>
-            <th>N°</th>
-            <th>Contrôle</th>
-            <th>Personne</th>
-            <th>Même personne probable</th>
-          </tr>
-        </thead>
-        <tbody>
-          {r.paires.map((x, i) => (
-            <tr key={`${x.code}-${x.a.id}-${x.b?.id ?? ""}`}>
-              <td className="tabular-nums text-zinc-500">{i + 1}</td>
-              <td>
-                <Badge ton="rouge">{x.controle}</Badge>
-              </td>
-              <td>{cote(x.a)}</td>
-              <td>{cote(x.b)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </Tableau>
-    </>
-  );
-}

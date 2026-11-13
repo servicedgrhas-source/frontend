@@ -12,6 +12,7 @@ import { peut } from "@/lib/libelles";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
 import { AlignerBourse } from "@/components/enrolement/aligner-bourse";
 import { AlignerCommunautaires } from "@/components/enrolement/aligner-communautaires";
+import { DatesSortie } from "@/components/enrolement/dates-sortie";
 import { RemplacerDepartement } from "@/components/enrolement/remplacer-departement";
 
 interface Page {
@@ -715,6 +716,7 @@ export default function RegistreVolontaires() {
   const [remplacer, setRemplacer] = useState(false);
   const [aligner, setAligner] = useState(false);
   const [alignerCom, setAlignerCom] = useState(false);
+  const [datesSortie, setDatesSortie] = useState(false);
   const [vague, setVague] = useState("");
   const [statut, setStatut] = useState("EN_POSTE");
   const [departement, setDepartement] = useState("");
@@ -788,6 +790,12 @@ export default function RegistreVolontaires() {
                 <Bouton onClick={() => setRemplacer(true)}>
                   Remplacer un département
                   <Aide>La nouvelle liste d’un département (ex. la note de la préfecture de la Likouala), une feuille par cycle : ceux qui y sont restent ou entrent, les autres de ce département sortent. On vérifie d’abord, rien n’est enregistré tant qu’on n’a pas confirmé.</Aide>
+                </Bouton>
+              )}
+              {profil.role !== "DIRECTEUR" && (
+                <Bouton onClick={() => setDatesSortie(true)}>
+                  Corriger des dates de sortie
+                  <Aide>Pour des fiches déjà sorties avec une mauvaise date (ex. les retirés de la Likouala sortis le 13/11 au lieu du 01/10) : on choisit le département, le motif et la date actuelle, on voit combien et ce que ça change pour la paie, puis on corrige en une fois.</Aide>
                 </Bouton>
               )}
               <Bouton onClick={() => setSerie(true)}>
@@ -1014,6 +1022,7 @@ export default function RegistreVolontaires() {
       )}
       {remplacer && <RemplacerDepartement fermer={() => setRemplacer(false)} apres={() => liste.recharger()} />}
       {aligner && <AlignerBourse fermer={() => setAligner(false)} apres={() => liste.recharger()} />}
+      {datesSortie && <DatesSortie population={population} fermer={() => setDatesSortie(false)} apres={() => liste.recharger()} />}
       {alignerCom && <AlignerCommunautaires fermer={() => setAlignerCom(false)} apres={() => liste.recharger()} />}
     </div>
   );

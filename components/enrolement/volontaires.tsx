@@ -46,6 +46,9 @@ export interface ConfigEnrolement {
   motifsSortie: MotifSortie[];
   ageMinimum: number;
   ageMaximum: number;
+  /** Âges improbables pour les communautaires (13/11/2026). */
+  ageMinimumCommunautaires?: number;
+  ageMaximumCommunautaires?: number;
   telephonePartage: number;
   signatairePaiementTitre: string;
   signatairePaiementNom: string;
