@@ -287,6 +287,19 @@ export default function BourseMensuelle() {
             <Bouton onClick={() => api.telecharger(avecOrientation(avecPolice(`/enrolement/bourse/${e.id}/word`)), `${nomEtat(population, e.mois, e.statut)}.docx`).catch((x: Error) => setErreur(x.message))}>
               <FileText /> État en Word
             </Bouton>
+            {/* Le RECAP seul (« FICHE DE REPARTITION PAR DEPARTEMENT ET PAR CYCLE »), en Excel ou en Word (13/11/2026) */}
+            <Bouton
+              onClick={() => api.telecharger(avecPolice(`/enrolement/bourse/${e.id}/excel?recap=1`), `RECAP - ${nomEtat(population, e.mois, e.statut)}.xlsx`).catch((x: Error) => setErreur(x.message))}
+              title="Le récapitulatif seul (par département et par montant de bourse), sans les listes de noms"
+            >
+              <Download /> RECAP en Excel
+            </Bouton>
+            <Bouton
+              onClick={() => api.telecharger(avecOrientation(avecPolice(`/enrolement/bourse/${e.id}/word?recap=1`)), `RECAP - ${nomEtat(population, e.mois, e.statut)}.docx`).catch((x: Error) => setErreur(x.message))}
+              title="Le récapitulatif seul en Word (orientation et police choisies ci-dessus)"
+            >
+              <FileText /> RECAP en Word
+            </Bouton>
             <Bouton
               onClick={() => api.telecharger(avecPolice(`/enrolement/bourse/${e.id}/prise-en-charge`), `Fiche de prise en charge ${population === "VOLONTAIRE" ? "Volontaires" : "Communautaires"} ${moisMajuscule(e.mois)}${e.statut === "VALIDE" ? "" : " (projet)"}.xlsx`).catch((x: Error) => setErreur(x.message))}
               title="Par département et par cycle (alphabétisation et post-alpha comprises) : effectif et montant (le taux dans le titre du cycle), puis montants mensuel, trimestriel et annuel"
