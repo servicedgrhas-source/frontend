@@ -207,6 +207,8 @@ export interface PersonneDeuxFois {
   departement: string | null;
   categorie: string | null;
   paye: number | null;
+  /** Où et combien elle est payée ce mois, en clair (cette liste, l'autre liste, ou pas du tout). */
+  paiement?: string;
   population: string;
   statut: string | null;
   entree: string | null;
@@ -301,7 +303,9 @@ export function DecisionsDeuxFois({
           né(e) le {jour(p.naissance)}{p.telephone ? ` · tél. …${p.telephone.replace(/\D/g, "").slice(-4)}` : ""} · dans le registre depuis le {jour(p.entree)}
           {p.statut === "SORTI" ? " · sorti(e)" : ""}
         </div>
-        <div className={`text-[11px] ${p.paye === null ? "text-zinc-400" : "font-medium"}`}>{p.paye === null ? "pas payé sur cette liste ce mois-ci" : `payé ${fcfa(p.paye)}`}</div>
+        <div className={`text-[11px] ${/^payé/.test(p.paiement ?? "") ? "font-semibold text-rouge-700" : p.paye === null ? "text-zinc-500" : "font-medium"}`}>
+          {p.paiement ?? (p.paye === null ? "pas payé dans cet état" : `payé ${fcfa(p.paye)}`)}
+        </div>
       </div>
     ) : (
       <span className="text-zinc-400">—</span>
