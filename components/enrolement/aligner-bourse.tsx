@@ -59,14 +59,14 @@ const moisCourant = () => new Date().toLocaleDateString("fr-CA", { timeZone: "Af
 const libelleMois = (m: string) => new Date(`${m}-15`).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
 
 /** « Bourse Septembre 2026 Final.xlsx » → 2026-09 */
-function moisDuNom(nom: string): string | null {
+export function moisDuNom(nom: string): string | null {
   const t = nom.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
   const an = t.match(/(?<!\d)(20\d{2})(?!\d)/)?.[1];
   const i = MOIS.findIndex((m) => new RegExp(`(?<![a-z])${m}(?![a-z])`).test(t));
   return an && i >= 0 ? `${an}-${String(i + 1).padStart(2, "0")}` : null;
 }
 
-function ListeCourte({ titre, c, ton = "zinc", aide }: { titre: string; c: Court; ton?: "zinc" | "rouge" | "or"; aide?: string }) {
+export function ListeCourte({ titre, c, ton = "zinc", aide }: { titre: string; c: Court; ton?: "zinc" | "rouge" | "or"; aide?: string }) {
   if (!c.n) return null;
   return (
     <details className="rounded-xl bg-zinc-50 px-3 py-2 text-[12px]">

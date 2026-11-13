@@ -11,6 +11,7 @@ import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
 import { AlignerBourse } from "@/components/enrolement/aligner-bourse";
+import { AlignerCommunautaires } from "@/components/enrolement/aligner-communautaires";
 import { RemplacerDepartement } from "@/components/enrolement/remplacer-departement";
 
 interface Page {
@@ -713,6 +714,7 @@ export default function RegistreVolontaires() {
   const [population, setPopulation] = useState<Population>("VOLONTAIRE");
   const [remplacer, setRemplacer] = useState(false);
   const [aligner, setAligner] = useState(false);
+  const [alignerCom, setAlignerCom] = useState(false);
   const [vague, setVague] = useState("");
   const [statut, setStatut] = useState("EN_POSTE");
   const [departement, setDepartement] = useState("");
@@ -774,6 +776,12 @@ export default function RegistreVolontaires() {
                 <Bouton onClick={() => setAligner(true)}>
                   Aligner sur la bourse d’un mois
                   <Aide>Le fichier de la bourse payée d’un mois (septembre, puis octobre…) : les payés restent ou entrent, ceux du registre qui ne sont plus payés sortent avec le motif de la feuille RETRAITS. On vérifie d’abord, rien n’est enregistré tant qu’on n’a pas confirmé.</Aide>
+                </Bouton>
+              )}
+              {population === "COMMUNAUTAIRE" && profil.role !== "DIRECTEUR" && (
+                <Bouton onClick={() => setAlignerCom(true)}>
+                  Aligner sur un état de paiement
+                  <Aide>L’état de paiement des communautaires mis à jour, une feuille par département : ceux qui y sont restent, sont réintégrés ou ajoutés (chaque nouveau est montré avant d’être ajouté) ; ceux qui n’y sont plus sortent, seulement dans les départements du fichier. On vérifie d’abord, rien n’est enregistré tant qu’on n’a pas confirmé.</Aide>
                 </Bouton>
               )}
               {population === "COMMUNAUTAIRE" && profil.role !== "DIRECTEUR" && (
@@ -1006,6 +1014,7 @@ export default function RegistreVolontaires() {
       )}
       {remplacer && <RemplacerDepartement fermer={() => setRemplacer(false)} apres={() => liste.recharger()} />}
       {aligner && <AlignerBourse fermer={() => setAligner(false)} apres={() => liste.recharger()} />}
+      {alignerCom && <AlignerCommunautaires fermer={() => setAlignerCom(false)} apres={() => liste.recharger()} />}
     </div>
   );
 }

@@ -1101,6 +1101,11 @@ const TITRES: Record<string, [string, string, Ton]> = {
     "ClipboardCheck",
     "jaune"
   ],
+  "COMMUNAUTAIRES_ALIGNES_ETAT": [
+    "Communautaires alignés sur un état de paiement",
+    "ClipboardCheck",
+    "jaune"
+  ],
   "COMMUNAUTAIRES_DEPARTEMENT_REMPLACES": [
     "Communautaires d’un département remplacés",
     "ArrowLeftRight",

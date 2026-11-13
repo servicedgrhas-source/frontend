@@ -207,7 +207,13 @@ export function FicheVolontaire({
   const gerer = peutGerer(profil.role);
 
   const nomCat = (code: string | null) => categoriesDe(c, v?.population ?? "VOLONTAIRE").find((x) => x.code === code)?.libelle ?? code;
-  const nomMotif = (code: string | null) => c?.motifsSortie.find((x) => x.code === code)?.libelle ?? code;
+  // Entrées et réintégrations venues d'une liste (bourse payée, état de paiement, liste d'un département)
+  const MOTIFS_LISTE: Record<string, string> = {
+    BOURSE_PAYEE: "sur la bourse payée du mois",
+    ETAT_PAYE: "sur l’état de paiement du mois",
+    LISTE_DEPARTEMENT: "sur la nouvelle liste du département",
+  };
+  const nomMotif = (code: string | null) => (code && MOTIFS_LISTE[code]) || (c?.motifsSortie.find((x) => x.code === code)?.libelle ?? code);
   const nomDep = (d: number | null) => refs.departements.find((x) => x.id === d)?.nom;
 
   function ouvrir(a: Action) {
