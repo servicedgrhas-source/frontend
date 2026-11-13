@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FileSpreadsheet, FileText, Printer } from "lucide-react";
 import { categoriesDe, FicheVolontaire, fcfa, libelleVague, LISTES, moisFr, nf, peutGerer, type Population, useConfigEnrolement, type Volontaire } from "@/components/enrolement/volontaires";
 import { useSession } from "@/components/session";
@@ -13,6 +13,7 @@ import { SaisieReferentiel } from "@/components/saisie-referentiel";
 import { AlignerBourse } from "@/components/enrolement/aligner-bourse";
 import { AlignerCommunautaires } from "@/components/enrolement/aligner-communautaires";
 import { DatesSortie } from "@/components/enrolement/dates-sortie";
+import { type CandidatPriseEnCharge, RecherchePersonnel, SituationPersonne } from "@/components/enrolement/recherche-personnel";
 import { RemplacerDepartement } from "@/components/enrolement/remplacer-departement";
 
 interface Page {
@@ -626,10 +627,28 @@ function moisDuNom(nom: string): string | null {
 }
 
 /** Ajout à la main d'un volontaire (oubli d'une liste, dossier arrivé à part). */
-function Ajout({ fermer, apres, population }: { fermer: () => void; apres: (id: string) => void; population: Population }) {
+function Ajout({ fermer, apres, population, agentInitial }: { fermer: () => void; apres: (id: string) => void; population: Population; agentInitial?: number | null }) {
   const { refs } = useSession();
   const config = useConfigEnrolement();
   const [f, setF] = useState<Record<string, string>>({});
+  // La personne prise dans la base du personnel (DG, 13/11/2026) : sa fiche est reliée à l'ajout
+  const [choisi, setChoisi] = useState<{ c: CandidatPriseEnCharge; forcerFonctionnaire: boolean } | null>(null);
+  const choisir = (c: CandidatPriseEnCharge, forcerFonctionnaire: boolean) => {
+    const v = c.valeurs;
+    setChoisi({ c, forcerFonctionnaire });
+    setF({
+      nomComplet: v.nomComplet,
+      telephone: v.telephone ?? "",
+      dateNaissance: v.dateNaissance ?? "",
+      lieuNaissance: v.lieuNaissance ?? "",
+      categorie: v.categorie ?? "",
+      departementId: v.departementId ? String(v.departementId) : "",
+      etablissement: v.etablissement ?? "",
+      datePriseService: v.datePriseService ?? "",
+      diplome: v.diplome ?? "",
+      specialite: v.specialite ?? "",
+    });
+  };
   const [doublon, setDoublon] = useState<string | null>(null);
   const [forcer, setForcer] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -645,7 +664,13 @@ function Ajout({ fermer, apres, population }: { fermer: () => void; apres: (id: 
   async function enregistrer() {
     setErreur(null);
     try {
-      const corps = { ...Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v === "" ? null : v])), departementId: f.departementId ? Number(f.departementId) : null, forcer, population };
+      const corps = {
+        ...Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v === "" ? null : v])),
+        departementId: f.departementId ? Number(f.departementId) : null,
+        forcer,
+        population,
+        ...(choisi ? { agentRecenseId: choisi.c.agentRecenseId, forcerFonctionnaire: choisi.forcerFonctionnaire } : {}),
+      };
       const r = await api.post<{ volontaire: Volontaire }>("/enrolement/volontaires", corps);
       apres(r.volontaire.id);
     } catch (x) {
@@ -656,6 +681,36 @@ function Ajout({ fermer, apres, population }: { fermer: () => void; apres: (id: 
   }
   return (
     <Modale titre={`Ajouter un ${LISTES[population].un}`} ouverte fermer={fermer} large>
+      {choisi ? (
+        <div className="mb-4 space-y-2 rounded-2xl bg-zinc-50 p-3 ring-1 ring-zinc-200">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
+            <span>
+              Pris(e) dans la base du personnel : <strong>{choisi.c.valeurs.nomComplet}</strong>
+              <span className="text-zinc-500"> · fiche {choisi.c.numeroFiche ?? `n° ${choisi.c.agentRecenseId}`} — elle sera reliée à cet ajout</span>
+            </span>
+            <Bouton
+              variante="discret"
+              onClick={() => {
+                setChoisi(null);
+                setF({});
+              }}
+            >
+              Changer de personne
+            </Bouton>
+          </div>
+          <SituationPersonne c={choisi.c} />
+          {(choisi.c.valeurs.diplome || choisi.c.valeurs.specialite || choisi.c.valeurs.cycleBrut) && (
+            <p className="text-[12px] text-zinc-500">
+              Repris aussi : {[choisi.c.valeurs.diplome && `diplôme ${choisi.c.valeurs.diplome}`, choisi.c.valeurs.specialite && `spécialité ${choisi.c.valeurs.specialite}`, choisi.c.valeurs.cycleBrut && `cycle « ${choisi.c.valeurs.cycleBrut} » dans le personnel`].filter(Boolean).join(" · ")}. Vérifiez la catégorie et le premier mois payé.
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="mb-4">
+          <RecherchePersonnel population={population} agentInitial={agentInitial} choisir={choisir} ouvrirRegistre={apres} />
+          <p className="mt-2 text-[12px] text-zinc-500">Ou remplissez la fiche à la main ci-dessous.</p>
+        </div>
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
         {champ("nomComplet", "Nom et prénoms")}
         {champ("telephone", "Téléphone")}
@@ -726,6 +781,21 @@ export default function RegistreVolontaires() {
   const [fiche, setFiche] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [ajout, setAjout] = useState(false);
+  // Venu d'une fiche du personnel : « Prendre en charge dans la bourse »
+  const [agentInitial, setAgentInitial] = useState<number | null>(null);
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const prendre = Number(p.get("prendre"));
+    if (!prendre) return;
+    // Juste après le premier affichage (pas de mise à jour d'état pendant l'effet lui-même)
+    const minuterie = setTimeout(() => {
+      if (p.get("population") === "COMMUNAUTAIRE") setPopulation("COMMUNAUTAIRE");
+      setAgentInitial(prendre);
+      setAjout(true);
+      window.history.replaceState(null, "", window.location.pathname);
+    }, 0);
+    return () => clearTimeout(minuterie);
+  }, []);
   const [serie, setSerie] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const liste = useApi<Page>(`/enrolement/volontaires${qs({ population, vague: population === "VOLONTAIRE" ? vague : "", recherche, statut, departement, categorie, motif: statut === "SORTI" ? motif : "", page })}`);
@@ -1010,6 +1080,7 @@ export default function RegistreVolontaires() {
       )}
       {ajout && (
         <Ajout
+          agentInitial={agentInitial}
           population={population}
           fermer={() => setAjout(false)}
           apres={(id) => {

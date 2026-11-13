@@ -315,6 +315,17 @@ function Formulaire({
           </Link>
         </Alerte>
       )}
+      {/* Volontaire ou communautaire du personnel que les bourses ne paient pas (DG, 13/11/2026) */}
+      {a && fiche && !fiche.volontaire && (a.statut === "VOLONTAIRE" || a.statut === "COMMUNAUTAIRE") && ["CHEF_SERVICE", "DIRECTEUR", "DG"].includes(profil.role) && (
+        <Alerte ton="jaune">
+          <strong>{a.statut === "COMMUNAUTAIRE" ? "Communautaire" : "Volontaire"} dans la base du personnel, pas pris en charge dans les bourses</strong> (il n’est sur aucune
+          des deux listes payées).{" "}
+          <Link href={`/enrolement/volontaires?prendre=${a.id}&population=${a.statut}`} className="font-semibold underline">
+            Prendre en charge dans la bourse
+          </Link>{" "}
+          : la fiche du registre s’ouvre déjà remplie, avec sa situation ; il reste à vérifier le cycle et le premier mois payé.
+        </Alerte>
+      )}
       <Carte titre="Type d’agent et rattachement">
         <div className="space-y-4">
           <Segments valeur={statut} changer={setStatut} options={statuts.map((s) => ({ valeur: s.code, libelle: s.libelle }))} />
