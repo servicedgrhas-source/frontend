@@ -92,6 +92,14 @@ export default function BourseMensuelle() {
   if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
 
   const c = config.donnees?.configuration;
+  // Par département : les cycles de cette liste (volontaires ou communautaires), plus « Sans cycle » s'il le faut
+  const catsListe = categoriesDe(c, population);
+  const codesResume = new Set(catsListe.map((x) => x.code));
+  const resumeLignes = detail.donnees?.resume ?? [];
+  const colonnesResume = [
+    ...catsListe.filter((x) => x.actif || resumeLignes.some((r) => r.categorie === x.code)).map((x) => ({ code: x.code, libelle: x.libelle })),
+    ...(resumeLignes.some((r) => !codesResume.has(r.categorie ?? "")) ? [{ code: "", libelle: "Sans cycle" }] : []),
+  ];
   const nomCat = (k: string | null) => categoriesDe(c, population).find((x) => x.code === k)?.libelle ?? k ?? "Sans catégorie";
   const nomDep = (d: number | null) => refs.departements.find((x) => x.id === d)?.nom ?? "Non renseigné";
   const gerer = peutGerer(profil.role);
@@ -401,7 +409,7 @@ export default function BourseMensuelle() {
                 <thead>
                   <tr>
                     <th>Département</th>
-                    {(c?.categories ?? []).map((x) => (
+                    {colonnesResume.map((x) => (
                       <th key={x.code} className="text-right">
                         {x.libelle}
                       </th>
@@ -417,9 +425,9 @@ export default function BourseMensuelle() {
                     return (
                       <tr key={String(d)}>
                         <td>{nomDep(d)}</td>
-                        {(c?.categories ?? []).map((x) => (
+                        {colonnesResume.map((x) => (
                           <td key={x.code} className="text-right tabular-nums">
-                            {nf.format(lignes.find((r) => r.categorie === x.code)?.effectif ?? 0)}
+                            {nf.format(lignes.filter((r) => (x.code === "" ? !codesResume.has(r.categorie ?? "") : r.categorie === x.code)).reduce((t, r) => t + r.effectif, 0))}
                           </td>
                         ))}
                         <td className="text-right tabular-nums">{nf.format(lignes.reduce((t, r) => t + r.rappels, 0))}</td>
@@ -428,6 +436,17 @@ export default function BourseMensuelle() {
                       </tr>
                     );
                   })}
+                  <tr className="border-t-2 border-zinc-300 font-semibold">
+                    <td>TOTAL</td>
+                    {colonnesResume.map((x) => (
+                      <td key={x.code} className="text-right tabular-nums">
+                        {nf.format(detail.donnees!.resume.filter((r) => (x.code === "" ? !codesResume.has(r.categorie ?? "") : r.categorie === x.code)).reduce((t, r) => t + r.effectif, 0))}
+                      </td>
+                    ))}
+                    <td className="text-right tabular-nums">{nf.format(detail.donnees.resume.reduce((t, r) => t + r.rappels, 0))}</td>
+                    <td className="text-right tabular-nums">{nf.format(detail.donnees.resume.reduce((t, r) => t + r.effectif, 0))}</td>
+                    <td className="text-right tabular-nums whitespace-nowrap">{fcfa(detail.donnees.resume.reduce((t, r) => t + Number(r.total), 0))}</td>
+                  </tr>
                 </tbody>
               </Tableau>
             </Carte>

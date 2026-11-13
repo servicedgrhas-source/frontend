@@ -225,6 +225,9 @@ export default function ConfigurationEnrolement() {
               <Champ libelle="Nom du signataire">
                 <Saisie value={c.signatairePaiementNom} onChange={(e) => maj({ signatairePaiementNom: e.target.value })} />
               </Champ>
+              <Champ libelle="Ligne sous le titre de la fiche de prise en charge des communautaires" aide="la mesure gouvernementale" className="sm:col-span-2">
+                <Saisie value={c.ficheMentionCommunautaires ?? ""} onChange={(e) => maj({ ficheMentionCommunautaires: e.target.value })} />
+              </Champ>
             </div>
           </Carte>
         </div>

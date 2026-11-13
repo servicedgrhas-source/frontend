@@ -49,6 +49,8 @@ export interface ConfigEnrolement {
   telephonePartage: number;
   signatairePaiementTitre: string;
   signatairePaiementNom: string;
+  /** Ligne sous le titre de la fiche de prise en charge des communautaires. */
+  ficheMentionCommunautaires?: string;
 }
 
 export interface ReponseConfiguration {
