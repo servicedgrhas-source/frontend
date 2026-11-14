@@ -304,7 +304,17 @@ export default function BourseMensuelle() {
               onClick={() => api.telecharger(avecPolice(`/enrolement/bourse/${e.id}/prise-en-charge`), `Fiche de prise en charge ${population === "VOLONTAIRE" ? "Volontaires" : "Communautaires"} ${moisMajuscule(e.mois)}${e.statut === "VALIDE" ? "" : " (projet)"}.xlsx`).catch((x: Error) => setErreur(x.message))}
               title="Par département et par cycle (alphabétisation et post-alpha comprises) : effectif et montant (le taux dans le titre du cycle), puis montants mensuel, trimestriel et annuel"
             >
-              <Download /> Fiche de prise en charge
+              <Download /> Fiche de prise en charge (Excel)
+            </Bouton>
+            {/* La fiche au modèle du cabinet, en Word ou à imprimer en PDF (14/11/2026) */}
+            <Bouton
+              onClick={() => api.telecharger(avecPolice(`/enrolement/bourse/${e.id}/prise-en-charge/word`), `Fiche de prise en charge ${population === "VOLONTAIRE" ? "Volontaires" : "Communautaires"} ${moisMajuscule(e.mois)}${e.statut === "VALIDE" ? "" : " (projet)"}.docx`).catch((x: Error) => setErreur(x.message))}
+              title="La fiche au modèle du cabinet, en Word (paysage)"
+            >
+              <FileText /> Fiche en Word
+            </Bouton>
+            <Bouton onClick={() => window.open(avecPolice(`/impression/fiche-prise-en-charge/${e.id}`), "_blank")} title="La fiche au modèle du cabinet, à imprimer ou à enregistrer en PDF (une page en paysage)">
+              <Printer /> Fiche en PDF
             </Bouton>
             <Bouton onClick={() => window.open(avecOrientation(avecPolice(`/impression/bourse/${e.id}`)), "_blank")} title="État à imprimer ou à enregistrer en PDF : en-tête, CNI, émargement, total et signature">
               <Printer /> Imprimer / PDF

@@ -12,6 +12,7 @@ import { peut } from "@/lib/libelles";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
 import { AlignerBourse } from "@/components/enrolement/aligner-bourse";
 import { AlignerCommunautaires } from "@/components/enrolement/aligner-communautaires";
+import { ReprendreMois } from "@/components/enrolement/reprendre-mois";
 import { DatesSortie } from "@/components/enrolement/dates-sortie";
 import { type CandidatPriseEnCharge, RecherchePersonnel, SituationPersonne } from "@/components/enrolement/recherche-personnel";
 import { RemplacerDepartement } from "@/components/enrolement/remplacer-departement";
@@ -771,6 +772,8 @@ export default function RegistreVolontaires() {
   const [remplacer, setRemplacer] = useState(false);
   const [aligner, setAligner] = useState(false);
   const [alignerCom, setAlignerCom] = useState(false);
+  // Un mois payé par le DG avant le système (août 2026, 14/11/2026)
+  const [reprendre, setReprendre] = useState(false);
   const [datesSortie, setDatesSortie] = useState(false);
   const [vague, setVague] = useState("");
   const [statut, setStatut] = useState("EN_POSTE");
@@ -854,6 +857,12 @@ export default function RegistreVolontaires() {
                 <Bouton onClick={() => setAlignerCom(true)}>
                   Aligner sur un état de paiement
                   <Aide>L’état de paiement des communautaires mis à jour, une feuille par département : ceux qui y sont restent, sont réintégrés ou ajoutés (chaque nouveau est montré avant d’être ajouté) ; ceux qui n’y sont plus sortent, seulement dans les départements du fichier. On vérifie d’abord, rien n’est enregistré tant qu’on n’a pas confirmé.</Aide>
+                </Bouton>
+              )}
+              {profil.role !== "DIRECTEUR" && (
+                <Bouton onClick={() => setReprendre(true)}>
+                  Reprendre un mois déjà payé
+                  <Aide>Pour un mois que le DG a payé avant le système (août 2026) : le registre apprend qui était payé ce mois-là, sans sortie ni réintégration. Ensuite, préparez l’état de ce mois dans Paiement mensuel. On vérifie d’abord, rien n’est enregistré tant qu’on n’a pas confirmé.</Aide>
                 </Bouton>
               )}
               {population === "COMMUNAUTAIRE" && profil.role !== "DIRECTEUR" && (
@@ -1095,6 +1104,7 @@ export default function RegistreVolontaires() {
       {aligner && <AlignerBourse fermer={() => setAligner(false)} apres={() => liste.recharger()} />}
       {datesSortie && <DatesSortie population={population} fermer={() => setDatesSortie(false)} apres={() => liste.recharger()} />}
       {alignerCom && <AlignerCommunautaires fermer={() => setAlignerCom(false)} apres={() => liste.recharger()} />}
+      {reprendre && <ReprendreMois population={population} fermer={() => setReprendre(false)} apres={() => liste.recharger()} />}
     </div>
   );
 }

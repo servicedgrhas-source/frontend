@@ -1120,6 +1120,11 @@ const TITRES: Record<string, [string, string, Ton]> = {
     "Communautaires d’un département remplacés",
     "ArrowLeftRight",
     "jaune"
+  ],
+  "MOIS_REPRIS": [
+    "Mois passé repris d’après l’état du DG",
+    "ClipboardCheck",
+    "jaune"
   ]
 };
 
