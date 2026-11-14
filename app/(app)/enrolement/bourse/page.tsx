@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { categoriesDe, FicheVolontaire, type ProblemeBourse, deMois, fcfa, LISTES, moisFr, nf, peutGerer, type Population, useConfigEnrolement } from "@/components/enrolement/volontaires";
 import { BarreDecisions, DecisionsDeuxFois, type DeuxFois } from "@/components/enrolement/controles-bourse";
+import { SortantsDuMois } from "@/components/enrolement/sortants-mois";
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, Chiffre, ChoixMois, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, Zone, useConfirmation } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
@@ -18,6 +19,21 @@ const moisMajuscule = (m: string) => moisFr(m).charAt(0).toUpperCase() + moisFr(
  *  « ETATS DE PAIEMENT DES ENSEIGNANTS COMMUNAUTAIRES SEPTEMBRE 2026 ». */
 const nomEtat = (population: Population, mois: string, statut: string) =>
   `${population === "VOLONTAIRE" ? `Fiche de répartition Bourse Volontaire_${moisMajuscule(mois)}` : `ETATS DE PAIEMENT DES ENSEIGNANTS COMMUNAUTAIRES ${moisFr(mois).toUpperCase()}`}${statut === "VALIDE" ? "" : " (projet)"}`;
+
+/** Ce que « Recalculer » changerait (le registre comparé à l'état enregistré). */
+interface Apercu {
+  calculeLe: string | null;
+  effectifAvant: number;
+  totalAvant: number;
+  effectifApres: number;
+  totalApres: number;
+  entrees: { n: number; exemples: string[] };
+  sorties: { n: number; exemples: string[] };
+  montants: { n: number; exemples: string[] };
+  bloquantsAvant: number;
+  bloquantsApres: number;
+  changements: number;
+}
 
 interface Anomalie {
   code: string;
@@ -66,7 +82,7 @@ export default function BourseMensuelle() {
   const registre = useApi<{ resume: { enAttente: number; sansCategorie: number; sansDepartement: number } }>(`/enrolement/volontaires?taille=1&population=${population}`);
   const [choisi, setChoisi] = useState<number | null>(null);
   const [mois, setMois] = useState(moisCourant());
-  const [vue, setVue] = useState<"controles" | "resume" | "liste">("controles");
+  const [vue, setVue] = useState<"controles" | "resume" | "liste" | "sortants">("controles");
   const [code, setCode] = useState("");
   const [recherche, setRecherche] = useState("");
   const [departement, setDepartement] = useState("");
@@ -76,6 +92,8 @@ export default function BourseMensuelle() {
   const [motif, setMotif] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
+  // Ce qui a changé depuis le dernier calcul, montré avant « Recalculer » ou « Valider »
+  const [apercu, setApercu] = useState<(Apercu & { pour: "RECALCULER" | "VALIDER" }) | null>(null);
   // Police des documents (Excel, Word, PDF) : l'actuelle ou Gill Sans MT, retenue sur ce poste (13/11/2026)
   const [police, setPolice] = useState<"actuelle" | "gill">(() => {
     try {
@@ -171,9 +189,40 @@ export default function BourseMensuelle() {
     }
   }
 
-  /** Après des décisions sur les contrôles : la bourse est recalculée, puis l'annonce. */
+  /**
+   * Les contrôles de l'état remis à jour, sans toucher aux chiffres (14/11/2026 : seul « Recalculer »
+   * change les montants d'un état préparé).
+   */
+  async function controles() {
+    if (!e) return;
+    try {
+      await api.post(`/enrolement/bourse/${e.id}/controles`, {});
+      etats.recharger();
+      detail.recharger();
+    } catch (x) {
+      setErreur((x as Error).message);
+    }
+  }
+
+  /** Ce qui a changé dans le registre depuis le dernier calcul, avant de recalculer ou de valider. */
+  async function voirChangements(pour: "RECALCULER" | "VALIDER") {
+    if (!e) return;
+    setErreur(null);
+    try {
+      const a = await api.post<Apercu>(`/enrolement/bourse/${e.id}/apercu`, {});
+      if (pour === "VALIDER" && !a.changements) {
+        await agir(() => api.post(`/enrolement/bourse/${e.id}/validation`), `Bourse ${deMois(e.mois)} validée.`);
+        return;
+      }
+      setApercu({ ...a, pour });
+    } catch (x) {
+      setErreur((x as Error).message);
+    }
+  }
+
+  /** Après des décisions sur les contrôles : les contrôles sont remis à jour, les chiffres ne bougent pas. */
   async function apresDecision(texte: string, echec = false) {
-    if (e) await preparer(e.mois, true);
+    await controles();
     deuxFois.recharger();
     if (echec) setErreur(texte);
     else setMessage(texte);
@@ -316,16 +365,23 @@ export default function BourseMensuelle() {
             <Bouton onClick={() => window.open(avecPolice(`/impression/fiche-prise-en-charge/${e.id}`), "_blank")} title="La fiche au modèle du cabinet, à imprimer ou à enregistrer en PDF (une page en paysage)">
               <Printer /> Fiche en PDF
             </Bouton>
+            {/* Les sortants de ce mois, motif en clair (14/11/2026) */}
+            <Bouton
+              onClick={() => api.telecharger(avecPolice(`/enrolement/bourse/${e.id}/sortants/excel`), `Sortants ${population === "VOLONTAIRE" ? "Volontaires" : "Communautaires"} ${moisMajuscule(e.mois)}.xlsx`).catch((x: Error) => setErreur(x.message))}
+              title={`Les ${L.des} dont la bourse s’arrête en ${moisFr(e.mois)} : motif en clair, ce qui a été constaté, date de sortie, bourse qui n’est plus payée`}
+            >
+              <Download /> Sortants du mois (Excel)
+            </Bouton>
             <Bouton onClick={() => window.open(avecOrientation(avecPolice(`/impression/bourse/${e.id}`)), "_blank")} title="État à imprimer ou à enregistrer en PDF : en-tête, CNI, émargement, total et signature">
               <Printer /> Imprimer / PDF
             </Bouton>
             {gerer && e.statut === "BROUILLON" && (
-              <Bouton onClick={() => preparer(e.mois)}>
+              <Bouton onClick={() => voirChangements("RECALCULER")} title="Montre d’abord ce qui a changé dans le registre depuis le dernier calcul">
                 <RefreshCw /> Recalculer
               </Bouton>
             )}
             {dg && e.statut === "BROUILLON" && (
-              <Bouton variante="principal" disabled={bloquants.length > 0} title={bloquants.length ? "Réglez d’abord les contrôles bloquants" : undefined} onClick={() => agir(() => api.post(`/enrolement/bourse/${e.id}/validation`), `Bourse ${deMois(e.mois)} validée.`)}>
+              <Bouton variante="principal" disabled={bloquants.length > 0} title={bloquants.length ? "Réglez d’abord les contrôles bloquants" : undefined} onClick={() => voirChangements("VALIDER")}>
                 <CheckCircle2 /> Valider
               </Bouton>
             )}
@@ -357,6 +413,7 @@ export default function BourseMensuelle() {
               { valeur: "controles", libelle: `Contrôles (${nf.format(anomalies.length)})` },
               { valeur: "resume", libelle: "Par département" },
               { valeur: "liste", libelle: "Liste des payés" },
+              { valeur: "sortants", libelle: "Sortants du mois" },
             ]}
           />
 
@@ -539,6 +596,13 @@ export default function BourseMensuelle() {
             </Carte>
           )}
 
+          {vue === "sortants" && (
+            <SortantsDuMois
+              etatId={e.id}
+              ouvrir={(x) => setFiche({ id: x })}
+              telecharger={() => api.telecharger(avecPolice(`/enrolement/bourse/${e.id}/sortants/excel`), `Sortants ${population === "VOLONTAIRE" ? "Volontaires" : "Communautaires"} ${moisMajuscule(e.mois)}.xlsx`).catch((x: Error) => setErreur(x.message))}
+            />
+          )}
           {vue === "liste" && detail.donnees && (
             <Carte>
               <div className="mb-4 grid gap-3 md:grid-cols-2">
@@ -608,6 +672,93 @@ export default function BourseMensuelle() {
       )}
       {id && !e && !detail.erreur && <Chargement />}
 
+      {apercu && e && (
+        <Modale titre={apercu.pour === "RECALCULER" ? `Recalculer le paiement ${deMois(e.mois)} ?` : `Valider le paiement ${deMois(e.mois)} ?`} ouverte fermer={() => setApercu(null)}>
+          <div className="space-y-3 text-[13px]">
+            {apercu.changements === 0 ? (
+              <p className="text-zinc-600">
+                Aucun changement dans le registre depuis le dernier calcul{apercu.calculeLe ? ` (${new Date(apercu.calculeLe).toLocaleString("fr-FR")})` : ""} : le
+                recalcul donnera les mêmes chiffres.
+              </p>
+            ) : (
+              <>
+                <p className="text-zinc-600">
+                  Depuis le dernier calcul{apercu.calculeLe ? ` (${new Date(apercu.calculeLe).toLocaleString("fr-FR")})` : ""}, il y a eu{" "}
+                  <strong>des changements chez les {L.des} en poste</strong>.{" "}
+                  {apercu.pour === "RECALCULER"
+                    ? "Les chiffres de l’état vont changer :"
+                    : "L’état sera validé tel qu’il est affiché, sans ces changements. Pour les prendre en compte, recalculez d’abord."}
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-xl bg-zinc-50 px-3 py-2">
+                    <div className="text-[11px] text-zinc-500">Maintenant</div>
+                    <div className="font-semibold tabular-nums">
+                      {nf.format(apercu.effectifAvant)} · {fcfa(apercu.totalAvant)}
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-or-100/50 px-3 py-2">
+                    <div className="text-[11px] text-zinc-500">Après le recalcul</div>
+                    <div className="font-semibold tabular-nums">
+                      {nf.format(apercu.effectifApres)} · {fcfa(apercu.totalApres)}
+                    </div>
+                  </div>
+                </div>
+                {[
+                  ["Entrent dans l’état", apercu.entrees],
+                  ["Sortent de l’état", apercu.sorties],
+                  ["Montant changé", apercu.montants],
+                ]
+                  .filter(([, c]) => (c as Apercu["entrees"]).n > 0)
+                  .map(([titre, c]) => (
+                    <details key={String(titre)} className="rounded-xl bg-zinc-50 px-3 py-2 text-[12px]">
+                      <summary className="cursor-pointer font-medium">
+                        {String(titre)} ({nf.format((c as Apercu["entrees"]).n)})
+                      </summary>
+                      <ul className="mt-1 list-disc pl-5 text-zinc-600">
+                        {(c as Apercu["entrees"]).exemples.map((x) => (
+                          <li key={x}>{x}</li>
+                        ))}
+                        {(c as Apercu["entrees"]).n > (c as Apercu["entrees"]).exemples.length && <li>…</li>}
+                      </ul>
+                    </details>
+                  ))}
+              </>
+            )}
+            <div className="flex flex-wrap justify-end gap-2">
+              <Bouton onClick={() => setApercu(null)}>Annuler</Bouton>
+              {apercu.pour === "VALIDER" && (
+                <Bouton
+                  onClick={async () => {
+                    setApercu(null);
+                    await preparer(e.mois);
+                  }}
+                >
+                  <RefreshCw /> Recalculer d’abord
+                </Bouton>
+              )}
+              <Bouton
+                variante="principal"
+                onClick={async () => {
+                  const pour = apercu.pour;
+                  setApercu(null);
+                  if (pour === "RECALCULER") await preparer(e.mois);
+                  else await agir(() => api.post(`/enrolement/bourse/${e.id}/validation`), `Bourse ${deMois(e.mois)} validée.`);
+                }}
+              >
+                {apercu.pour === "RECALCULER" ? (
+                  <>
+                    <RefreshCw /> Oui, recalculer
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 /> Valider tel quel
+                  </>
+                )}
+              </Bouton>
+            </div>
+          </div>
+        </Modale>
+      )}
       {fiche && (
         <FicheVolontaire
           id={fiche.id}
@@ -615,12 +766,12 @@ export default function BourseMensuelle() {
           regle={(texte) => {
             // Réglé : la bourse est recalculée, le contrôle disparaît de la liste
             setFiche(null);
-            setMessage(`${texte} La bourse est recalculée.`);
-            if (e?.statut === "BROUILLON" && gerer) void preparer(e.mois, true);
+            setMessage(`${texte} Les chiffres de l’état ne changent qu’avec « Recalculer ».`);
+            if (e?.statut === "BROUILLON" && gerer) void controles();
           }}
           fermer={() => {
-            // Une fiche corrigée : l'état en projet est recalculé à la fermeture
-            if (fiche.modifiee && e?.statut === "BROUILLON" && gerer) void preparer(e.mois, true);
+            // Une fiche corrigée : les contrôles sont remis à jour ; les chiffres ne changent qu'avec « Recalculer »
+            if (fiche.modifiee && e?.statut === "BROUILLON" && gerer) void controles();
             setFiche(null);
           }}
           apres={() => setFiche((f) => (f ? { ...f, modifiee: true } : f))}

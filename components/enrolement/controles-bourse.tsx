@@ -112,7 +112,7 @@ export function BarreDecisions({
       const r = await envoyerDecisions(decisions);
       setCoches(new Set());
       await apres(
-        `${nf.format(r.faites)} décision(s) enregistrée(s) (${libelle}).${r.nbErreurs ? ` ${r.nbErreurs} refusée(s) : ${r.erreurs.slice(0, 3).join(" ; ")}` : ""} La bourse est recalculée.`,
+        `${nf.format(r.faites)} décision(s) enregistrée(s) (${libelle}).${r.nbErreurs ? ` ${r.nbErreurs} refusée(s) : ${r.erreurs.slice(0, 3).join(" ; ")}` : ""} Les contrôles sont à jour ; les chiffres de l’état ne changent qu’avec « Recalculer ».`,
         r.nbErreurs > 0 && !r.faites,
       );
     } catch (x) {
@@ -284,7 +284,7 @@ export function DecisionsDeuxFois({
     try {
       const res = await envoyerDecisions(decisions);
       setCoches(new Set());
-      await apres(`${nf.format(res.faites)} cas réglé(s).${res.nbErreurs ? ` ${res.nbErreurs} refusé(s) : ${res.erreurs.slice(0, 3).join(" ; ")}` : ""} La bourse est recalculée.`, res.nbErreurs > 0 && !res.faites);
+      await apres(`${nf.format(res.faites)} cas réglé(s).${res.nbErreurs ? ` ${res.nbErreurs} refusé(s) : ${res.erreurs.slice(0, 3).join(" ; ")}` : ""} Les contrôles sont à jour ; les chiffres de l’état ne changent qu’avec « Recalculer ».`, res.nbErreurs > 0 && !res.faites);
     } catch (x) {
       await apres((x as Error).message, true);
     } finally {

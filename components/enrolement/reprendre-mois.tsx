@@ -43,7 +43,11 @@ interface Rapport {
   feuilles: string[];
   lus: number;
   montantFichier: number;
-  sansNom: Court & { montant: number };
+  sansNom: Court & {
+    montant: number;
+    lignes: { cle: string; feuille: string; ligne: number; montant: number; numero: string; cycle: string | null; departement: string | null; etablissement: string | null }[];
+  };
+  nommees: number;
   doublons: Court;
   retrouves: number;
   dejaPayables: number;
@@ -94,6 +98,8 @@ export function ReprendreMois({ population, fermer, apres }: { population: Popul
   const [motif, setMotif] = useState("RETIRE_DDEPPSA");
   const [memes, setMemes] = useState<Set<string>>(new Set());
   const [choix, setChoix] = useState<Choix>({});
+  // Les noms donnés aux lignes sans nom (« feuille#ligne » → nom) : la ligne est alors reprise
+  const [noms, setNoms] = useState<Record<string, string>>({});
   const [rapport, setRapport] = useState<Rapport | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -111,6 +117,7 @@ export function ReprendreMois({ population, fermer, apres }: { population: Popul
     oublier();
     setMemes(new Set());
     setChoix({});
+    setNoms({});
     try {
       const fd = new FormData();
       fd.append("fichier", f);
@@ -126,7 +133,9 @@ export function ReprendreMois({ population, fermer, apres }: { population: Popul
       setEnvoi(false);
     }
   }
-  const signature = () => [...memes].sort().join("|");
+  // Ce qui change les rapprochements (noms proches confirmés, noms donnés) : il faut revérifier
+  const nomsRemplis = Object.fromEntries(Object.entries(noms).filter(([, n]) => n.trim().length >= 2));
+  const signature = () => [...memes].sort().join("|") + "§" + JSON.stringify(Object.entries(nomsRemplis).sort());
   async function envoyer(essai: boolean) {
     if (!fichier || !cochees.size) return;
     setEnvoi(true);
@@ -138,6 +147,7 @@ export function ReprendreMois({ population, fermer, apres }: { population: Popul
       fd.append("memes", JSON.stringify([...memes]));
       fd.append("choix", JSON.stringify(choix));
       fd.append("motif", motif);
+      fd.append("nomsSansNom", JSON.stringify(nomsRemplis));
       const r = await api.post<Rapport>(`/enrolement/volontaires/reprendre-mois${qs({ mois, population, essai: essai ? 1 : 0 })}`, fd);
       setRapport(r);
       if (essai) {
@@ -282,10 +292,49 @@ export function ReprendreMois({ population, fermer, apres }: { population: Popul
               {rapport.dejaPayables ? ` (dont ${nf.format(rapport.dejaPayables)} déjà payables ce mois)` : ""}. Les montants suivent le barème de la Configuration.
             </p>
 
-            {rapport.sansNom.n > 0 && (
-              <div className="rounded-xl bg-rouge-100/50 px-3 py-2 text-[12px] text-rouge-600">
-                <strong>{nf.format(rapport.sansNom.n)} ligne(s) sans nom</strong> dans le fichier, payées {nf.format(rapport.sansNom.montant)} F : elles ne peuvent pas être
-                reprises. Demandez les noms au DG. <span className="text-rouge-600/80">{rapport.sansNom.exemples.slice(0, 12).join(" · ")}</span>
+            {(rapport.sansNom.n > 0 || rapport.nommees > 0) && (
+              <div className="space-y-2 rounded-xl bg-rouge-100/50 px-3 py-2 text-[12px]">
+                <div className="text-rouge-600">
+                  <strong>{nf.format(rapport.sansNom.n)} ligne(s) sans nom</strong> dans le fichier, payées {nf.format(rapport.sansNom.montant)} F par le DG.{" "}
+                  <strong>Laissées vides, elles sont mises de côté</strong> (personne n’est payé pour elles). Si vous connaissez le nom (demandé au DG ou à la
+                  direction départementale), écrivez-le : la ligne est alors reprise comme les autres (retrouvée dans le registre, ou ajoutée si vous la cochez), puis
+                  vérifiez de nouveau.
+                  {rapport.nommees > 0 && ` ${rapport.nommees} ligne(s) déjà nommée(s).`}
+                </div>
+                {rapport.sansNom.lignes.length > 0 && (
+                  <div className="max-h-72 overflow-auto rounded-lg bg-white ring-1 ring-rouge-200">
+                    <table className="w-full text-[12px]">
+                      <thead className="sticky top-0 bg-white text-left text-zinc-500">
+                        <tr>
+                          <th className="px-2 py-1.5 font-medium">Ligne du fichier</th>
+                          <th className="px-2 py-1.5 font-medium">Département · cycle · établissement</th>
+                          <th className="px-2 py-1.5 text-right font-medium">Montant</th>
+                          <th className="w-[38%] px-2 py-1.5 font-medium">Nom et prénoms (si connu)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rapport.sansNom.lignes.map((x) => (
+                          <tr key={x.cle} className="border-t border-zinc-100">
+                            <td className="px-2 py-1">
+                              N° {x.numero} <span className="text-zinc-400">(« {x.feuille} », ligne {x.ligne})</span>
+                            </td>
+                            <td className="px-2 py-1 text-zinc-600">{[x.departement, x.cycle, x.etablissement].filter(Boolean).join(" · ") || "—"}</td>
+                            <td className="px-2 py-1 text-right tabular-nums">{nf.format(x.montant)} F</td>
+                            <td className="px-2 py-1">
+                              <input
+                                className="w-full rounded-lg border border-zinc-200 px-2 py-1 text-[12px] focus:border-marque-400 focus:outline-none"
+                                value={noms[x.cle] ?? ""}
+                                onChange={(e) => setNoms((s) => ({ ...s, [x.cle]: e.target.value }))}
+                                placeholder="Laisser vide : mise de côté"
+                                aria-label={`Nom de la ligne ${x.ligne}`}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
 
@@ -387,7 +436,7 @@ export function ReprendreMois({ population, fermer, apres }: { population: Popul
             <ListeCourte titre="Noms portés par plusieurs fiches du registre" c={rapport.plusieursFiches} />
 
             {incomplets.length > 0 && <Alerte>{incomplets.length} absent(s) coché(s) sans département ou sans cycle : choisissez-les, ou décochez-les.</Alerte>}
-            {aReverifier && <Alerte ton="jaune">Vous avez coché des noms proches : vérifiez de nouveau avant de reprendre.</Alerte>}
+            {aReverifier && <Alerte ton="jaune">Vous avez coché des noms proches ou écrit des noms : vérifiez de nouveau avant de reprendre.</Alerte>}
           </div>
         )}
 
