@@ -54,6 +54,10 @@ const AIDE: Record<string, string> = {
   MONTANT: "Le montant de cette catégorie n’est pas fixé : réglez-le dans Enrôlement › Configuration, puis recalculez.",
   RAPPEL: "Plusieurs mois payés d’un coup : vérifiez qu’ils sont dus, puis notez « vérifié ».",
   DUREE: "Durée du volontariat dépassée : sortez-le (fin de volontariat), ou notez « vérifié ».",
+  AUTRE_LISTE:
+    "La même personne est payée sur les deux listes (volontaires et communautaires). Cochez, puis choisissez : la garder sur cette liste et la sortir de l’autre, la garder sur l’autre liste et la sortir de celle-ci, ou noter « deux personnes différentes ». (Mêmes choix, côte à côte, dans « Payés deux fois ».)",
+  DOUBLON:
+    "La même personne a deux fiches sur cette liste. Cochez, puis gardez une fiche et sortez l’autre (motif « Doublon »), ou notez « deux personnes différentes ». (Mêmes choix, côte à côte, dans « Payés deux fois ».)",
 };
 /** Le motif de sortie proposé d'abord, selon le contrôle. */
 const MOTIF_PROPOSE: Record<string, string> = {
@@ -61,6 +65,8 @@ const MOTIF_PROPOSE: Record<string, string> = {
   TEXTE_FP: "RECRUTE_FP",
   EN_RECRUTEMENT: "RECRUTE_FP",
   DUREE: "FIN_VOLONTARIAT",
+  AUTRE_LISTE: "DOUBLON",
+  DOUBLON: "DOUBLON",
 };
 
 /**
@@ -136,8 +142,28 @@ export function BarreDecisions({
   const completer = (champs: Partial<Decision>, quoi: string) =>
     lancer(cochees.map((id) => ({ action: "COMPLETER", id, ...champs })), `${n} fiche(s) recevront ${quoi}.`, "Compléter");
 
+  // Deux fiches pour une même personne (doublon, ou payée sur les deux listes) : décider en masse
+  // laquelle garder, ou noter deux personnes différentes (15/11/2026)
+  const deuxFiches = code === "AUTRE_LISTE" || code === "DOUBLON";
+  const paires = cochees.map((id) => parId.get(id)).filter((a): a is Anomalie => !!a?.autreId);
+  const dateFr = date.split("-").reverse().join("/");
+  const garder = (ici: boolean) =>
+    lancer(
+      paires.map((a) => ({ action: "GARDER" as const, id: ici ? a.volontaireId : a.autreId!, autreId: ici ? a.autreId! : a.volontaireId, motif: "DOUBLON", date, note })),
+      code === "AUTRE_LISTE"
+        ? `${paires.length} personne(s) ${ici ? "restent sur cette liste et sortent de l’autre" : "restent sur l’autre liste et sortent de celle-ci"} (motif « Doublon », le ${dateFr}). La fiche sortie n’est plus payée ; ce qu’elle savait et que la fiche gardée ignorait passe à la fiche gardée.`
+        : `${paires.length} doublon(s) réglé(s) : ${ici ? "la fiche cochée est gardée, l’autre sort" : "l’autre fiche est gardée, la fiche cochée sort"} (motif « Doublon », le ${dateFr}).`,
+      "Garder et sortir",
+    );
+  const deuxPersonnes = () =>
+    lancer(
+      paires.map((a) => ({ action: "DEUX_PERSONNES" as const, id: a.volontaireId, autreId: a.autreId!, controle: code, note: note || "Deux personnes différentes (vérifié)" })),
+      `${paires.length} paire(s) notée(s) « deux personnes différentes » : les deux restent payées, le contrôle ne revient plus.`,
+      "Deux personnes",
+    );
+
   const peutSortir = !["CATEGORIE", "DEPARTEMENT", "DEBUT", "MONTANT"].includes(code);
-  const peutVerifier = !["CATEGORIE", "DEPARTEMENT", "DEBUT", "MONTANT"].includes(code);
+  const peutVerifier = !["CATEGORIE", "DEPARTEMENT", "DEBUT", "MONTANT", "AUTRE_LISTE", "DOUBLON"].includes(code);
   return (
     <div className="mb-4 space-y-3 rounded-2xl bg-zinc-50 p-3 text-[13px] ring-1 ring-zinc-200">
       {AIDE[code] && <p className="text-zinc-600">{AIDE[code]}</p>}
@@ -158,7 +184,22 @@ export function BarreDecisions({
           <span className="rounded-lg bg-amber-100 px-2 py-0.5 font-medium text-amber-900">Aucune ligne cochée : cochez « Tout cocher » ou la case à gauche des noms pour activer les boutons.</span>
         )}
       </div>
-      {peutSortir && (
+      {deuxFiches && (
+        <div className="flex flex-wrap items-end gap-2">
+          <Saisie type="date" className="w-40" value={date} onChange={(x) => setDate(x.target.value)} title="Date de sortie de la fiche sortie (le 1er du mois : pas payée ce mois-ci)" />
+          <Bouton variante="danger" disabled={!paires.length || !date || envoi} onClick={() => garder(true)} title={!n ? "Cochez d’abord des lignes" : undefined}>
+            <LogOut /> {code === "AUTRE_LISTE" ? "Garder sur cette liste, sortir de l’autre" : "Garder la fiche cochée, sortir l’autre"} ({nf.format(paires.length)})
+          </Bouton>
+          <Bouton variante="danger" disabled={!paires.length || !date || envoi} onClick={() => garder(false)} title={!n ? "Cochez d’abord des lignes" : undefined}>
+            <LogOut /> {code === "AUTRE_LISTE" ? "Garder sur l’autre liste, sortir de celle-ci" : "Garder l’autre fiche, sortir la cochée"} ({nf.format(paires.length)})
+          </Bouton>
+          <Saisie className="w-64" value={note} onChange={(x) => setNote(x.target.value)} placeholder="Note (facultatif)" />
+          <Bouton disabled={!paires.length || envoi} onClick={deuxPersonnes} title={!n ? "Cochez d’abord des lignes" : undefined}>
+            <CheckCircle2 /> Deux personnes différentes ({nf.format(paires.length)})
+          </Bouton>
+        </div>
+      )}
+      {peutSortir && !deuxFiches && (
         <div className="flex flex-wrap items-end gap-2">
           <Liste className="w-64" value={motif} onChange={(x) => setMotif(x.target.value)} vide="Motif de sortie…" options={motifs.map((m) => ({ valeur: m.code, libelle: m.libelle }))} />
           <Saisie type="date" className="w-40" value={date} onChange={(x) => setDate(x.target.value)} title="Date de sortie (le 1er du mois : pas payé ce mois-ci)" />
