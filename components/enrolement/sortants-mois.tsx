@@ -34,6 +34,14 @@ interface Sortants {
   parDepartement: Groupe[];
   parCycle: Groupe[];
   total: { n: number; mensuel: number; annee: number; sansBareme: number };
+  /** Pas payés ce mois pour un problème (sans nom, doublon, absent non ajouté, sans barème). */
+  misDeCote: {
+    lignes: { raison: string; nom: string; departement: string; cycle: string; etablissement: string; montant: number; precision: string; origine: string }[];
+    parRaison: { libelle: string; n: number; montant: number }[];
+    total: { n: number; montant: number };
+    reprise: { fichier: string; le: string; par: string } | null;
+  };
+  ensemble: { n: number; mensuel: number };
 }
 
 /**
@@ -116,6 +124,90 @@ export function SortantsDuMois({ etatId, telecharger, ouvrir }: { etatId: number
               </tr>
             </tbody>
           </Tableau>
+        )}
+      </Carte>
+
+      {/* Les mis de côté et l'ensemble (15/11/2026) */}
+      <Carte titre={`Mis de côté : pas payés en ${s.moisEnClair} pour un problème`}>
+        <p className="mb-3 text-[12px] text-zinc-500">
+          Ils ne sortent pas du registre : ligne sans nom, doublon dans l’état du DG, absent du registre non ajouté, cycle non renseigné.
+          {s.misDeCote.reprise
+            ? ` Lignes du DG d’après « ${s.misDeCote.reprise.fichier} » (reprise du ${new Date(s.misDeCote.reprise.le).toLocaleDateString("fr-FR")} par ${s.misDeCote.reprise.par}).`
+            : " Les lignes du DG mises de côté apparaissent après « Reprendre un mois déjà payé » ; ici, seulement les lignes de l’état sans barème."}
+        </p>
+        {!s.misDeCote.total.n ? (
+          <Vide>Personne n’est mis de côté ce mois-ci.</Vide>
+        ) : (
+          <Tableau>
+            <thead>
+              <tr>
+                <th>Raison</th>
+                <th className="text-right">Personnes</th>
+                <th className="text-right">Montant du mois</th>
+              </tr>
+            </thead>
+            <tbody>
+              {s.misDeCote.parRaison.map((g) => (
+                <tr key={g.libelle}>
+                  <td>{g.libelle}</td>
+                  <td className="text-right tabular-nums">{nf.format(g.n)}</td>
+                  <td className="text-right tabular-nums">{fcfa(g.montant)}</td>
+                </tr>
+              ))}
+              <tr className="font-semibold">
+                <td>Total</td>
+                <td className="text-right tabular-nums">{nf.format(s.misDeCote.total.n)}</td>
+                <td className="text-right tabular-nums">{fcfa(s.misDeCote.total.montant)}</td>
+              </tr>
+            </tbody>
+          </Tableau>
+        )}
+        <div className="mt-4 grid gap-2 rounded-xl bg-zinc-50 p-3 text-[13px] sm:grid-cols-3">
+          <div>
+            <div className="text-[11px] text-zinc-500">Sortants</div>
+            <div className="font-semibold tabular-nums">
+              {nf.format(s.total.n)} · {fcfa(s.total.mensuel)}
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] text-zinc-500">Mis de côté</div>
+            <div className="font-semibold tabular-nums">
+              {nf.format(s.misDeCote.total.n)} · {fcfa(s.misDeCote.total.montant)}
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] text-zinc-500">Ensemble, non payés en {s.moisEnClair}</div>
+            <div className="font-semibold tabular-nums text-marque-700">
+              {nf.format(s.ensemble.n)} · {fcfa(s.ensemble.mensuel)}
+            </div>
+          </div>
+        </div>
+        {s.misDeCote.total.n > 0 && (
+          <details className="mt-3 rounded-xl bg-zinc-50 px-3 py-2 text-[12px]">
+            <summary className="cursor-pointer font-medium">La liste des mis de côté ({nf.format(s.misDeCote.total.n)})</summary>
+            <Tableau>
+              <thead>
+                <tr>
+                  <th>Nom et prénoms</th>
+                  <th>Département · cycle</th>
+                  <th>Raison</th>
+                  <th>Précision</th>
+                  <th className="text-right">Montant</th>
+                </tr>
+              </thead>
+              <tbody>
+                {s.misDeCote.lignes.slice(0, 300).map((x, i) => (
+                  <tr key={`${x.origine}-${i}`}>
+                    <td className="font-medium">{x.nom}</td>
+                    <td className="text-zinc-600">{[x.departement, x.cycle].filter(Boolean).join(" · ")}</td>
+                    <td>{x.raison}</td>
+                    <td className="max-w-80 text-zinc-500">{x.precision}</td>
+                    <td className="text-right tabular-nums">{x.montant ? fcfa(x.montant) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </Tableau>
+          </details>
         )}
       </Carte>
 
