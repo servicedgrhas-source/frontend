@@ -184,6 +184,12 @@ div.page-a4:last-of-type {
   }
 }
 
+/* Police « Gill Sans MT Condensed » choisie pour l’impression de la bourse (15/11/2026) */
+.police-gill-condensee .feuille-liste,
+.police-gill-condensee .feuille-note {
+  font-family: "Gill Sans MT Condensed", "Gill Sans Nova Cond", "Arial Narrow", sans-serif;
+}
+
 /* Police « Gill Sans MT » choisie pour l’impression de la bourse (13/11/2026) */
 .police-gill .feuille-liste,
 .police-gill .feuille-note {

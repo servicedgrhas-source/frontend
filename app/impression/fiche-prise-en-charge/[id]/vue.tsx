@@ -18,6 +18,8 @@ interface Fiche {
   effTotal: number;
   montantTotal: number;
   texteEffectif: string;
+  /** Le montant de la phrase, imprimé en gras. */
+  montantEnGras: string;
   texteFrais: string;
   signature: { titre: string; nom: string };
   nomFichier: string;
@@ -32,7 +34,7 @@ const taux = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
  * PRISE EN CHARGE DES ENSEIGNANTS COMMUNAUTAIRES DU MOIS D'AOÛT 2026 », 14/11/2026) : une page A4
  * paysage, en-tête, titre, mesure, année scolaire, période sur une bande grise, tableau Eff. /
  * Montant par cycle (le taux dans le titre du cycle) et total mensuel, texte, signature.
- * `?police=gill` : en Gill Sans MT ; sinon la police étroite du modèle.
+ * `?police=gill` : en Gill Sans MT ; sinon (`actuelle` ou `condensee`) la police étroite du modèle.
  */
 export function ImpressionFichePriseEnCharge() {
   const { id } = useParams<{ id: string }>();
@@ -56,7 +58,7 @@ export function ImpressionFichePriseEnCharge() {
   const police = gill ? '"Gill Sans MT", "Gill Sans", Calibri, sans-serif' : '"Gill Sans MT Condensed", "Gill Sans Nova Cond", "Arial Narrow", sans-serif';
   const bord = "1px solid #000";
   const th = { border: bord, padding: "2px 3px", fontWeight: 700, textAlign: "center" as const, verticalAlign: "middle" as const };
-  const td = { border: bord, padding: "1px 4px", textAlign: "center" as const };
+  const td = { border: bord, padding: "1px 4px", textAlign: "center" as const, lineHeight: 1.15 };
   const tdD = { ...td, textAlign: "right" as const, whiteSpace: "nowrap" as const };
   return (
     <div className="min-h-screen bg-zinc-200 py-6 print:bg-white print:py-0">
@@ -74,17 +76,22 @@ export function ImpressionFichePriseEnCharge() {
       </div>
       <div className="mx-auto box-border h-[210mm] w-[297mm] overflow-hidden bg-white px-[11mm] py-[9mm] text-black shadow print:shadow-none" style={{ fontFamily: police, fontSize: "10pt", lineHeight: 1.25 }}>
         {/* L'en-tête : le ministère à gauche, la République à droite */}
-        <div className="flex items-start justify-between text-center text-[10pt] font-bold">
+        <div className="flex items-start justify-between text-center text-[10pt] font-bold leading-[1.15]">
           <div className="w-[42%]">
+            {/* Des tirets courts entre les éléments, comme le modèle (15/11/2026) */}
             <div>MINISTERE DE L’ENSEIGNEMENT PRESCOLAIRE, PRIMAIRE,</div>
             <div>SECONDAIRE ET DE L’ALPHABETISATION</div>
-            <div className="underline">CABINET</div>
+            <div className="leading-[0.75]">-----------</div>
+            <div>CABINET</div>
+            <div className="leading-[0.75]">-----------</div>
             <div>DIRECTION GENERALE DES RESSOURCES HUMAINES</div>
-            <div className="underline">ET DE L’ADMINISTRATION SCOLAIRE</div>
+            <div>ET DE L’ADMINISTRATION SCOLAIRE</div>
+            <div className="leading-[0.75]">-----------</div>
           </div>
           <div className="w-[22%]">
             <div>REPUBLIQUE DU CONGO</div>
-            <div className="underline">Unité-Travail-Progrès</div>
+            <div>Unité - Travail - Progrès</div>
+            <div className="leading-[0.75]">-----------</div>
           </div>
         </div>
         <div className="mt-3 text-center text-[14pt] font-bold leading-tight">
@@ -96,7 +103,16 @@ export function ImpressionFichePriseEnCharge() {
         <div className="mt-1 py-0.5 text-center text-[12pt] font-bold" style={{ background: "#bfbfbf", printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}>
           {f.periode}
         </div>
-        <table className="mt-2 w-full border-collapse text-[9pt]" style={{ border: bord }}>
+        <table className="mt-2 w-full border-collapse text-[9pt]" style={{ border: bord, tableLayout: "fixed" }}>
+          {/* Des colonnes régulières : le département, puis pour chaque cycle un Eff. étroit et un
+              Montant ; un long nom de cycle passe à la ligne au lieu d'élargir sa colonne (15/11/2026) */}
+          <colgroup>
+            <col style={{ width: "11%" }} />
+            {[...f.colonnes, null].map((_, i) => [
+              <col key={`e${i}`} style={{ width: `${(89 / (f.colonnes.length + 1)) * 0.34}%` }} />,
+              <col key={`m${i}`} style={{ width: `${(89 / (f.colonnes.length + 1)) * 0.66}%` }} />,
+            ])}
+          </colgroup>
           <thead>
             <tr>
               <th rowSpan={2} style={{ ...th, width: "11%" }}>
@@ -130,7 +146,7 @@ export function ImpressionFichePriseEnCharge() {
           <tbody>
             {f.lignes.map((l) => (
               <tr key={l.libelle}>
-                <td style={{ ...td, textAlign: "left", whiteSpace: "nowrap" }}>{l.libelle}</td>
+                <td style={{ ...td, textAlign: "left" }}>{l.libelle}</td>
                 {l.cellules.map((x, i) => [
                   <td key={`e${i}`} style={td}>
                     {nombre(x.eff)}
@@ -158,15 +174,23 @@ export function ImpressionFichePriseEnCharge() {
             </tr>
           </tbody>
         </table>
-        <div className="mt-3 text-[10.5pt]">
-          <div>{f.texteEffectif}</div>
+        <div className="mt-2 text-[10.5pt]">
+          {/* Le montant en gras, comme la fiche du cabinet (15/11/2026) */}
+          <div>
+            {f.texteEffectif.split(f.montantEnGras).map((morceau, i) => (
+              <span key={i}>
+                {i > 0 && <strong>{f.montantEnGras}</strong>}
+                {morceau}
+              </span>
+            ))}
+          </div>
           <div>{f.texteFrais}</div>
         </div>
-        <div className="mt-3 ml-[68%] text-[10.5pt] leading-normal">
+        <div className="mt-2 ml-[68%] text-[10.5pt] leading-normal">
           <div>Fait à Brazzaville, le</div>
           {/* Une ligne entre « Fait à… » et le titre, puis la place de la signature */}
           <div className="mt-[1.3em] font-bold">{f.signature.titre}</div>
-          <div className="h-[3.6em]" />
+          <div className="h-[3.2em]" />
           <div className="font-bold">{f.signature.nom}</div>
         </div>
       </div>

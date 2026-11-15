@@ -95,14 +95,15 @@ export default function BourseMensuelle() {
   // Ce qui a changé depuis le dernier calcul, montré avant « Recalculer » ou « Valider »
   const [apercu, setApercu] = useState<(Apercu & { pour: "RECALCULER" | "VALIDER" }) | null>(null);
   // Police des documents (Excel, Word, PDF) : l'actuelle ou Gill Sans MT, retenue sur ce poste (13/11/2026)
-  const [police, setPolice] = useState<"actuelle" | "gill">(() => {
+  const [police, setPolice] = useState<"actuelle" | "gill" | "condensee">(() => {
     try {
-      return typeof window !== "undefined" && localStorage.getItem("police-documents") === "gill" ? "gill" : "actuelle";
+      const p = typeof window !== "undefined" ? localStorage.getItem("police-documents") : null;
+      return p === "gill" || p === "condensee" ? p : "actuelle";
     } catch {
       return "actuelle";
     }
   });
-  const choisirPolice = (p: "actuelle" | "gill") => {
+  const choisirPolice = (p: "actuelle" | "gill" | "condensee") => {
     setPolice(p);
     try {
       localStorage.setItem("police-documents", p);
@@ -110,7 +111,7 @@ export default function BourseMensuelle() {
       /* stockage indisponible : le choix vaut pour cette page */
     }
   };
-  const avecPolice = (c: string) => (police === "gill" ? `${c}${c.includes("?") ? "&" : "?"}police=gill` : c);
+  const avecPolice = (c: string) => (police !== "actuelle" ? `${c}${c.includes("?") ? "&" : "?"}police=${police}` : c);
   // Orientation des états en Word et en PDF : paysage (habituel) ou portrait, retenue sur ce poste (13/11/2026)
   const [orientation, setOrientation] = useState<"paysage" | "portrait">(() => {
     try {
@@ -173,6 +174,32 @@ export default function BourseMensuelle() {
     } catch (x) {
       setErreur((x as Error).message);
     }
+  }
+
+  /**
+   * Préparer un nouveau mois, après confirmation (15/11/2026) : la fenêtre dit d'où viennent les
+   * chiffres, qu'ils restent figés, et dans quel ordre valider. Un mois déjà préparé est seulement
+   * ouvert (le recalculer passe par « Recalculer », qui montre d'abord les changements).
+   */
+  async function preparerNouveau() {
+    const existant = etats.donnees?.find((x) => x.mois === mois);
+    if (existant) {
+      setChoisi(existant.id);
+      setMessage(
+        `L’état ${deMois(mois)} existe déjà (${existant.statut === "VALIDE" ? "validé" : "projet"}) : il est ouvert ci-dessous.${existant.statut === "VALIDE" ? "" : " Pour le mettre à jour, cliquez sur « Recalculer » : les changements vous seront montrés avant."}`,
+      );
+      return;
+    }
+    const avant = (etats.donnees ?? []).filter((x) => x.statut === "BROUILLON" && x.mois < mois).map((x) => moisFr(x.mois));
+    const apres = (etats.donnees ?? []).filter((x) => x.mois > mois).map((x) => moisFr(x.mois));
+    const texte = [
+      `Préparer ${population === "VOLONTAIRE" ? "la bourse des volontaires" : "le paiement des communautaires"} ${deMois(mois)} ?`,
+      `Le système calcule l’état à partir du registre d’aujourd’hui : chaque ${L.un} en poste dont la bourse a commencé (et ceux qui sont sortis après ce mois), au barème de la Configuration selon son cycle.`,
+      "C’est un projet : rien n’est payé ni envoyé. Ses chiffres restent figés ; ils ne changeront que si vous cliquez sur « Recalculer ». Le DG le valide ensuite.",
+      ...(avant.length ? [`À valider d’abord : ${avant.join(", ")} (en projet).`] : []),
+      ...(apres.length ? [`Attention : ${apres.join(", ")} ${apres.length > 1 ? "existent" : "existe"} déjà. ${moisFr(mois).charAt(0).toUpperCase() + moisFr(mois).slice(1)} devra être validé avant.`] : []),
+    ].join(" ");
+    if (await demander(texte, "Oui, préparer")) await preparer(mois);
   }
 
   /** `silencieux` : recalcul après la correction d'une fiche (pas d'annonce). */
@@ -267,7 +294,7 @@ export default function BourseMensuelle() {
             <Champ libelle="Mois à préparer">
               <ChoixMois value={mois} onChange={setMois} />
             </Champ>
-            <Bouton variante="principal" disabled={!mois} onClick={() => preparer(mois)}>
+            <Bouton variante="principal" disabled={!mois} onClick={() => void preparerNouveau()}>
               {population === "VOLONTAIRE" ? `Préparer la bourse ${deMois(mois)}` : `Préparer le paiement des communautaires ${deMois(mois)}`}
             </Bouton>
           </div>
@@ -316,6 +343,7 @@ export default function BourseMensuelle() {
               options={[
                 { valeur: "actuelle", libelle: "Actuelle" },
                 { valeur: "gill", libelle: <span style={{ fontFamily: "'Gill Sans MT', 'Gill Sans', sans-serif" }}>Gill Sans MT</span> },
+                { valeur: "condensee", libelle: <span style={{ fontFamily: "'Gill Sans MT Condensed', 'Gill Sans Nova Cond', 'Arial Narrow', sans-serif" }}>Gill Sans MT Condensed</span> },
               ]}
               changer={choisirPolice}
             />

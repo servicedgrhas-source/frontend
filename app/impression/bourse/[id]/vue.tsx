@@ -32,6 +32,7 @@ export function ImpressionEtatPaiement() {
   // ?police=gill : l'état en Gill Sans MT, au choix de la page Paiement mensuel (13/11/2026)
   const params = useSearchParams();
   const gill = params.get("police") === "gill";
+  const condensee = params.get("police") === "condensee";
   // ?orientation=portrait : l'état en portrait ; en paysage sinon (13/11/2026)
   const paysage = params.get("orientation") !== "portrait";
   const d = useApi<EtatPaiement>(`/enrolement/bourse/${id}/etat-paiement`);
@@ -182,7 +183,7 @@ export function ImpressionEtatPaiement() {
     );
   if (!contenu || !d.donnees) return <Chargement texte="Préparation de l’état de paiement…" />;
   return (
-    <div className={`min-h-screen bg-zinc-200 py-6 print:bg-white print:py-0${gill ? " police-gill" : ""}`}>
+    <div className={`min-h-screen bg-zinc-200 py-6 print:bg-white print:py-0${gill ? " police-gill" : condensee ? " police-gill-condensee" : ""}`}>
       <StyleImpressionA4 paysage={paysage} />
       <div className={`no-print mx-auto mb-4 flex ${paysage ? "w-[297mm]" : "w-[210mm]"} flex-wrap items-center justify-between gap-2`}>
         <span className="text-sm text-zinc-700">
