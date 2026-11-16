@@ -348,6 +348,14 @@ export const ESPACES: Espace[] = [
       },
       {
         groupe: "Suivi et réglages",
+        href: "/enrolement/effectifs-ecoles",
+        libelle: "Effectifs par école (Banque mondiale)",
+        icone: BarChart3,
+        visible: traiter,
+        explication: "Volontaires, communautaires, contractuels et fonctionnaires de chaque école, par DEPPSA ; les écoles de moins de 3 fonctionnaires en priorité ; noms d’écoles à harmoniser ; Excel.",
+      },
+      {
+        groupe: "Suivi et réglages",
         href: "/enrolement/configuration",
         libelle: "Configuration",
         icone: Settings,
