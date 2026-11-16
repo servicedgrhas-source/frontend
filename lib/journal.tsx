@@ -651,6 +651,31 @@ const TITRES: Record<string, [string, string, Ton]> = {
     "Trash2",
     "rouge"
   ],
+  "ECOLE_JUMELEE": [
+    "Effectifs par école : même école (jumelée avec une autre)",
+    "ArrowLeftRight",
+    "vert"
+  ],
+  "ECOLES_DIFFERENTES": [
+    "Effectifs par école : deux écoles différentes",
+    "UserCog",
+    "gris"
+  ],
+  "ECOLE_ECARTEE": [
+    "Effectifs par école : école écartée (pas une école)",
+    "Ban",
+    "rouge"
+  ],
+  "ECOLE_MISE_A_JOUR": [
+    "Effectifs par école : nom, DEPPSA ou cycle corrigés",
+    "FilePen",
+    "bleu"
+  ],
+  "ECOLE_DECISION_ANNULEE": [
+    "Effectifs par école : décision annulée",
+    "RotateCcw",
+    "gris"
+  ],
   "ECOLE_EMPLOI_DU_TEMPS": [
     "École : emploi du temps généré",
     "CalendarDays",
