@@ -17,6 +17,7 @@ interface Groupe {
   recrutes: number;
   affectes: number;
   payes: number;
+  attente: number;
   reste: number;
   aVerifier: number;
 }
@@ -60,6 +61,7 @@ interface Suivi {
   situations: Record<string, string>;
   calculeLe: string;
   aJour: boolean;
+  basePersonnel: { total: number; fonctionnaires: number; contractuels: number; payes: number; attente: number; avecStructure: number; sansStructure: number };
 }
 
 /** Les couleurs des situations (comme les pastilles), avec un libellé qui peut passer à la ligne. */
@@ -76,7 +78,9 @@ const MOTS = {
   registre: "Toutes les personnes payées un jour en bourse : les volontaires (finalistes enrôlés) et les communautaires (recrutés autrefois par les écoles), qu’elles soient encore en poste ou déjà sorties.",
   recrute: "Devenu fonctionnaire ou contractuel. Son statut dans la base du personnel suffit, même si le texte manque. Comptent aussi : un arrêté ou un décret d’intégration reçu, ou une sortie de la bourse avec le motif « recruté à la Fonction publique ».",
   affecte: "Un fonctionnaire ou un contractuel est affecté : on l’a envoyé travailler dans un département et une structure (école, inspection, direction…). La structure vient de sa fiche du personnel (lieu de service). Pour une recrue qui n’est pas encore dans la base du personnel : une note d’affectation retrouvée.",
-  paye: "Fonctionnaire ou contractuel, avec ou sans matricule solde : il perçoit son salaire.",
+  paye: "A un matricule solde : la Solde lui paie son salaire.",
+  attente: "Fonctionnaire ou contractuel sans matricule solde : recruté, mais son salaire n’est pas encore confirmé par la Solde. Le chiffre baisse quand le fichier de la Solde est chargé.",
+  base: "Tous les fonctionnaires et contractuels de la base du personnel, qu’ils soient passés ou non par la bourse.",
   reste: "Encore en poste et payés en bourse : pas encore recrutés.",
   verifier: "Même nom qu’un fonctionnaire ou un contractuel, mais sans date de naissance pour être sûr que c’est la même personne. Pas compté : à confirmer.",
   retrouver: "Une personne de la bourse est retrouvée dans la base du personnel par le lien enregistré entre ses deux fiches, ou par le même nom et la même date de naissance.",
@@ -86,6 +90,7 @@ const MOTS = {
 const TON: Record<string, Ton> = {
   PAYE_AFFECTE: "vert",
   PAYE_SANS_NOTE: "vert",
+  ATTENTE_MATRICULE: "jaune",
   ATTENTE_SALAIRE: "bleu",
   ATTENTE_NOTE: "bleu",
   RECRUTE_SANS_PIECE: "jaune",
@@ -134,6 +139,7 @@ export default function SuiviIntegration() {
       .telecharger(`/enrolement/suivi-integration/${quoi}${qs(filtres)}`, `Suivi de l'intégration des volontaires et communautaires.${quoi === "excel" ? "xlsx" : "docx"}`)
       .catch((x: Error) => setErreur(x.message));
   const s = d.donnees?.synthese;
+  const b = d.donnees?.basePersonnel ?? { total: 0, fonctionnaires: 0, contractuels: 0, payes: 0, attente: 0, avecStructure: 0, sansStructure: 0 };
   const groupes = s ? (par === "population" ? s.parPopulation : par === "departement" ? s.parDepartement : par === "cycle" ? s.parCycle : s.parAnnee) : [];
   const pages = d.donnees ? Math.max(1, Math.ceil(d.donnees.total / d.donnees.taille)) : 1;
 
@@ -163,6 +169,7 @@ export default function SuiviIntegration() {
           <div><dt className="inline font-semibold">Recruté : </dt><dd className="inline">{MOTS.recrute}</dd></div>
           <div><dt className="inline font-semibold">Affecté : </dt><dd className="inline">{MOTS.affecte}</dd></div>
           <div><dt className="inline font-semibold">Payé (salaire) : </dt><dd className="inline">{MOTS.paye}</dd></div>
+          <div><dt className="inline font-semibold">En attente de matricule : </dt><dd className="inline">{MOTS.attente}</dd></div>
           <div><dt className="inline font-semibold">Reste à intégrer : </dt><dd className="inline">{MOTS.reste}</dd></div>
           <div><dt className="inline font-semibold">À vérifier : </dt><dd className="inline">{MOTS.verifier}</dd></div>
           <div className="md:col-span-2 text-zinc-500">{MOTS.retrouver} Rien n’est modifié par cette page : elle lit seulement.</div>
@@ -191,20 +198,49 @@ export default function SuiviIntegration() {
       ) : (
         <>
           <FraicheurCalcul calculeLe={d.donnees.calculeLe} aJour={d.donnees.aJour} recharger={d.recharger} />
-          {/* Le parcours en chiffres */}
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <Chiffre libelle="Registre de la bourse" valeur={nf.format(s!.total.base)} ton="gris" detail="volontaires et communautaires" />
-            <Chiffre libelle="Recrutés" valeur={nf.format(s!.total.recrutes)} ton="bleu" detail={`${s!.taux.integration} % du registre : devenus fonctionnaires ou contractuels, ou texte reçu`} />
-            <Chiffre libelle="Affectés" valeur={nf.format(s!.total.affectes)} ton="bleu" detail={`${s!.taux.affectation} % des recrutés : travaillent dans un département et une structure`} />
-            <Chiffre libelle="Payés (salaire)" valeur={nf.format(s!.total.payes)} ton="vert" detail={`${s!.taux.priseEnCharge} % des recrutés : fonctionnaires ou contractuels`} />
-            <Chiffre libelle="Reste à intégrer" valeur={nf.format(s!.total.reste)} ton="rouge" detail="encore payés en bourse, pas encore recrutés" />
-          </div>
-          {(s!.total.aVerifier > 0 || s!.absentsRegistre > 0) && (
+          {/* 1. Toute la base du personnel */}
+          <section className="space-y-2">
+            <h2 className="text-[15px] font-semibold text-encre">
+              1. Toute la base du personnel <Aide>{MOTS.base}</Aide>
+            </h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Chiffre libelle="Fonctionnaires et contractuels" valeur={nf.format(b.total)} ton="gris" detail={`${nf.format(b.fonctionnaires)} fonctionnaires · ${nf.format(b.contractuels)} contractuels`} />
+              <Chiffre libelle="Payés (matricule solde)" valeur={nf.format(b.payes)} ton="vert" detail={b.total ? `${Math.round((b.payes * 1000) / b.total) / 10} % : ont un salaire` : ""} />
+              <Chiffre libelle="En attente de matricule" valeur={nf.format(b.attente)} ton="jaune" detail="recrutés, salaire pas encore confirmé" />
+              <Chiffre libelle="Affectés, structure connue" valeur={nf.format(b.avecStructure)} ton="bleu" detail={`${nf.format(b.sansStructure)} avec une structure à compléter`} />
+            </div>
+          </section>
+
+          {/* 2. Le parcours des volontaires et communautaires, étape par étape */}
+          <section className="space-y-2">
+            <h2 className="text-[15px] font-semibold text-encre">
+              2. Volontaires et communautaires : où en sont-ils ? <Aide>{MOTS.retrouver}</Aide>
+            </h2>
+            <div className="flex flex-wrap items-stretch gap-2">
+              {[
+                { libelle: "Payés en bourse un jour", n: s!.total.base, detail: "registre de la bourse", aide: MOTS.registre, ton: "" },
+                { libelle: "Recrutés", n: s!.total.recrutes, detail: `${s!.taux.integration} % du registre`, aide: MOTS.recrute, ton: "" },
+                { libelle: "Affectés", n: s!.total.affectes, detail: `${s!.taux.affectation} % des recrutés`, aide: MOTS.affecte, ton: "" },
+                { libelle: "Payés (matricule solde)", n: s!.total.payes, detail: s!.total.attente ? `${nf.format(s!.total.attente)} en attente de matricule` : `${s!.taux.priseEnCharge} % des recrutés`, aide: MOTS.paye, ton: s!.total.attente ? "jaune" : "vert" },
+              ].map((e, i) => (
+                <div key={e.libelle} className="flex min-w-[150px] flex-1 items-stretch gap-2">
+                  {i > 0 && <span className="self-center text-zinc-400" aria-hidden>→</span>}
+                  <div className={`flex-1 rounded-2xl p-4 shadow-sm ${e.ton === "jaune" ? "bg-or-100" : "bg-white"}`}>
+                    <div className={`text-xs ${e.ton === "jaune" ? "text-or-700" : "text-zinc-500"}`}>
+                      {e.libelle} <Aide>{e.aide}</Aide>
+                    </div>
+                    <div className={`mt-0.5 text-2xl font-semibold tabular-nums ${e.ton === "jaune" ? "text-or-700" : "text-encre"}`}>{nf.format(e.n)}</div>
+                    <div className={`text-[12px] ${e.ton === "jaune" ? "text-or-700" : "text-zinc-500"}`}>{e.detail}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
             <p className="text-[12px] text-zinc-600">
-              {s!.total.aVerifier > 0 && <>De plus, <strong>{nf.format(s!.total.aVerifier)}</strong> personne(s) sont peut-être déjà recrutées : même nom qu’un fonctionnaire ou qu’une recrue des textes, mais sans date de naissance pour être sûr. Elles ne sont pas comptées dans « Recrutés » : à vérifier. </>}
-              {s!.absentsRegistre > 0 && <><strong>{nf.format(s!.absentsRegistre)}</strong> recrue(s) des textes d’origine volontaire ou communautaire sont absentes du registre.</>}
+              Hors du parcours : <strong>{nf.format(s!.total.reste)}</strong> encore payés en bourse, pas encore recrutés
+              {s!.total.aVerifier > 0 && <> · <strong>{nf.format(s!.total.aVerifier)}</strong> à vérifier (même nom qu’un fonctionnaire, sans date de naissance pour être sûr : pas comptés)</>}
+              {s!.absentsRegistre > 0 && <> · <strong>{nf.format(s!.absentsRegistre)}</strong> recrue(s) des textes absentes du registre</>}.
             </p>
-          )}
+          </section>
 
           <Segments
             valeur={vue}
@@ -237,7 +273,8 @@ export default function SuiviIntegration() {
                       <th className="text-right">Registre <Aide>{MOTS.registre}</Aide></th>
                       <th className="text-right">Recrutés <Aide>{MOTS.recrute}</Aide></th>
                       <th className="text-right">Affectés <Aide>{MOTS.affecte}</Aide></th>
-                      <th className="text-right">Payés <Aide>{MOTS.paye}</Aide></th>
+                      <th className="text-right">Payés (matricule) <Aide>{MOTS.paye}</Aide></th>
+                      <th className="text-right">En attente de matricule <Aide>{MOTS.attente}</Aide></th>
                       <th className="text-right">Reste à intégrer <Aide>{MOTS.reste}</Aide></th>
                       <th className="text-right">À vérifier <Aide>{MOTS.verifier}</Aide></th>
                     </tr>
@@ -250,6 +287,7 @@ export default function SuiviIntegration() {
                         <td className="text-right tabular-nums">{nf.format(g.recrutes)}</td>
                         <td className="text-right tabular-nums">{nf.format(g.affectes)}</td>
                         <td className="text-right tabular-nums">{nf.format(g.payes)}</td>
+                        <td className="text-right tabular-nums text-or-700">{nf.format(g.attente)}</td>
                         <td className="text-right tabular-nums">{nf.format(g.reste)}</td>
                         <td className="text-right tabular-nums text-zinc-500">{nf.format(g.aVerifier)}</td>
                       </tr>
@@ -260,6 +298,7 @@ export default function SuiviIntegration() {
                       <td className="text-right tabular-nums">{nf.format(s!.total.recrutes)}</td>
                       <td className="text-right tabular-nums">{nf.format(s!.total.affectes)}</td>
                       <td className="text-right tabular-nums">{nf.format(s!.total.payes)}</td>
+                      <td className="text-right tabular-nums text-or-700">{nf.format(s!.total.attente)}</td>
                       <td className="text-right tabular-nums">{nf.format(s!.total.reste)}</td>
                       <td className="text-right tabular-nums text-zinc-500">{nf.format(s!.total.aVerifier)}</td>
                     </tr>
@@ -378,7 +417,7 @@ export default function SuiviIntegration() {
                           {l.salaire ? (
                             <>
                               {l.salaire.statut === "CONTRACTUEL" ? "Contractuel" : "Fonctionnaire"}
-                              {l.salaire.matricule ? ` · ${l.salaire.matricule}` : " · matricule manquant"}
+                              {l.salaire.matricule ? <> · {l.salaire.matricule}</> : <span className="text-or-700"> · en attente de matricule</span>}
                               {l.salaire.premierMois ? <><br />depuis {l.salaire.premierMois}</> : null}
                             </>
                           ) : l.piste ? (
