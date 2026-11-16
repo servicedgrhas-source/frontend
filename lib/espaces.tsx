@@ -340,6 +340,14 @@ export const ESPACES: Espace[] = [
       },
       {
         groupe: "Suivi et réglages",
+        href: "/enrolement/suivi-integration",
+        libelle: "Suivi de l’intégration (Banque mondiale)",
+        icone: ListChecks,
+        visible: traiter,
+        explication: "Pour chaque volontaire et communautaire : texte d’intégration, note d’affectation, salaire (matricule solde ou statut) et fin de la bourse ; le parcours en chiffres, ce qui reste, ce qui est à régler ; Excel et Word.",
+      },
+      {
+        groupe: "Suivi et réglages",
         href: "/enrolement/configuration",
         libelle: "Configuration",
         icone: Settings,
