@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { categoriesDe, FicheVolontaire, type ProblemeBourse, deMois, fcfa, LISTES, moisFr, nf, peutGerer, type Population, useConfigEnrolement } from "@/components/enrolement/volontaires";
 import { BarreDecisions, DecisionsDeuxFois, type DeuxFois } from "@/components/enrolement/controles-bourse";
+import { BoutonComparer, ComparerEtat } from "@/components/enrolement/comparer-fichier";
 import { SortantsDuMois } from "@/components/enrolement/sortants-mois";
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, Chiffre, ChoixMois, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, Zone, useConfirmation } from "@/components/ui";
@@ -81,6 +82,8 @@ export default function BourseMensuelle() {
   const etats = useApi<Etat[]>(`/enrolement/bourse?population=${population}`);
   const registre = useApi<{ resume: { enAttente: number; sansCategorie: number; sansDepartement: number } }>(`/enrolement/volontaires?taille=1&population=${population}`);
   const [choisi, setChoisi] = useState<number | null>(null);
+  // Comparaison avec le fichier initial du mois (fait à la main, envoyé au Trésor)
+  const [comparer, setComparer] = useState(false);
   const [mois, setMois] = useState(moisCourant());
   const [vue, setVue] = useState<"controles" | "resume" | "liste" | "sortants">("controles");
   const [code, setCode] = useState("");
@@ -400,6 +403,8 @@ export default function BourseMensuelle() {
             >
               <Download /> Sortants du mois (Excel)
             </Bouton>
+            <BoutonComparer onClick={() => setComparer(true)} />
+            {comparer && <ComparerEtat etat={{ id: e.id, mois: e.mois, population }} fermer={() => setComparer(false)} />}
             <Bouton onClick={() => window.open(avecOrientation(avecPolice(`/impression/bourse/${e.id}`)), "_blank")} title="État à imprimer ou à enregistrer en PDF : en-tête, CNI, émargement, total et signature">
               <Printer /> Imprimer / PDF
             </Bouton>

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { ChoixEtablissement } from "@/components/choix-etablissement";
 import { ChangerNote, EcrireSpecialite, PastilleSpecialite, SpecialitesACompleter } from "@/components/enrolement/changer-note";
 import { CelluleAge, type Enrole, FicheEnrole, SelecteurCampagne, useCampagne } from "@/components/enrolement/commun";
+import { BoutonComparer, ComparerEnrolement } from "@/components/enrolement/comparer-fichier";
 import { useConfigEnrolement } from "@/components/enrolement/volontaires";
 import { BarreExport } from "@/components/export-liste";
 import { useSession } from "@/components/session";
@@ -62,6 +63,8 @@ function Placement({ e, fermer, apres }: { e: Enrole; fermer: () => void; apres:
 export default function BaseEnroles() {
   const { profil, refs } = useSession();
   const { campagnes, liste, campagne, choisir } = useCampagne();
+  // Comparaison avec le fichier des dossiers reçus (fait à la main)
+  const [comparer, setComparer] = useState(false);
   const conf = useConfigEnrolement().donnees?.configuration;
   const limites = conf ? { min: conf.ageMinimum, max: conf.ageMaximum } : null;
   const [erreurExport, setErreurExport] = useState<string | null>(null);
@@ -101,6 +104,7 @@ export default function BaseEnroles() {
       <Annonce ton="vert" fermer={() => setMessage(null)}>
         {message}
       </Annonce>
+      {campagne && comparer && <ComparerEnrolement campagne={campagne} fermer={() => setComparer(false)} />}
       {campagne && (
         <Carte
           titre={`Volontaires retenus — enrôlement ${campagne.annee}`}
@@ -117,6 +121,7 @@ export default function BaseEnroles() {
             <Bouton onClick={() => api.telecharger(`/enrolement/dossiers/excel${qs({ campagne: campagne.id, etat: "RETENU" })}`, `Enrolement ${campagne.annee} - base des enroles.xlsx`)}>
               Télécharger en Excel
             </Bouton>
+            <BoutonComparer onClick={() => setComparer(true)} libelle="Comparer avec un fichier" />
             <BarreExport chemin="/enrolement/listes/retenus" impression="/impression/enrolement-retenus" nom={`Liste des retenus ${campagne.annee}`} filtres={{ campagne: campagne.id }} erreur={setErreurExport} />
             </span>
           }
