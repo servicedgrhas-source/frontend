@@ -197,7 +197,9 @@ export function PagesA4({ blocs, tableaux, pied, classeFeuille, margeHaut = 12, 
           style={{ "--marge-haut": `${margeHaut}mm`, "--marge-cote": `${margeCote}mm`, "--echelle": String(echelle) } as React.CSSProperties}
         >
           {rendre(
-            cles.map((c) => parCle.get(c)!),
+            // Les données ont changé (rechargement) avant que le découpage soit refait : une ligne
+            // qui n'existe plus est ignorée, au lieu de faire planter la page
+            cles.map((c) => parCle.get(c)).filter((b): b is Bloc => !!b),
             tableaux,
             false,
             premieres,

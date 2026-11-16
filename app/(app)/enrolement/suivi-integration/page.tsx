@@ -4,7 +4,7 @@ import { Download, FileText } from "lucide-react";
 import { useState } from "react";
 import { categoriesDe, nf, useConfigEnrolement } from "@/components/enrolement/volontaires";
 import { useSession } from "@/components/session";
-import { Alerte, Badge, Bouton, Carte, Chargement, Chiffre, EnTete, Liste, Saisie, Segments, Tableau, Vide } from "@/components/ui";
+import { Aide, Alerte, Badge, Bouton, Carte, Chargement, Chiffre, EnTete, Liste, Saisie, Segments, Tableau, Vide } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
 import { accesDonne } from "@/lib/espaces";
 import type { Ton } from "@/lib/libelles";
@@ -31,7 +31,7 @@ interface Ligne {
   departement: string;
   cycle: string;
   texte: { nature: string; numero: string; date: string | null; source: string } | null;
-  note: { numero: string; date: string | null; lieu: string | null; source: string } | null;
+  note: { numero: string | null; date: string | null; lieu: string | null; departement?: string | null; source: string } | null;
   salaire: { statut: string | null; matricule: string | null; indice: string | null; premierMois: string | null } | null;
   piste: string | null;
   situation: string;
@@ -67,6 +67,17 @@ const COULEUR: Record<Ton, string> = {
   jaune: "bg-or-100 text-or-700",
   rouge: "bg-rouge-100 text-rouge-600",
   gris: "bg-zinc-100 text-zinc-600",
+};
+
+/** Les mots de la page, expliqués pour quelqu'un qui la découvre. */
+const MOTS = {
+  registre: "Toutes les personnes payées un jour en bourse : les volontaires (finalistes enrôlés) et les communautaires (recrutés autrefois par les écoles), qu’elles soient encore en poste ou déjà sorties.",
+  recrute: "Devenu fonctionnaire ou contractuel. Son statut dans la base du personnel suffit, même si le texte manque. Comptent aussi : un arrêté ou un décret d’intégration reçu, ou une sortie de la bourse avec le motif « recruté à la Fonction publique ».",
+  affecte: "Un fonctionnaire ou un contractuel est affecté : on l’a envoyé travailler dans un département et une structure (école, inspection, direction…). La structure vient de sa fiche du personnel (lieu de service). Pour une recrue qui n’est pas encore dans la base du personnel : une note d’affectation retrouvée.",
+  paye: "Fonctionnaire ou contractuel, avec ou sans matricule solde : il perçoit son salaire.",
+  reste: "Encore en poste et payés en bourse : pas encore recrutés.",
+  verifier: "Même nom qu’un fonctionnaire ou un contractuel, mais sans date de naissance pour être sûr que c’est la même personne. Pas compté : à confirmer.",
+  retrouver: "Une personne de la bourse est retrouvée dans la base du personnel par le lien enregistré entre ses deux fiches, ou par le même nom et la même date de naissance.",
 };
 
 /** La couleur de la pastille d'une situation. */
@@ -128,7 +139,7 @@ export default function SuiviIntegration() {
     <div className="space-y-6">
       <EnTete
         titre="Suivi de l’intégration (Banque mondiale)"
-        sousTitre="Pour chaque volontaire et communautaire, du registre de la bourse au salaire : le texte d’intégration (arrêté ou décret), la note d’affectation, la prise en charge de la solde et la fin de la bourse. « Payé » : un matricule solde, ou le statut de fonctionnaire ou de contractuel. Un rapprochement par le seul nom (sans date de naissance) n’est jamais compté : il est « à vérifier »."
+        sousTitre="Ce que sont devenus les volontaires et les communautaires payés en bourse : qui est devenu fonctionnaire ou contractuel, où il travaille, s’il touche son salaire, et qui reste à intégrer."
         actions={
           <div className="flex flex-wrap gap-2">
             <Bouton onClick={() => telecharger("excel")} title="Synthèse, liste nominative et points à régler (en-tête officiel)">
@@ -141,6 +152,20 @@ export default function SuiviIntegration() {
         }
       />
       {erreur && <Alerte>{erreur}</Alerte>}
+
+      {/* Comment lire cette page : les mots expliqués, pour quelqu'un qui la découvre */}
+      <details className="group rounded-2xl bg-white p-5 shadow-sm" open>
+        <summary className="cursor-pointer select-none text-[14px] font-semibold text-encre">Comment lire cette page ? <span className="font-normal text-zinc-500 group-open:hidden">(cliquer pour ouvrir)</span></summary>
+        <dl className="mt-3 grid gap-x-8 gap-y-2 text-[13px] leading-relaxed text-zinc-700 md:grid-cols-2">
+          <div><dt className="inline font-semibold">Registre de la bourse : </dt><dd className="inline">{MOTS.registre}</dd></div>
+          <div><dt className="inline font-semibold">Recruté : </dt><dd className="inline">{MOTS.recrute}</dd></div>
+          <div><dt className="inline font-semibold">Affecté : </dt><dd className="inline">{MOTS.affecte}</dd></div>
+          <div><dt className="inline font-semibold">Payé (salaire) : </dt><dd className="inline">{MOTS.paye}</dd></div>
+          <div><dt className="inline font-semibold">Reste à intégrer : </dt><dd className="inline">{MOTS.reste}</dd></div>
+          <div><dt className="inline font-semibold">À vérifier : </dt><dd className="inline">{MOTS.verifier}</dd></div>
+          <div className="md:col-span-2 text-zinc-500">{MOTS.retrouver} Rien n’est modifié par cette page : elle lit seulement.</div>
+        </dl>
+      </details>
 
       {/* Les filtres : la période est au choix (vague, année du texte) */}
       <Carte>
@@ -166,14 +191,14 @@ export default function SuiviIntegration() {
           {/* Le parcours en chiffres */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <Chiffre libelle="Registre de la bourse" valeur={nf.format(s!.total.base)} ton="gris" detail="volontaires et communautaires" />
-            <Chiffre libelle="Recrutés" valeur={nf.format(s!.total.recrutes)} ton="bleu" detail={`${s!.taux.integration} % du registre (texte, salaire ou sortie « recruté »)`} />
-            <Chiffre libelle="Affectés" valeur={nf.format(s!.total.affectes)} ton="bleu" detail={`${s!.taux.affectation} % des recrutés (note retrouvée)`} />
-            <Chiffre libelle="Payés (salaire)" valeur={nf.format(s!.total.payes)} ton="vert" detail={`${s!.taux.priseEnCharge} % des recrutés (matricule ou statut)`} />
-            <Chiffre libelle="Reste à intégrer" valeur={nf.format(s!.total.reste)} ton="rouge" detail="en poste, pas encore recrutés" />
+            <Chiffre libelle="Recrutés" valeur={nf.format(s!.total.recrutes)} ton="bleu" detail={`${s!.taux.integration} % du registre : devenus fonctionnaires ou contractuels, ou texte reçu`} />
+            <Chiffre libelle="Affectés" valeur={nf.format(s!.total.affectes)} ton="bleu" detail={`${s!.taux.affectation} % des recrutés : travaillent dans un département et une structure`} />
+            <Chiffre libelle="Payés (salaire)" valeur={nf.format(s!.total.payes)} ton="vert" detail={`${s!.taux.priseEnCharge} % des recrutés : fonctionnaires ou contractuels`} />
+            <Chiffre libelle="Reste à intégrer" valeur={nf.format(s!.total.reste)} ton="rouge" detail="encore payés en bourse, pas encore recrutés" />
           </div>
           {(s!.total.aVerifier > 0 || s!.absentsRegistre > 0) && (
             <p className="text-[12px] text-zinc-600">
-              {s!.total.aVerifier > 0 && <>De plus, <strong>{nf.format(s!.total.aVerifier)}</strong> peut-être déjà recruté(s) : même nom dans la base du personnel ou dans les textes, sans date de naissance pour le confirmer (à vérifier, non comptés). </>}
+              {s!.total.aVerifier > 0 && <>De plus, <strong>{nf.format(s!.total.aVerifier)}</strong> personne(s) sont peut-être déjà recrutées : même nom qu’un fonctionnaire ou qu’une recrue des textes, mais sans date de naissance pour être sûr. Elles ne sont pas comptées dans « Recrutés » : à vérifier. </>}
               {s!.absentsRegistre > 0 && <><strong>{nf.format(s!.absentsRegistre)}</strong> recrue(s) des textes d’origine volontaire ou communautaire sont absentes du registre.</>}
             </p>
           )}
@@ -206,12 +231,12 @@ export default function SuiviIntegration() {
                   <thead>
                     <tr>
                       <th></th>
-                      <th className="text-right">Registre</th>
-                      <th className="text-right">Recrutés</th>
-                      <th className="text-right">Affectés</th>
-                      <th className="text-right">Payés</th>
-                      <th className="text-right">Reste à intégrer</th>
-                      <th className="text-right">À vérifier</th>
+                      <th className="text-right">Registre <Aide>{MOTS.registre}</Aide></th>
+                      <th className="text-right">Recrutés <Aide>{MOTS.recrute}</Aide></th>
+                      <th className="text-right">Affectés <Aide>{MOTS.affecte}</Aide></th>
+                      <th className="text-right">Payés <Aide>{MOTS.paye}</Aide></th>
+                      <th className="text-right">Reste à intégrer <Aide>{MOTS.reste}</Aide></th>
+                      <th className="text-right">À vérifier <Aide>{MOTS.verifier}</Aide></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -287,7 +312,7 @@ export default function SuiviIntegration() {
                   <ul className="space-y-1 text-[12px] text-zinc-600">
                     <li>Registre de la bourse : {nf.format(d.donnees.sources.registre)} fiches</li>
                     <li>Textes reçus de la Fonction Publique : {nf.format(d.donnees.sources.textes)} recrues</li>
-                    <li>Notes d’affectation signées dans le système : {nf.format(d.donnees.sources.notesSignees)} · références importées : {nf.format(d.donnees.sources.referencesNotes)}</li>
+                    <li>Affectation : la structure (lieu de service) de chaque fonctionnaire ou contractuel dans la base du personnel ; à défaut, les notes signées dans le système ({nf.format(d.donnees.sources.notesSignees)}) ou importées ({nf.format(d.donnees.sources.referencesNotes)})</li>
                     <li>Base du personnel : {nf.format(d.donnees.sources.personnelPaye)} fonctionnaires et contractuels, dont {nf.format(d.donnees.sources.personnelSansMatricule)} sans matricule</li>
                     <li>Fichiers de la Solde chargés (pointage du bottin) : {nf.format(d.donnees.sources.moisSolde)} mois</li>
                     <li className="text-zinc-400">Calculé le {new Date(d.donnees.calculeLe).toLocaleString("fr-FR")}</li>
@@ -318,9 +343,9 @@ export default function SuiviIntegration() {
                     <tr>
                       <th>Nom et prénoms</th>
                       <th>Liste · département · cycle</th>
-                      <th>Texte d’intégration</th>
-                      <th>Note d’affectation</th>
-                      <th>Salaire</th>
+                      <th>Texte d’intégration <Aide>Arrêté ou décret qui fait entrer la personne dans la Fonction publique. Il peut manquer : le statut de fonctionnaire ou de contractuel suffit pour dire qu’elle est recrutée.</Aide></th>
+                      <th>Affectation (où il travaille) <Aide>{MOTS.affecte}</Aide></th>
+                      <th>Salaire <Aide>{MOTS.paye}</Aide></th>
                       <th>Bourse</th>
                       <th>Situation</th>
                     </tr>
@@ -335,7 +360,17 @@ export default function SuiviIntegration() {
                           {l.departement} · {l.cycle}
                         </td>
                         <td className="text-[12px]">{l.texte ? <>{l.texte.nature} n° {l.texte.numero}{l.texte.date ? ` du ${l.texte.date}` : ""}</> : <span className="text-zinc-400">—</span>}</td>
-                        <td className="text-[12px]">{l.note ? <>n° {l.note.numero}{l.note.date ? ` du ${l.note.date}` : ""}{l.note.lieu ? <><br />{l.note.lieu}</> : null}</> : <span className="text-zinc-400">—</span>}</td>
+                        <td className="text-[12px]">
+                          {l.note ? (
+                            <>
+                              {l.note.lieu ?? <span className="text-or-700">structure à compléter</span>}
+                              {l.note.departement && <div className="text-zinc-500">{l.note.departement}</div>}
+                              {l.note.numero && <div className="text-zinc-400">note n° {l.note.numero}{l.note.date ? ` du ${l.note.date}` : ""}</div>}
+                            </>
+                          ) : (
+                            <span className="text-zinc-400">—</span>
+                          )}
+                        </td>
                         <td className="text-[12px]">
                           {l.salaire ? (
                             <>

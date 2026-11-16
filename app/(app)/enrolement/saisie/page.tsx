@@ -472,6 +472,7 @@ export default function SaisieEnrolement() {
                     </Bouton>
                   </>
                 )}
+                {etat === "NON_RETENU" && <BarreExport chemin="/enrolement/listes/non-retenus" impression="/impression/enrolement-non-retenus" nom={`Liste des non retenus ${campagne.annee}`} filtres={{ campagne: campagne.id }} erreur={(m) => setMessage({ ton: "rouge", texte: m })} />}
                 {etat !== "NON_RETENU" && (
                   <Bouton disabled={!choisis.length} onClick={() => setChangerNote(lignes.filter((l) => coches.has(l.id)))}>
                     <ArrowRightLeft /> Changer de note ({choisis.length})
