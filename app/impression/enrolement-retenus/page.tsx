@@ -14,6 +14,8 @@ interface Retenu {
   cycle: string | null;
   departement: string | null;
   etablissement: string | null;
+  /** Origine regroupée : donnée à la DGRHAS seulement. */
+  origine?: string | null;
 }
 
 const age = (l: { age: number | null; horsLimite: boolean }) =>
@@ -29,6 +31,7 @@ const COLONNES: ColonneImprimee<Retenu>[] = [
   { titre: "Cycle · spécialité", largeur: 13, valeur: (l) => l.cycle ?? "—" },
   { titre: "Département retenu", largeur: 10, valeur: (l) => l.departement ?? "à placer" },
   { titre: "Établissement", largeur: 14, valeur: (l) => l.etablissement ?? "—" },
+  { titre: "Origine", largeur: 10, valeur: (l) => l.origine ?? "" },
 ];
 const sousTitre = (d: Record<string, unknown>) => String(d.sousTitre ?? "");
 const arrete = (n: number) => `Arrêtée la présente liste à ${n.toLocaleString("fr-FR")} retenu(s).`;
