@@ -60,6 +60,15 @@ interface Suivi {
   calculeLe: string;
 }
 
+/** Les couleurs des situations (comme les pastilles), avec un libellé qui peut passer à la ligne. */
+const COULEUR: Record<Ton, string> = {
+  vert: "bg-marque-50 text-marque-700",
+  bleu: "bg-sky-50 text-sky-700",
+  jaune: "bg-or-100 text-or-700",
+  rouge: "bg-rouge-100 text-rouge-600",
+  gris: "bg-zinc-100 text-zinc-600",
+};
+
 /** La couleur de la pastille d'une situation. */
 const TON: Record<string, Ton> = {
   PAYE_AFFECTE: "vert",
@@ -179,8 +188,8 @@ export default function SuiviIntegration() {
           />
 
           {vue === "synthese" && (
-            <div className="grid gap-6 lg:grid-cols-3">
-              <Carte titre="Le parcours, en détail" className="lg:col-span-2">
+            <div className="space-y-6">
+              <Carte titre="Le parcours, en détail">
                 <div className="mb-3">
                   <Segments
                     valeur={par}
@@ -229,14 +238,14 @@ export default function SuiviIntegration() {
                   </tbody>
                 </Tableau>
               </Carte>
-              <div className="space-y-6">
+              <div className="grid gap-6 lg:grid-cols-3">
                 <Carte titre="Par situation">
                   <div className="space-y-1.5 text-[13px]">
                     {s!.parSituation.filter((x) => x.n).map((x) => (
                       <button
                         type="button"
                         key={x.code}
-                        className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1 text-left hover:bg-zinc-50"
+                        className="flex w-full items-start justify-between gap-3 rounded-lg px-2 py-1 text-left hover:bg-zinc-50"
                         onClick={() => {
                           setSituation(x.code);
                           setVue("liste");
@@ -244,8 +253,8 @@ export default function SuiviIntegration() {
                         }}
                         title="Voir ces personnes"
                       >
-                        <Badge ton={TON[x.code] ?? "gris"}>{x.libelle}</Badge>
-                        <span className="tabular-nums font-semibold">{nf.format(x.n)}</span>
+                        <span className={`min-w-0 rounded-2xl px-2.5 py-0.5 text-[12px] font-medium ${COULEUR[TON[x.code] ?? "gris"]}`}>{x.libelle}</span>
+                        <span className="shrink-0 tabular-nums font-semibold">{nf.format(x.n)}</span>
                       </button>
                     ))}
                   </div>
@@ -258,7 +267,7 @@ export default function SuiviIntegration() {
                       {s!.aRegler.map((x) => (
                         <div key={x.libelle} className="flex items-start justify-between gap-3">
                           <span className="text-zinc-700">{x.libelle}</span>
-                          <span className="tabular-nums font-semibold">{nf.format(x.n)}</span>
+                          <span className="shrink-0 tabular-nums font-semibold">{nf.format(x.n)}</span>
                         </div>
                       ))}
                       <Bouton
