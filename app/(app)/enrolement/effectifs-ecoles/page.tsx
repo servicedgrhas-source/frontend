@@ -3,6 +3,7 @@
 import { Download, GitMerge, Pencil } from "lucide-react";
 import { useState } from "react";
 import { nf } from "@/components/enrolement/volontaires";
+import { FraicheurCalcul } from "@/components/fraicheur-calcul";
 import { useSession } from "@/components/session";
 import { Alerte, Badge, Bouton, Carte, Champ, Chiffre, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
@@ -55,6 +56,8 @@ interface Effectifs {
   decisions: number;
   total: number;
   ecoles: Ecole[];
+  calculeLe?: string;
+  aJour?: boolean;
 }
 
 interface Decision {
@@ -252,6 +255,7 @@ export default function EffectifsEcoles() {
         <Squelette />
       ) : (
         <>
+          <FraicheurCalcul calculeLe={d.donnees.calculeLe} aJour={d.donnees.aJour} recharger={d.recharger} />
           <div className="grid gap-3 sm:grid-cols-3 2xl:grid-cols-6">
             <Chiffre libelle="Écoles" valeur={nf.format(t.ecoles)} ton="gris" detail={cycle === "TOUS" ? "tous les cycles" : (CYCLES[cycle] ?? "cycle non reconnu")} />
             <Chiffre libelle={`Moins de ${s} fonctionnaires`} valeur={nf.format(t.sousSeuil)} ton="rouge" detail={t.ecoles ? `${Math.round((t.sousSeuil * 100) / t.ecoles)} % des écoles` : ""} />

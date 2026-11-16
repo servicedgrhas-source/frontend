@@ -3,6 +3,7 @@
 import { Download, FileText } from "lucide-react";
 import { useState } from "react";
 import { categoriesDe, nf, useConfigEnrolement } from "@/components/enrolement/volontaires";
+import { FraicheurCalcul } from "@/components/fraicheur-calcul";
 import { useSession } from "@/components/session";
 import { Aide, Alerte, Badge, Bouton, Carte, Chargement, Chiffre, EnTete, Liste, Saisie, Segments, Tableau, Vide } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
@@ -58,6 +59,7 @@ interface Suivi {
   choix: { vagues: number[]; annees: string[] };
   situations: Record<string, string>;
   calculeLe: string;
+  aJour: boolean;
 }
 
 /** Les couleurs des situations (comme les pastilles), avec un libellé qui peut passer à la ligne. */
@@ -185,9 +187,10 @@ export default function SuiviIntegration() {
 
       {d.erreur && <Alerte>{d.erreur}</Alerte>}
       {!d.donnees ? (
-        <Chargement texte="Calcul du suivi : tout le registre et toute la base du personnel sont rapprochés (une vingtaine de secondes la première fois)…" />
+        <Chargement texte="Préparation du suivi : tout le registre et toute la base du personnel sont rapprochés. Cela n’arrive qu’une fois : ensuite, la page s’ouvre tout de suite…" />
       ) : (
         <>
+          <FraicheurCalcul calculeLe={d.donnees.calculeLe} aJour={d.donnees.aJour} recharger={d.recharger} />
           {/* Le parcours en chiffres */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <Chiffre libelle="Registre de la bourse" valeur={nf.format(s!.total.base)} ton="gris" detail="volontaires et communautaires" />
