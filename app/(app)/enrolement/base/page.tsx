@@ -1,11 +1,12 @@
 "use client";
 
-import { ArrowRightLeft, MapPin, Stamp } from "lucide-react";
+import { ArrowRightLeft, MapPin, Stamp, UsersRound } from "lucide-react";
 import { useState } from "react";
 import { ChoixEtablissement } from "@/components/choix-etablissement";
 import { ChangerNote, EcrireSpecialite, PastilleSpecialite, SpecialitesACompleter } from "@/components/enrolement/changer-note";
 import { CelluleAge, type Enrole, FicheEnrole, SelecteurCampagne, useCampagne } from "@/components/enrolement/commun";
 import { BoutonComparer, ComparerEnrolement } from "@/components/enrolement/comparer-fichier";
+import { CelluleOrigine, ModaleOrigines, ModifierOrigine, type Origines } from "@/components/enrolement/origines";
 import { useConfigEnrolement } from "@/components/enrolement/volontaires";
 import { BarreExport } from "@/components/export-liste";
 import { useSession } from "@/components/session";
@@ -65,6 +66,12 @@ export default function BaseEnroles() {
   const { campagnes, liste, campagne, choisir } = useCampagne();
   // Comparaison avec le fichier des dossiers reçus (fait à la main)
   const [comparer, setComparer] = useState(false);
+  // Origine des enrôlés (qui les a recommandés) : pour la DGRHAS seulement (DG, 16/11/2026)
+  const voitOrigine = peut.traiter(profil.role);
+  const [origine, setOrigine] = useState("");
+  const [voirOrigines, setVoirOrigines] = useState(false);
+  const [modifierOrigine, setModifierOrigine] = useState<Enrole | null>(null);
+  const origines = useApi<Origines>(campagne && voitOrigine ? `/enrolement/origines?campagne=${campagne.id}` : null);
   const conf = useConfigEnrolement().donnees?.configuration;
   const limites = conf ? { min: conf.ageMinimum, max: conf.ageMaximum } : null;
   const [erreurExport, setErreurExport] = useState<string | null>(null);
@@ -72,7 +79,7 @@ export default function BaseEnroles() {
   const [recherche, setRecherche] = useState("");
   const [diplome, setDiplome] = useState("");
   const [departement, setDepartement] = useState("");
-  const dossiers = useApi<Enrole[]>(campagne ? `/enrolement/dossiers${qs({ campagne: campagne.id, etat: "RETENU", recherche, diplome, departement })}` : null);
+  const dossiers = useApi<Enrole[]>(campagne ? `/enrolement/dossiers${qs({ campagne: campagne.id, etat: "RETENU", recherche, diplome, departement, origine })}` : null);
   const [fiche, setFiche] = useState<Enrole | null>(null);
   const [placer, setPlacer] = useState<Enrole | null>(null);
   const [recommander, setRecommander] = useState<Enrole | null>(null);
@@ -105,6 +112,8 @@ export default function BaseEnroles() {
         {message}
       </Annonce>
       {campagne && comparer && <ComparerEnrolement campagne={campagne} fermer={() => setComparer(false)} />}
+      {campagne && voirOrigines && <ModaleOrigines campagne={campagne} fermer={() => setVoirOrigines(false)} apres={() => { dossiers.recharger(); origines.recharger(); }} />}
+      {modifierOrigine && <ModifierOrigine enrole={modifierOrigine} fermer={() => setModifierOrigine(null)} apres={() => { dossiers.recharger(); origines.recharger(); }} />}
       {campagne && (
         <Carte
           titre={`Volontaires retenus — enrôlement ${campagne.annee}`}
@@ -122,14 +131,20 @@ export default function BaseEnroles() {
               Télécharger en Excel
             </Bouton>
             <BoutonComparer onClick={() => setComparer(true)} libelle="Comparer avec un fichier" />
+            {voitOrigine && (
+              <Bouton onClick={() => setVoirOrigines(true)} title="Qui a recommandé les enrôlés : chiffres et incidence par origine, regroupements, récupération depuis les fichiers">
+                <UsersRound className="size-4" aria-hidden /> Origines
+              </Bouton>
+            )}
             <BarreExport chemin="/enrolement/listes/retenus" impression="/impression/enrolement-retenus" nom={`Liste des retenus ${campagne.annee}`} filtres={{ campagne: campagne.id }} erreur={setErreurExport} />
             </span>
           }
         >
-          <div className="mb-4 grid gap-3 md:grid-cols-3">
+          <div className={`mb-4 grid gap-3 ${voitOrigine ? "md:grid-cols-4" : "md:grid-cols-3"}`}>
             <Saisie placeholder="Rechercher un nom…" value={recherche} onChange={(e) => setRecherche(e.target.value)} />
             <Liste value={diplome} onChange={(e) => setDiplome(e.target.value)} vide="Tous les diplômes" options={(diplomes.donnees ?? []).map((d) => ({ valeur: d.code, libelle: d.libelle }))} />
             <Liste value={departement} onChange={(e) => setDepartement(e.target.value)} vide="Tous les départements" options={refs.departements.map((d) => ({ valeur: d.id, libelle: d.nom }))} />
+            {voitOrigine && <Liste value={origine} onChange={(e) => setOrigine(e.target.value)} vide="Toutes les origines" options={[{ valeur: "SANS", libelle: "Sans origine écrite" }, ...(origines.donnees?.groupes ?? []).map((g) => ({ valeur: g.cle, libelle: `${g.libelle} (${g.n})` }))]} />}
           </div>
           {dossiers.donnees && lignes.length > 0 && (
             <div className="mb-3 flex flex-wrap gap-4 text-[12px] text-zinc-600">
@@ -146,7 +161,7 @@ export default function BaseEnroles() {
           {!dossiers.donnees ? (
             <Chargement />
           ) : !lignes.length ? (
-            <Vide>Aucun volontaire retenu {recherche || diplome || departement ? "avec ces filtres" : "pour le moment : la DGRHAS retient les dossiers dans « Saisie des enrôlements »"}.</Vide>
+            <Vide>Aucun volontaire retenu {recherche || diplome || departement || origine ? "avec ces filtres" : "pour le moment : la DGRHAS retient les dossiers dans « Saisie des enrôlements »"}.</Vide>
           ) : (
             <Tableau>
               <thead>
@@ -157,6 +172,7 @@ export default function BaseEnroles() {
                     Âge <Aide>Âge au 31 décembre {campagne.annee}, juste après la date de naissance. En rouge : hors des limites d’âge de la configuration{limites ? ` (${limites.min}–${limites.max} ans)` : ""}.</Aide>
                   </th>
                   <th>Diplôme</th>
+                  {voitOrigine && <th>Origine</th>}
                   <th>Département retenu</th>
                   <th>Établissement</th>
                   <th>Note</th>
@@ -187,6 +203,11 @@ export default function BaseEnroles() {
                       )}
                         <PastilleSpecialite e={e} ouvrir={(regle) => (regle ? appliquerRegle(e) : setSpecialite([e]))} />
                     </td>
+                    {voitOrigine && (
+                      <td className="text-[12px]">
+                        <CelluleOrigine libelle={e.origine?.libelle} ecrit={e.origineBrute} modifier={() => setModifierOrigine(e)} />
+                      </td>
+                    )}
                     <td className={e.departementRetenu ? "" : "text-or-700"}>{e.departementRetenu ?? "pas encore choisi"}</td>
                     <td className="text-[12px]">{e.etablissement ?? (e.departementRetenu ? "à la disposition de la DDEPPSA" : "—")}</td>
                     <td className="text-[12px]">{e.noteId ? "validée" : "pas encore"}</td>

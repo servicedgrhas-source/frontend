@@ -52,6 +52,8 @@ export interface Enrole {
   etablissement: string | null;
   telephone: string | null;
   origineBrute: string | null;
+  /** Origine regroupée (DGRHAS seulement). */
+  origine?: { cle: string; libelle: string } | null;
   membreId: string | null;
   membre: string | null;
   observation: string | null;
