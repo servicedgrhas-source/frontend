@@ -103,6 +103,7 @@ const METHODES: Record<string, string> = {
   CHOIX: "fiche choisie à la main",
   AJOUT: "ajoutée depuis le rapport",
   MEME_PERSONNE: "même personne qu’une autre ligne du rapport",
+  NOM_AUTRE_ANNEE: "même nom, autre année de naissance",
 };
 const STATUTS: Record<string, string> = { FONCTIONNAIRE: "Fonctionnaire", CONTRACTUEL: "Contractuel", VOLONTAIRE: "Volontaire", COMMUNAUTAIRE: "Communautaire" };
 const SECTEURS: Record<string, string> = { PUBLIC: "Public", CONVENTIONNE: "Conventionné", PRIVE: "Privé" };
