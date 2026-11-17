@@ -356,6 +356,14 @@ export const ESPACES: Espace[] = [
       },
       {
         groupe: "Suivi et réglages",
+        href: "/enrolement/rapprochement-rapports",
+        libelle: "Rapprochement des rapports des DDEPPSA (Banque mondiale)",
+        icone: ListChecks,
+        visible: traiter,
+        explication: "Les états nominatifs du personnel des rapports de fin d’année des DDEPPSA, comparés à toute la base du personnel et au registre : trouvés, écarts, absents ; décisions gardées ; Excel des champs demandés.",
+      },
+      {
+        groupe: "Suivi et réglages",
         href: "/enrolement/configuration",
         libelle: "Configuration",
         icone: Settings,
