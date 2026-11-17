@@ -352,7 +352,7 @@ export const ESPACES: Espace[] = [
         libelle: "Effectifs par école (Banque mondiale)",
         icone: BarChart3,
         visible: traiter,
-        explication: "Volontaires, communautaires, contractuels et fonctionnaires de chaque école, par DEPPSA ; les écoles de moins de 3 fonctionnaires en priorité ; noms d’écoles à harmoniser ; Excel.",
+        explication: "Volontaires, communautaires, contractuels et fonctionnaires de chaque école, par DEPPSA ; les écoles de 3 fonctionnaires ou moins (contractuels compris) en priorité ; noms d’écoles à harmoniser ; Excel.",
       },
       {
         groupe: "Suivi et réglages",

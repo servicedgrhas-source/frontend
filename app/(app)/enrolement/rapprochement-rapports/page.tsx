@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Check, Download, FileSpreadsheet, PenLine, RefreshCw, Search, Trash2, Upload, UserX } from "lucide-react";
+import { ArrowLeft, Check, Download, FileSpreadsheet, PenLine, RefreshCw, Search, Trash2, Upload, UserPlus, UserX } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { FicheVolontaire } from "@/components/enrolement/volontaires";
@@ -76,7 +76,7 @@ interface Ligne {
   volontaireId: string | null;
   ecarts: string[];
   candidats: Candidat[];
-  decision: "CONFIRME" | "AUTRE_FICHE" | "ABSENT" | null;
+  decision: "CONFIRME" | "AUTRE_FICHE" | "ABSENT" | "AJOUTE" | null;
   decidePar: string | null;
   applique: Record<string, { avant: unknown; apres: unknown }> | null;
   appliquePar: string | null;
@@ -94,6 +94,7 @@ const DECISIONS: Record<NonNullable<Ligne["decision"]>, string> = {
   CONFIRME: "Confirmé",
   AUTRE_FICHE: "Autre fiche choisie",
   ABSENT: "Absent confirmé",
+  AJOUTE: "Ajouté depuis le rapport",
 };
 const METHODES: Record<string, string> = {
   MATRICULE: "par le matricule",
@@ -281,6 +282,12 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
   const [enCours, setEnCours] = useState<number | null>(null);
   const [appliquer, setAppliquer] = useState<Ligne | null>(null);
   const [succes, setSucces] = useState<string | null>(null);
+  // Les lignes cochées (d'un filtre à l'autre), et l'action en série en cours
+  const [cochees, setCochees] = useState<Set<number>>(new Set());
+  const [lotEnCours, setLotEnCours] = useState<string | null>(null);
+  const [erreursLot, setErreursLot] = useState<{ nom: string; message: string }[]>([]);
+  const [ajouter, setAjouter] = useState<Ligne | null>(null);
+  const [confirmation, demander] = useConfirmation();
 
   const decider = async (l: Ligne, corps: { decision: string | null; agentId?: number; volontaireId?: string }) => {
     setErreur(null);
@@ -317,10 +324,48 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
       (!secteur || l.secteur === secteur) &&
       (!t || `${l.nomComplet} ${l.base?.nom ?? ""} ${l.matricule ?? ""}`.toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").includes(t)),
   );
+  const cocher = (ids: number[], oui: boolean) =>
+    setCochees((s) => {
+      const n = new Set(s);
+      for (const i of ids) {
+        if (oui) n.add(i);
+        else n.delete(i);
+      }
+      return n;
+    });
+  const choisies = lignes.filter((l) => cochees.has(l.id));
+  const ACTIONS: Record<string, [string, (l: Ligne) => boolean, string]> = {
+    CONFIRMER: ["Confirmer la fiche trouvée", (l) => !!l.base && !l.decision, "Confirmer la fiche trouvée pour"],
+    COMPLETER: ["Compléter les fiches", (l) => l.base?.type === "PERSONNEL", "Recopier dans la fiche ce qui y manque (lieu de service, matricule, dates complètes), jamais ce qui diffère, pour"],
+    AJOUTER: ["Ajouter à la base", (l) => !l.agentId && l.decision !== "AJOUTE", "Ajouter à la base du personnel, avec la mention « Ajouté depuis le rapport de la DDEPPSA » (fiches à contrôler, puis décision du DG),"],
+    ABSENT: ["Déclarer absentes", (l) => !l.agentId && l.decision !== "ABSENT" && l.decision !== "AJOUTE", "Déclarer absentes de la base"],
+  };
+  const enLot = async (action: string) => {
+    const [, possible, question] = ACTIONS[action];
+    const ids = choisies.filter(possible).map((l) => l.id);
+    if (!ids.length) return setErreur("Aucune des personnes cochées n’est concernée par cette action.");
+    if (!(await demander(`${question} ${nf.format(ids.length)} personne(s) ?`, "Oui, continuer"))) return;
+    setErreur(null);
+    setSucces(null);
+    setErreursLot([]);
+    setLotEnCours(action);
+    try {
+      const x = await api.post<{ faits: number; erreurs: { nom: string; message: string }[] }>(`${API}/${id}/lot`, { action, ids });
+      setSucces(`${nf.format(x.faits)} personne(s) traitée(s) sur ${nf.format(ids.length)}.`);
+      setErreursLot(x.erreurs);
+      setCochees(new Set());
+      d.recharger();
+    } catch (e) {
+      setErreur((e as Error).message);
+    } finally {
+      setLotEnCours(null);
+    }
+  };
   const secteurs = [...new Set(lignes.map((l) => l.secteur).filter((x): x is string => !!x))];
 
   return (
     <div className="space-y-4">
+      {confirmation}
       <button type="button" onClick={retour} className="inline-flex items-center gap-1 text-[13px] font-medium text-marque-700 hover:underline">
         <ArrowLeft className="size-4" /> Tous les rapports
       </button>
@@ -343,6 +388,18 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
       />
       {erreur && <Alerte>{erreur}</Alerte>}
       {succes && <Alerte ton="vert">{succes}</Alerte>}
+      {erreursLot.length > 0 && (
+        <Alerte ton="jaune">
+          <p className="font-medium">{nf.format(erreursLot.length)} personne(s) non traitée(s) :</p>
+          <ul className="mt-1 list-disc pl-5">
+            {erreursLot.slice(0, 30).map((x, i) => (
+              <li key={i}>
+                {x.nom} — {x.message}
+              </li>
+            ))}
+          </ul>
+        </Alerte>
+      )}
       {d.erreur && <Alerte>{d.erreur}</Alerte>}
 
       <Carte>
@@ -375,6 +432,33 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
         </div>
       </Carte>
 
+      {!!d.donnees && (
+        <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-200 bg-white/95 p-2 shadow-sm backdrop-blur">
+          <label className="flex items-center gap-2 px-1 text-[12px] text-zinc-600">
+            <input
+              type="checkbox"
+              className="size-4 accent-marque-600"
+              checked={!!visibles.length && visibles.every((l) => cochees.has(l.id))}
+              onChange={(e) => cocher(visibles.map((l) => l.id), e.target.checked)}
+              aria-label="Tout cocher"
+            />
+            Tout cocher ({nf.format(visibles.length)})
+          </label>
+          <span className="text-[12px] text-zinc-600">
+            <strong className="text-zinc-900">{nf.format(cochees.size)}</strong> cochée(s)
+          </span>
+          <span className="flex-1" />
+          {Object.entries(ACTIONS).map(([a, [libelle, possible]]) => {
+            const n = choisies.filter(possible).length;
+            return (
+              <Bouton key={a} variante={a === "CONFIRMER" ? "principal" : undefined} disabled={!n || !!lotEnCours} chargement={lotEnCours === a} onClick={() => enLot(a)}>
+                {libelle} {n ? `(${nf.format(n)})` : ""}
+              </Bouton>
+            );
+          })}
+        </div>
+      )}
+
       {!d.donnees ? (
         <div className="space-y-3">
           {[0, 1, 2].map((i) => (
@@ -389,6 +473,9 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
             <CarteLigne
               key={l.id}
               l={l}
+              coche={cochees.has(l.id)}
+              cocher={(oui) => cocher([l.id], oui)}
+              ajouter={() => setAjouter(l)}
               departement={r?.departement ?? null}
               enCours={enCours === l.id}
               decider={(c) => decider(l, c)}
@@ -411,6 +498,17 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
         />
       )}
       {volontaire && <FicheVolontaire id={volontaire} fermer={() => setVolontaire(null)} />}
+      {ajouter && (
+        <ModaleAjout
+          ligne={ajouter}
+          fermer={() => setAjouter(null)}
+          fait={() => {
+            setAjouter(null);
+            setSucces(`« ${ajouter.nomComplet} » ajouté(e) à la base du personnel, avec la mention « Ajouté depuis le rapport de la DDEPPSA » : la fiche est à contrôler.`);
+            d.recharger();
+          }}
+        />
+      )}
       {appliquer && (
         <ModaleAppliquer
           ligne={appliquer}
@@ -430,6 +528,9 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
 /** Une personne du rapport : le rapport à gauche, la fiche de la base à droite, les écarts, la décision. */
 function CarteLigne({
   l,
+  coche,
+  cocher,
+  ajouter,
   departement,
   enCours,
   decider,
@@ -438,6 +539,9 @@ function CarteLigne({
   voirRegistre,
 }: {
   l: Ligne;
+  coche: boolean;
+  cocher: (oui: boolean) => void;
+  ajouter: () => void;
   departement: string | null;
   enCours: boolean;
   decider: (c: { decision: string | null; agentId?: number; volontaireId?: string }) => void;
@@ -467,6 +571,7 @@ function CarteLigne({
   return (
     <div className={`rounded-3xl bg-white p-4 shadow-doux ring-1 ${l.decision ? "ring-marque-200" : "ring-transparent"}`}>
       <div className="mb-3 flex flex-wrap items-center gap-2 text-[12px] text-zinc-500">
+        <input type="checkbox" className="size-4 accent-marque-600" checked={coche} onChange={(e) => cocher(e.target.checked)} aria-label="Cocher cette personne" />
         <span className="font-semibold text-zinc-800">N° {l.numero ?? l.ordre}</span>
         {partie && <span>{partie}</span>}
         <Badge ton={ton}>{libelle}</Badge>
@@ -566,6 +671,11 @@ function CarteLigne({
         {f?.type === "PERSONNEL" && (
           <Bouton chargement={enCours} onClick={appliquer}>
             <PenLine /> Appliquer le rapport à la fiche
+          </Bouton>
+        )}
+        {!l.agentId && l.decision !== "AJOUTE" && (
+          <Bouton chargement={enCours} onClick={ajouter}>
+            <UserPlus /> Ajouter à la base
           </Bouton>
         )}
         <Bouton chargement={enCours} onClick={choisir}>
@@ -744,6 +854,45 @@ function ModaleAppliquer({ ligne, departementId, fermer, fait }: { ligne: Ligne;
           )}
           <Bouton variante="principal" disabled={!choisies.length} chargement={envoi} onClick={() => envoyer()}>
             <PenLine /> Recopier {choisies.length ? `${choisies.length} rubrique(s)` : ""} dans la fiche
+          </Bouton>
+        </div>
+      </div>
+    </Modale>
+  );
+}
+
+/** Ajouter à la base du personnel une personne absente, avec la mention du rapport. */
+function ModaleAjout({ ligne, fermer, fait }: { ligne: Ligne; fermer: () => void; fait: () => void }) {
+  const [statut, setStatut] = useState(ligne.statut ?? "");
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const envoyer = async () => {
+    setErreur(null);
+    setEnvoi(true);
+    try {
+      await api.post(`${API}/lignes/${ligne.id}/ajouter`, { statut });
+      fait();
+    } catch (x) {
+      setErreur((x as Error).message);
+    } finally {
+      setEnvoi(false);
+    }
+  };
+  return (
+    <Modale titre={`Ajouter « ${ligne.nomComplet} » à la base du personnel`} ouverte fermer={fermer}>
+      <div className="space-y-4">
+        <p className="text-[13px] text-zinc-600">
+          Une fiche est créée avec ce que donne le rapport (nom, naissance, genre, matricule, lieu de service, fonction, département, date de prise de service complète). Elle porte la mention{" "}
+          <strong>« Ajouté depuis le rapport de fin d’année de la DDEPPSA »</strong> et suit le circuit des agents ajoutés : <strong>à contrôler</strong>, puis décision du DG.
+        </p>
+        <Champ libelle="Type d’agent">
+          <Liste value={statut} onChange={(e) => setStatut(e.target.value)} vide="Choisir…" options={Object.entries(STATUTS).map(([valeur, libelle]) => ({ valeur, libelle }))} />
+        </Champ>
+        {erreur && <Alerte>{erreur}</Alerte>}
+        <div className="flex justify-end gap-2">
+          <Bouton onClick={fermer}>Annuler</Bouton>
+          <Bouton variante="principal" disabled={!statut} chargement={envoi} onClick={envoyer}>
+            <UserPlus /> Ajouter à la base
           </Bouton>
         </div>
       </div>

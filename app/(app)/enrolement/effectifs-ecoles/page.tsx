@@ -73,7 +73,7 @@ function Squelette() {
 /**
  * Effectifs par école (demande de la Banque mondiale, 16/11/2026) : pour chaque école, rangée par
  * DEPPSA, le nombre de volontaires, de communautaires, de contractuels et de fonctionnaires. Les
- * écoles qui ont moins de 3 fonctionnaires sont signalées : elles passent en priorité. Les écoles
+ * écoles de 3 fonctionnaires ou moins (contractuels compris) sont signalées : elles passent en priorité. Les écoles
  * dont les noms se ressemblent sont montrées ici ; elles se tranchent dans Structures scolaires
  * (DG, 17/11/2026). Aucun nom de personne, seulement des nombres.
  */
@@ -119,7 +119,7 @@ export default function EffectifsEcoles() {
     <div className="space-y-6">
       <EnTete
         titre="Effectifs par école (Banque mondiale)"
-        sousTitre={`Pour chaque école, rangée par DEPPSA : le nombre de volontaires, de communautaires, de contractuels et de fonctionnaires. En orange, les écoles qui ont moins de ${s} fonctionnaires : elles passent en priorité. Les écoles dont les noms se ressemblent sont montrées ici et se tranchent dans Structures scolaires. Seulement des nombres, aucun nom de personne.`}
+        sousTitre={`Pour chaque école, rangée par DEPPSA : le nombre de volontaires, de communautaires, de contractuels et de fonctionnaires. En orange, les écoles qui ont ${s} fonctionnaires ou moins, contractuels compris : elles passent en priorité. Les écoles dont les noms se ressemblent sont montrées ici et se tranchent dans Structures scolaires. Seulement des nombres, aucun nom de personne.`}
         actions={
           <Bouton onClick={telecharger} title="Par école, par DEPPSA, sans école, noms à harmoniser, écoles qui se ressemblent, DEPPSA reclassées (en-tête officiel)">
             <Download /> Excel
@@ -143,7 +143,7 @@ export default function EffectifsEcoles() {
           </label>
           <label className="flex items-center gap-2 text-[13px]">
             <input type="checkbox" className="size-4 accent-marque-600" checked={sousSeuil} onChange={(e) => { setSousSeuil(e.target.checked); setPage(1); }} />
-            Seulement les écoles de moins de {s} fonctionnaires
+            Seulement les écoles de {s} fonctionnaires ou moins (avec contractuels)
           </label>
         </div>
       </Carte>
@@ -156,7 +156,7 @@ export default function EffectifsEcoles() {
           <FraicheurCalcul calculeLe={d.donnees.calculeLe} aJour={d.donnees.aJour} recharger={d.recharger} />
           <div className="grid gap-3 sm:grid-cols-3 2xl:grid-cols-6">
             <Chiffre libelle="Écoles" valeur={nf.format(t.ecoles)} ton="gris" detail={cycle === "TOUS" ? "tous les cycles" : (CYCLES[cycle] ?? "cycle non reconnu")} />
-            <Chiffre libelle={`Moins de ${s} fonctionnaires`} valeur={nf.format(t.sousSeuil)} ton="rouge" detail={t.ecoles ? `${Math.round((t.sousSeuil * 100) / t.ecoles)} % des écoles` : ""} />
+            <Chiffre libelle={`${s} fonctionnaires ou moins`} valeur={nf.format(t.sousSeuil)} ton="rouge" detail={t.ecoles ? `${Math.round((t.sousSeuil * 100) / t.ecoles)} % des écoles` : ""} />
             {EFFECTIFS.map(([k, libelle]) => (
               <Chiffre key={k} libelle={libelle} valeur={nf.format(t[k])} ton={k === "fonctionnaires" ? "vert" : k === "contractuels" ? "bleu" : "gris"} detail={t.total ? `${Math.round((t[k] * 100) / t.total)} % du personnel compté` : ""} />
             ))}
@@ -305,7 +305,7 @@ export default function EffectifsEcoles() {
                   </thead>
                   <tbody>
                     {d.donnees.ecoles.map((e) => {
-                      const sous = e.fonctionnaires < s;
+                      const sous = e.fonctionnaires + e.contractuels <= s;
                       return (
                         <tr key={e.id} className={sous ? "bg-or-100/50" : undefined}>
                           <td className="text-[12px] text-zinc-600">{e.departement}</td>
