@@ -6,16 +6,31 @@
   --color-marque-100: #ccecd9;
   --color-marque-200: #9bd8b3;
   --color-marque-300: #5fbf87;
+  --color-marque-400: #2fab64;
   --color-marque-500: #009543;
   --color-marque-600: #007f39;
   --color-marque-700: #00692f;
+  --color-marque-800: #034d25;
   --color-marque-900: #07311d;
   /* Jaune et rouge du drapeau */
+  --color-or-50: #fefbea;
   --color-or-100: #fdf6d2;
+  --color-or-200: #fbeca4;
+  --color-or-300: #fae375;
   --color-or-400: #fbde4a;
+  /* 500 : assez foncé pour un texte blanc dessus (pastille choisie) */
+  --color-or-500: #b38f00;
+  --color-or-600: #9e7e00;
   --color-or-700: #8a6d00;
+  --color-or-800: #6b5500;
+  --color-rouge-50: #fdf1f1;
   --color-rouge-100: #fbe3e2;
+  --color-rouge-200: #f6c4c2;
+  --color-rouge-300: #ef9996;
+  --color-rouge-400: #e7615d;
+  --color-rouge-500: #e03c37;
   --color-rouge-600: #dc241f;
+  --color-rouge-700: #b51d19;
   /* Surfaces */
   --color-fond: #eef1ed;
   --color-nuit: #0e1813;
