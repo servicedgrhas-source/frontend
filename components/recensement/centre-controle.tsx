@@ -29,6 +29,8 @@ export interface CentreControle {
   aTraiter: number;
   parStatut: { statut: string; n: number }[];
   groupes: { code: string; titre: string; n: number; lignes: Ligne[] }[];
+  /** Points à corriger sur les fiches, en plus de leur catégorie. */
+  aCorriger?: { code: string; libelle: string; explication: string; n: number }[];
   parDepartement: ({ departementId: number | null; departement: string; total: number; aTraiter: number } & Record<string, number | string | null>)[];
   calculeLe: string;
   aJour: boolean;
@@ -191,6 +193,34 @@ export function CentreControleEffectifs() {
           </div>
         ))}
       </div>
+
+      {/* Points à corriger sur les fiches, en plus de leur catégorie */}
+      {!!t.aCorriger?.some((x) => x.n > 0) && (
+        <div className="mt-5 rounded-3xl border border-or-400/60 bg-or-100/40 p-4">
+          <h3 className="text-[15px] font-semibold text-encre">À corriger sur les fiches</h3>
+          <p className="mb-2 text-[12px] text-zinc-500">En plus de leur catégorie : une donnée de la fiche est à mettre à jour.</p>
+          <ul className="space-y-2">
+            {t.aCorriger
+              .filter((x) => x.n > 0)
+              .map((x) => (
+                <li key={x.code}>
+                  <Link href={`/personnel/agents?effectif=${x.code}`} className="group flex items-center gap-4 rounded-2xl border-l-4 border-l-or-400 bg-white py-3 pl-4 pr-3 transition hover:shadow-sm">
+                    <div className="min-w-0 flex-1">
+                      <span className="text-[14px] font-medium text-encre">
+                        {x.libelle.slice(0, x.libelle.lastIndexOf(" ") + 1)}
+                        <span className="whitespace-nowrap">
+                          {x.libelle.slice(x.libelle.lastIndexOf(" ") + 1)}&nbsp;<Aide>{x.explication}</Aide>
+                        </span>
+                      </span>
+                    </div>
+                    <div className="shrink-0 text-xl font-semibold tabular-nums text-or-700">{nf.format(x.n)}</div>
+                    <ArrowRight className="size-4 shrink-0 text-zinc-300 transition group-hover:translate-x-0.5 group-hover:text-marque-600" />
+                  </Link>
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
 
       {/* 3. Par département */}
       <div className="mt-6">

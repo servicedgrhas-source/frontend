@@ -62,7 +62,7 @@ const COULEUR: Record<Ton, string> = {
 
 /** Les mots de la page, expliqués pour quelqu'un qui la découvre. */
 const MOTS = {
-  registre: "Toutes les personnes payées un jour en bourse : les volontaires (finalistes enrôlés) et les communautaires (recrutés autrefois par les écoles), qu’elles soient encore en poste ou déjà sorties.",
+  registre: "Toutes les personnes payées au moins un mois en bourse : les volontaires (finalistes enrôlés) et les communautaires (recrutés autrefois par les écoles), qu’elles soient encore en poste ou déjà sorties.",
   recrute: "Devenu fonctionnaire ou contractuel. Son statut dans la base du personnel suffit, même si le texte manque. Comptent aussi : un arrêté ou un décret d’intégration reçu, ou une sortie de la bourse avec le motif « recruté à la Fonction publique ».",
   affecte: "Un fonctionnaire ou un contractuel est affecté : on l’a envoyé travailler dans un département et une structure (école, inspection, direction…). La structure vient de sa fiche du personnel (lieu de service). Pour une recrue qui n’est pas encore dans la base du personnel : une note d’affectation retrouvée.",
   paye: "A un matricule solde : la Solde lui paie son salaire.",
@@ -223,7 +223,7 @@ export default function SuiviIntegration() {
             </h2>
             <div className="flex flex-wrap items-stretch gap-2">
               {([
-                { etape: "registre", libelle: "Payés en bourse un jour", n: s!.total.base, detail: "registre de la bourse", aide: MOTS.registre, ton: "gris" },
+                { etape: "registre", libelle: "Inscrits au registre de la bourse", n: s!.total.base, detail: "payés au moins un mois en bourse (en poste ou sortis)", aide: MOTS.registre, ton: "gris" },
                 { etape: "recrutes", libelle: "Recrutés", n: s!.total.recrutes, detail: `${s!.taux.integration} % du registre`, aide: MOTS.recrute, ton: "gris" },
                 { etape: "affectes", libelle: "Affectés", n: s!.total.affectes, detail: `${s!.taux.affectation} % des recrutés`, aide: MOTS.affecte, ton: "gris" },
                 s!.total.payes || !s!.total.attente

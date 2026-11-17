@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Pagination } from "@/components/pagination";
 import { ouCorriger, type AnomalieFiche } from "@/components/recensement/anomalies";
 import { libelleStatut, peutRecenser, Taux, useConfigRecensement, type Manques } from "@/components/recensement/commun";
+import { CorrectionNouvelleDeppsa } from "@/components/recensement/nouvelle-deppsa";
 import { FichesAValider } from "@/components/rattachement";
 import { useSession } from "@/components/session";
 import { Alerte, Bouton, Carte, Chargement, EnTete, Liste, Saisie, Tableau, Vide, cx } from "@/components/ui";
@@ -59,8 +60,8 @@ export function VueAgents() {
   const enAnomalies = !!f.anomalies || !!f.controle;
   const tableau = useApi<{ controles: { code: string; libelle: string; n: number }[] }>("/recensement/tableau");
   // Une catégorie du centre de contrôle des effectifs (tableau de bord du personnel)
-  const effectifs = useApi<{ groupes: { lignes: { code: string; libelle: string; explication: string }[] }[] }>(f.effectif ? "/recensement/tableau/effectifs" : null);
-  const filtreEffectif = effectifs.donnees?.groupes.flatMap((g) => g.lignes).find((x) => x.code === f.effectif);
+  const effectifs = useApi<{ groupes: { lignes: { code: string; libelle: string; explication: string }[] }[]; aCorriger?: { code: string; libelle: string; explication: string }[] }>(f.effectif ? "/recensement/tableau/effectifs" : null);
+  const filtreEffectif = [...(effectifs.donnees?.groupes.flatMap((g) => g.lignes) ?? []), ...(effectifs.donnees?.aCorriger ?? [])].find((x) => x.code === f.effectif);
   const c = config.donnees?.configuration;
   if (!peutRecenser(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS, aux DDEPPSA et aux chefs d’établissement.</Alerte>;
 
@@ -158,6 +159,12 @@ export function VueAgents() {
               retirer
             </button>
             {filtreEffectif && <span className="basis-full text-zinc-500">{filtreEffectif.explication}</span>}
+          </div>
+        )}
+        {/* Fiches à passer dans leur nouvelle DEPPSA : vérifier, cocher, appliquer */}
+        {f.effectif === "DEPARTEMENT_NOUVELLE_DEPPSA" && (
+          <div className="mt-4">
+            <CorrectionNouvelleDeppsa fait={() => { liste.recharger(); effectifs.recharger(); }} />
           </div>
         )}
         {!enAnomalies && (filtreManque || filtreControle) && (
