@@ -181,7 +181,7 @@ export default function EffectifsEcoles() {
                     <tr>
                       <th>DEPPSA</th>
                       <th className="text-right">Écoles</th>
-                      <th className="text-right">Moins de {s} fonct.</th>
+                      <th className="text-right">{s} fonct. ou moins</th>
                       {EFFECTIFS.map(([k, l]) => (
                         <th key={k} className="text-right">
                           {l}

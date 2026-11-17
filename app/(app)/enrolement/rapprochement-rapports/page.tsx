@@ -101,6 +101,8 @@ const METHODES: Record<string, string> = {
   NOM: "par le nom et l’année de naissance",
   NOM_PROCHE: "nom proche, même année de naissance",
   CHOIX: "fiche choisie à la main",
+  AJOUT: "ajoutée depuis le rapport",
+  MEME_PERSONNE: "même personne qu’une autre ligne du rapport",
 };
 const STATUTS: Record<string, string> = { FONCTIONNAIRE: "Fonctionnaire", CONTRACTUEL: "Contractuel", VOLONTAIRE: "Volontaire", COMMUNAUTAIRE: "Communautaire" };
 const SECTEURS: Record<string, string> = { PUBLIC: "Public", CONVENTIONNE: "Conventionné", PRIVE: "Privé" };
@@ -361,6 +363,16 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
       setLotEnCours(null);
     }
   };
+  // La même personne sur plusieurs listes (directeur et enseignant…) : les lignes d'une même fiche
+  const parFiche = new Map<string, Ligne[]>();
+  for (const l of lignes) {
+    const k = l.agentId ? `P${l.agentId}` : l.volontaireId ? `V${l.volontaireId}` : "";
+    if (k) parFiche.set(k, [...(parFiche.get(k) ?? []), l]);
+  }
+  const autresListes = (l: Ligne) => {
+    const k = l.agentId ? `P${l.agentId}` : l.volontaireId ? `V${l.volontaireId}` : "";
+    return (parFiche.get(k) ?? []).filter((x) => x.id !== l.id);
+  };
   const secteurs = [...new Set(lignes.map((l) => l.secteur).filter((x): x is string => !!x))];
 
   return (
@@ -474,6 +486,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
               key={l.id}
               l={l}
               coche={cochees.has(l.id)}
+              aussi={autresListes(l)}
               cocher={(oui) => cocher([l.id], oui)}
               ajouter={() => setAjouter(l)}
               departement={r?.departement ?? null}
@@ -528,6 +541,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
 /** Une personne du rapport : le rapport à gauche, la fiche de la base à droite, les écarts, la décision. */
 function CarteLigne({
   l,
+  aussi,
   coche,
   cocher,
   ajouter,
@@ -539,6 +553,7 @@ function CarteLigne({
   voirRegistre,
 }: {
   l: Ligne;
+  aussi: Ligne[];
   coche: boolean;
   cocher: (oui: boolean) => void;
   ajouter: () => void;
@@ -629,6 +644,11 @@ function CarteLigne({
           )}
         </div>
       </div>
+      {aussi.length > 0 && (
+        <div className="mt-3 rounded-2xl bg-sky-50 px-4 py-2 text-[12px] text-sky-800 ring-1 ring-sky-100">
+          Même fiche que : {aussi.map((x) => `n° ${x.numero ?? x.ordre} (${[SECTEURS[x.secteur ?? ""], RUBRIQUES[x.rubrique ?? ""], CYCLES[x.cycle ?? ""]].filter(Boolean).join(" · ")})`).join(" ; ")} — une seule personne, présente dans plusieurs listes du rapport.
+        </div>
+      )}
       {!!l.ecarts.length && (
         <ul className="mt-3 space-y-0.5 rounded-2xl bg-or-50 px-4 py-2.5 text-[12px] text-or-800 ring-1 ring-or-200">
           {l.ecarts.map((e) => (
