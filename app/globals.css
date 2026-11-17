@@ -43,6 +43,38 @@
   }
 }
 
+/* Squelette de chargement (DG, 17/11/2026 : « animation forte ») : un bloc gris traversé d'un reflet */
+.os {
+  position: relative;
+  overflow: hidden;
+  background: #dde2dd;
+  border-radius: 0.75rem;
+}
+.os::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
+  animation: reflet 1.15s ease-in-out infinite;
+}
+.os-sombre {
+  background: rgba(255, 255, 255, 0.12);
+}
+.os-sombre::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+}
+@keyframes reflet {
+  to {
+    transform: translateX(100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .os::after {
+    animation: none;
+  }
+}
+
 /* Transitions par défaut des éléments interactifs */
 a,
 button,

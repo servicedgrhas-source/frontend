@@ -3,6 +3,7 @@
 import { AlertTriangle, ArrowRight, CheckCircle2, Users } from "lucide-react";
 import Link from "next/link";
 import { FraicheurCalcul } from "@/components/fraicheur-calcul";
+import { SqueletteCentreControle } from "@/components/squelette";
 import { Aide, Alerte, Carte } from "@/components/ui";
 import { useApi } from "@/lib/api";
 
@@ -62,13 +63,7 @@ export function CentreControleEffectifs() {
   if (!d.donnees)
     return (
       <Carte titre="Centre de contrôle des effectifs">
-        <div className="space-y-3" aria-busy="true">
-          <div className="h-36 animate-pulse rounded-3xl bg-zinc-200" />
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="h-72 animate-pulse rounded-3xl bg-zinc-200" />
-            <div className="h-72 animate-pulse rounded-3xl bg-zinc-200" />
-          </div>
-        </div>
+        <SqueletteCentreControle />
       </Carte>
     );
   const t = d.donnees;

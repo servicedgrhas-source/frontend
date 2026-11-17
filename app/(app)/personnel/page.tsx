@@ -5,7 +5,8 @@ import Link from "next/link";
 import { CentreControleEffectifs } from "@/components/recensement/centre-controle";
 import { libelleStatut, peutRecenser, useConfigRecensement } from "@/components/recensement/commun";
 import { useSession } from "@/components/session";
-import { Alerte, Carte, Chargement, Chiffre, EnTete, Vide } from "@/components/ui";
+import { SqueletteTableauPersonnel } from "@/components/squelette";
+import { Alerte, Carte, Chiffre, EnTete, Vide } from "@/components/ui";
 import { useApi } from "@/lib/api";
 import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
@@ -43,15 +44,25 @@ export default function TableauRecensement() {
   const { donnees: t, erreur } = useApi<Tableau>("/recensement/tableau");
   if (!peutRecenser(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS, aux DDEPPSA et aux chefs d’établissement.</Alerte>;
   if (erreur) return <Alerte>{erreur}</Alerte>;
-  if (!t) return <Chargement />;
   const c = config.donnees?.configuration;
+  const entete = (
+    <EnTete
+      titre="Personnel : tableau de bord"
+      sousTitre="Où en est la base du personnel : toutes les fiches du système justifiées (centre de contrôle), fiches complètes, rubriques et pièces qui manquent, incohérences à corriger. Chaque ligne s’ouvre sur la liste des agents concernés."
+    />
+  );
+  // Pendant le calcul : le titre tout de suite, et un squelette à la forme de la page
+  if (!t)
+    return (
+      <div className="space-y-6">
+        {entete}
+        <SqueletteTableauPersonnel />
+      </div>
+    );
 
   return (
     <div className="space-y-6">
-      <EnTete
-        titre="Personnel : tableau de bord"
-        sousTitre="Où en est la base du personnel : toutes les fiches du système justifiées (centre de contrôle), fiches complètes, rubriques et pièces qui manquent, incohérences à corriger. Chaque ligne s’ouvre sur la liste des agents concernés."
-      />
+      {entete}
 
       {!t.total ? (
         <Carte>
