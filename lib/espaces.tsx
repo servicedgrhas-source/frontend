@@ -340,30 +340,6 @@ export const ESPACES: Espace[] = [
       },
       {
         groupe: "Suivi et réglages",
-        href: "/enrolement/suivi-integration",
-        libelle: "Suivi de l’intégration (Banque mondiale)",
-        icone: ListChecks,
-        visible: traiter,
-        explication: "Pour chaque volontaire et communautaire : texte d’intégration, note d’affectation, salaire (matricule solde ou statut) et fin de la bourse ; le parcours en chiffres, ce qui reste, ce qui est à régler ; Excel et Word.",
-      },
-      {
-        groupe: "Suivi et réglages",
-        href: "/enrolement/effectifs-ecoles",
-        libelle: "Effectifs par école (Banque mondiale)",
-        icone: BarChart3,
-        visible: traiter,
-        explication: "Volontaires, communautaires, contractuels et fonctionnaires de chaque école, par DEPPSA ; les écoles de 3 fonctionnaires ou moins (contractuels compris) en priorité ; noms d’écoles à harmoniser ; Excel.",
-      },
-      {
-        groupe: "Suivi et réglages",
-        href: "/enrolement/rapprochement-rapports",
-        libelle: "Rapprochement des rapports des DDEPPSA (Banque mondiale)",
-        icone: ListChecks,
-        visible: traiter,
-        explication: "Les états nominatifs du personnel des rapports de fin d’année des DDEPPSA, comparés à toute la base du personnel et au registre : trouvés, écarts, absents ; décisions gardées ; Excel des champs demandés.",
-      },
-      {
-        groupe: "Suivi et réglages",
         href: "/enrolement/configuration",
         libelle: "Configuration",
         icone: Settings,
@@ -668,6 +644,43 @@ export const ESPACES: Espace[] = [
     ],
   },
   {
+    cle: "banque-mondiale",
+    titre: "Banque mondiale",
+    icone: Landmark,
+    description:
+      "Le travail pour la Banque mondiale : suivi de l’intégration, effectifs par école, écoles à contrôler, rapprochement des rapports des DDEPPSA. Ce volet LIT nos bases mais n’y écrit JAMAIS : les corrections, décisions et listes faites ici restent ici (DG, 17/11/2026).",
+    rubriques: [
+      {
+        href: "/enrolement/suivi-integration",
+        libelle: "Suivi de l’intégration",
+        icone: ListChecks,
+        visible: traiter,
+        explication: "Pour chaque volontaire et communautaire : texte d’intégration, note d’affectation, salaire (matricule solde ou statut) et fin de la bourse ; le parcours en chiffres ; Excel et Word.",
+      },
+      {
+        href: "/enrolement/effectifs-ecoles",
+        libelle: "Effectifs par école",
+        icone: BarChart3,
+        visible: traiter,
+        explication: "Volontaires, communautaires, contractuels et fonctionnaires de chaque école, par DEPPSA ; les écoles de 3 fonctionnaires ou moins (contractuels compris) en priorité ; Excel.",
+      },
+      {
+        href: "/enrolement/ecoles-a-controler",
+        libelle: "Écoles à contrôler",
+        icone: Building2,
+        visible: traiter,
+        explication: "Les écoles qui se ressemblent (même école ou deux écoles), les noms à harmoniser, les écoles absentes de l’organigramme : des décisions de comptage, propres à ce volet.",
+      },
+      {
+        href: "/enrolement/rapprochement-rapports",
+        libelle: "Rapprochement des rapports des DDEPPSA",
+        icone: ListChecks,
+        visible: traiter,
+        explication: "Les états nominatifs des rapports de fin d’année des DDEPPSA comparés à nos bases ; corrections et ajouts gardés dans la liste Banque mondiale ; Excel du personnel.",
+      },
+    ],
+  },
+  {
     cle: "administration",
     titre: "Administration",
     icone: Settings,
@@ -789,7 +802,7 @@ export const POLES: Pole[] = [
 
 /** Ordre du menu, après le tableau de bord, les dossiers à traiter et les alertes. */
 // « Structures et besoins » : entrée à part, après Personnel (DG, 26/10/2026)
-export const MENU: { pole?: string; espace?: string }[] = [{ pole: "rh" }, { espace: "structures" }, { espace: "notes" }, { espace: "controle" }, { espace: "administration" }];
+export const MENU: { pole?: string; espace?: string }[] = [{ pole: "rh" }, { espace: "structures" }, { espace: "notes" }, { espace: "controle" }, { espace: "banque-mondiale" }, { espace: "administration" }];
 
 export const poleDe = (cleEspace: string | null | undefined) => (cleEspace ? (POLES.find((p) => p.espaces.includes(cleEspace)) ?? null) : null);
 

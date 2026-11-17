@@ -27,10 +27,10 @@ interface Effectifs {
   aJour?: boolean;
 }
 
-/** Le lien vers Structures scolaires, où l'on tranche (DG, 17/11/2026 : ici, on regarde seulement). */
+/** Le lien vers « Écoles à contrôler » (volet Banque mondiale), où l'on tranche (DG, 17/11/2026 : ici, on regarde seulement). */
 function VersStructures({ onglet, children }: { onglet: string; children: React.ReactNode }) {
   return (
-    <Link href={`/ecoles?controle=${onglet}`} className="inline-flex items-center gap-1 font-medium text-marque-700 hover:underline">
+    <Link href={`/enrolement/ecoles-a-controler?controle=${onglet}`} className="inline-flex items-center gap-1 font-medium text-marque-700 hover:underline">
       {children} <ArrowRight className="size-3.5" />
     </Link>
   );
@@ -74,7 +74,7 @@ function Squelette() {
  * Effectifs par école (demande de la Banque mondiale, 16/11/2026) : pour chaque école, rangée par
  * DEPPSA, le nombre de volontaires, de communautaires, de contractuels et de fonctionnaires. Les
  * écoles de 3 fonctionnaires ou moins (contractuels compris) sont signalées : elles passent en priorité. Les écoles
- * dont les noms se ressemblent sont montrées ici ; elles se tranchent dans Structures scolaires
+ * dont les noms se ressemblent sont montrées ici ; elles se tranchent dans « Écoles à contrôler »
  * (DG, 17/11/2026). Aucun nom de personne, seulement des nombres.
  */
 export default function EffectifsEcoles() {
@@ -119,7 +119,7 @@ export default function EffectifsEcoles() {
     <div className="space-y-6">
       <EnTete
         titre="Effectifs par école (Banque mondiale)"
-        sousTitre={`Pour chaque école, rangée par DEPPSA : le nombre de volontaires, de communautaires, de contractuels et de fonctionnaires. En orange, les écoles qui ont ${s} fonctionnaires ou moins, contractuels compris : elles passent en priorité. Les écoles dont les noms se ressemblent sont montrées ici et se tranchent dans Structures scolaires. Seulement des nombres, aucun nom de personne.`}
+        sousTitre={`Pour chaque école, rangée par DEPPSA : le nombre de volontaires, de communautaires, de contractuels et de fonctionnaires. En orange, les écoles qui ont ${s} fonctionnaires ou moins, contractuels compris : elles passent en priorité. Les écoles dont les noms se ressemblent sont montrées ici et se tranchent dans Banque mondiale › Écoles à contrôler. Seulement des nombres, aucun nom de personne.`}
         actions={
           <Bouton onClick={telecharger} title="Par école, par DEPPSA, sans école, noms à harmoniser, écoles qui se ressemblent, DEPPSA reclassées (en-tête officiel)">
             <Download /> Excel
@@ -360,7 +360,7 @@ export default function EffectifsEcoles() {
             <Carte titre={`Écoles qui se ressemblent (${nf.format(r.donnees?.total ?? d.donnees.ressemblances)})`}>
               <p className="mb-3 text-[12px] text-zinc-500">
                 Deux écoles de la même DEPPSA dont les noms se ressemblent. Ici on les regarde seulement : on tranche (même école ou deux écoles) dans{" "}
-                <VersStructures onglet="ressemblances">Structures scolaires › Écoles à contrôler</VersStructures>
+                <VersStructures onglet="ressemblances">Banque mondiale › Écoles à contrôler</VersStructures>
               </p>
               {r.erreur && <Alerte>{r.erreur}</Alerte>}
               {!r.donnees || r.chargement ? (

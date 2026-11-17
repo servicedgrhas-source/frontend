@@ -94,14 +94,14 @@ const DECISIONS: Record<NonNullable<Ligne["decision"]>, string> = {
   CONFIRME: "Confirmé",
   AUTRE_FICHE: "Autre fiche choisie",
   ABSENT: "Absent confirmé",
-  AJOUTE: "Ajouté depuis le rapport",
+  AJOUTE: "Gardé dans la liste Banque mondiale",
 };
 const METHODES: Record<string, string> = {
   MATRICULE: "par le matricule",
   NOM: "par le nom et l’année de naissance",
   NOM_PROCHE: "nom proche, même année de naissance",
   CHOIX: "fiche choisie à la main",
-  AJOUT: "ajoutée depuis le rapport",
+  AJOUT: "absente de nos bases, gardée dans la liste",
   MEME_PERSONNE: "même personne qu’une autre ligne du rapport",
   NOM_AUTRE_ANNEE: "même nom, autre année de naissance",
 };
@@ -142,7 +142,8 @@ export default function RapprochementRapports() {
           <>
             Les états nominatifs du personnel des rapports de fin d’année des DDEPPSA, comparés à <strong>toute la base du personnel</strong> et à tout le{" "}
             <strong>registre des volontaires et des communautaires</strong>. Chaque personne est cherchée par son matricule, puis par son nom et son année de naissance, puis par un nom
-            proche. On confirme, on choisit une autre fiche, ou on déclare absent : tout est gardé.
+            proche. On confirme, on choisit une autre fiche, ou on déclare absent : tout est gardé. <strong>Nos bases ne sont jamais modifiées</strong> : les
+            corrections et les personnes gardées restent dans la liste Banque mondiale, que l’on exporte.
           </>
         }
         actions={
@@ -343,10 +344,9 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
   const choisies = visibles.filter((l) => cochees.has(l.id));
   const ACTIONS: Record<string, [string, (l: Ligne) => boolean, string]> = {
     CONFIRMER: ["Confirmer la fiche trouvée", (l) => !!l.base && !l.decision, "Confirmer la fiche trouvée pour"],
-    COMPLETER: ["Compléter les fiches", (l) => l.base?.type === "PERSONNEL", "Recopier dans la fiche ce qui y manque (lieu de service, matricule, dates complètes), jamais ce qui diffère, pour"],
-    AJOUTER: ["Ajouter à la base", (l) => !l.agentId && l.decision !== "AJOUTE", "Ajouter à la base du personnel, avec la mention « Ajouté depuis le rapport de la DDEPPSA » (fiches à contrôler, puis décision du DG),"],
-    ABSENT: ["Déclarer absentes", (l) => !l.agentId && l.decision !== "ABSENT" && l.decision !== "AJOUTE", "Déclarer absentes de la base"],
-    ANNULER: ["Annuler la décision", (l) => !!l.decision && l.decision !== "AJOUTE", "Annuler la décision (la ligne revient « à traiter ») pour"],
+    AJOUTER: ["Garder dans la liste", (l) => !l.base && l.decision !== "AJOUTE", "Garder dans la liste Banque mondiale (aucune fiche n’est créée dans nos bases)"],
+    ABSENT: ["Déclarer absentes", (l) => !l.agentId && l.decision !== "ABSENT" && l.decision !== "AJOUTE", "Déclarer absentes de nos bases"],
+    ANNULER: ["Annuler la décision", (l) => !!l.decision && !(l.decision === "AJOUTE" && l.agentId), "Annuler la décision (la ligne revient « à traiter ») pour"],
   };
   const enLot = async (action: string) => {
     const [, possible, question] = ACTIONS[action];
@@ -532,7 +532,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
           fermer={() => setAjouter(null)}
           fait={() => {
             setAjouter(null);
-            setSucces(`« ${ajouter.nomComplet} » ajouté(e) à la base du personnel, avec la mention « Ajouté depuis le rapport de la DDEPPSA » : la fiche est à contrôler.`);
+            setSucces(`« ${ajouter.nomComplet} » est gardé(e) dans la liste Banque mondiale (nos bases ne changent pas).`);
             d.recharger();
           }}
         />
@@ -544,7 +544,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
           fermer={() => setAppliquer(null)}
           fait={(n) => {
             setAppliquer(null);
-            setSucces(`${n} rubrique(s) recopiée(s) dans la fiche de « ${appliquer.base?.nom ?? appliquer.nomComplet} ». La modification part au contrôle des modifications.`);
+            setSucces(`${n} rubrique(s) corrigée(s) dans la liste Banque mondiale pour « ${appliquer.nomComplet} » (la fiche de nos bases ne change pas).`);
             d.recharger();
           }}
         />
@@ -673,11 +673,11 @@ function CarteLigne({
       )}
       {l.applique && (
         <div className="mt-3 rounded-2xl bg-marque-50 px-4 py-2.5 text-[12px] text-marque-800 ring-1 ring-marque-200">
-          <span className="font-medium">Recopié dans la fiche</span>
+          <span className="font-medium">Corrigé dans la liste Banque mondiale</span>
           {l.appliqueLe ? ` le ${leFr(l.appliqueLe)}` : ""}
           {l.appliquePar ? ` par ${l.appliquePar}` : ""} :{" "}
           {Object.entries(l.applique)
-            .map(([k, v]) => `${LIBELLES_RUBRIQUES[k] ?? k} (« ${String(v.avant ?? "vide")} » → « ${String(v.apres ?? "vide")} »)`)
+            .map(([k, v]) => `${LIBELLES_RUBRIQUES[k] ?? k} : « ${valeurLisible(v.apres)} » (nos bases : « ${valeurLisible(v.avant)} »)`)
             .join(" ; ")}
         </div>
       )}
@@ -703,14 +703,14 @@ function CarteLigne({
             <Check /> C’est bien cette personne
           </Bouton>
         )}
-        {f?.type === "PERSONNEL" && (
-          <Bouton chargement={enCours} onClick={appliquer}>
-            <PenLine /> Appliquer le rapport à la fiche
+        {f && (
+          <Bouton chargement={enCours} onClick={appliquer} title="Corrige la ligne de la liste Banque mondiale ; la fiche de nos bases ne change pas">
+            <PenLine /> Corriger la liste
           </Bouton>
         )}
-        {!l.agentId && l.decision !== "AJOUTE" && (
-          <Bouton chargement={enCours} onClick={ajouter}>
-            <UserPlus /> Ajouter à la base
+        {!f && l.decision !== "AJOUTE" && (
+          <Bouton chargement={enCours} onClick={ajouter} title="Aucune fiche n’est créée dans nos bases">
+            <UserPlus /> Garder dans la liste
           </Bouton>
         )}
         <Bouton chargement={enCours} onClick={choisir}>
@@ -766,6 +766,12 @@ function ModaleChoix({ ligne, fermer, prendre }: { ligne: Ligne; fermer: () => v
   );
 }
 
+/** Une valeur gardée (date AAAA-MM-JJ → JJ/MM/AAAA). */
+const valeurLisible = (v: unknown) => {
+  const s = v === null || v === undefined || v === "" ? "vide" : String(v as string);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? dateFr(s) : s;
+};
+
 const LIBELLES_RUBRIQUES: Record<string, string> = {
   NOMS_PRENOMS: "Noms et prénoms",
   MATRICULE_SOLDE: "Matricule de solde",
@@ -776,9 +782,9 @@ const LIBELLES_RUBRIQUES: Record<string, string> = {
 };
 
 /**
- * Appliquer le rapport à la fiche du personnel : pour chaque rubrique, la valeur de la base, celle
- * du rapport (modifiable avant d'appliquer), et une case à cocher. Seules les rubriques cochées
- * sont recopiées ; la modification part au contrôle des modifications.
+ * Corriger la liste Banque mondiale : pour chaque rubrique, la valeur de nos bases, celle du rapport
+ * (modifiable), et une case à cocher. Les rubriques cochées sont gardées sur la ligne et reprises
+ * dans l'export ; nos bases (fiche du personnel, registre) ne sont jamais modifiées.
  */
 function ModaleAppliquer({ ligne, departementId, fermer, fait }: { ligne: Ligne; departementId: number | null; fermer: () => void; fait: (n: number) => void }) {
   const { refs } = useSession();
@@ -806,44 +812,40 @@ function ModaleAppliquer({ ligne, departementId, fermer, fait }: { ligne: Ligne;
   );
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
-  const [doublon, setDoublon] = useState(false);
   const choisies = Object.keys(coches).filter((k) => coches[k] && valeurs[k]?.trim());
 
-  const envoyer = async (forcer = false) => {
+  const envoyer = async () => {
     setErreur(null);
     setEnvoi(true);
     try {
       const r = await api.post<{ rubriques: string[] }>(`${API}/lignes/${ligne.id}/appliquer`, {
         champs: Object.fromEntries(choisies.map((k) => [k, valeurs[k]])),
-        forcer,
       });
       fait(r.rubriques.length);
     } catch (x) {
-      const m = (x as Error).message;
-      setErreur(m);
-      setDoublon(/Déjà recensé/i.test(m));
+      setErreur((x as Error).message);
     } finally {
       setEnvoi(false);
     }
   };
 
   return (
-    <Modale titre={`Appliquer le rapport à la fiche de « ${f.nom} »`} ouverte fermer={fermer} large>
+    <Modale titre={`Corriger la liste Banque mondiale pour « ${ligne.nomComplet} »`} ouverte fermer={fermer} large>
       <div className="space-y-4">
         <p className="text-[13px] text-zinc-600">
-          Cochez ce qu’il faut recopier du rapport dans la fiche du personnel ; vous pouvez corriger la valeur avant. La modification est enregistrée dans l’historique de la fiche et part au{" "}
-          <strong>contrôle des modifications</strong> (ancienne et nouvelle valeur).
+          Cochez les rubriques dont la bonne valeur est celle du rapport (vous pouvez la corriger avant). Elles sont gardées <strong>dans la liste Banque mondiale</strong> et reprises
+          dans l’export Excel. <strong>Nos bases ne sont pas modifiées</strong> : la fiche de « {f.nom} » reste telle quelle.
         </p>
         {!lignes.length ? (
-          <Vide>Le rapport ne donne rien à recopier pour cette personne.</Vide>
+          <Vide>Le rapport ne donne rien à corriger pour cette personne.</Vide>
         ) : (
           <Tableau>
             <thead>
               <tr>
                 <th />
                 <th>Rubrique</th>
-                <th>Dans la base</th>
-                <th>À écrire dans la fiche (d’après le rapport)</th>
+                <th>Dans nos bases</th>
+                <th>Pour la liste Banque mondiale (d’après le rapport)</th>
               </tr>
             </thead>
             <tbody>
@@ -853,7 +855,7 @@ function ModaleAppliquer({ ligne, departementId, fermer, fait }: { ligne: Ligne;
                 return (
                   <tr key={k} className={coches[k] ? "bg-marque-50/50" : ""}>
                     <td>
-                      <input type="checkbox" className="size-4 accent-marque-600" checked={!!coches[k]} onChange={(e) => setCoches((c) => ({ ...c, [k]: e.target.checked }))} aria-label={`Recopier ${LIBELLES_RUBRIQUES[k]}`} />
+                      <input type="checkbox" className="size-4 accent-marque-600" checked={!!coches[k]} onChange={(e) => setCoches((c) => ({ ...c, [k]: e.target.checked }))} aria-label={`Corriger ${LIBELLES_RUBRIQUES[k]}`} />
                     </td>
                     <td className="font-medium whitespace-nowrap">{LIBELLES_RUBRIQUES[k]}</td>
                     <td className="text-zinc-500">{base || <span className="text-rouge-600">vide</span>}</td>
@@ -871,7 +873,7 @@ function ModaleAppliquer({ ligne, departementId, fermer, fait }: { ligne: Ligne;
                         />
                       )}
                       {k === "DATE_PRISE_SERVICE" && anneeSeule && !v && <div className="mt-1 text-[11px] text-zinc-400">Le rapport donne seulement l’année {anneeSeule} : écrivez la date complète.</div>}
-                      {pareil && <div className="mt-1 text-[11px] text-zinc-400">Déjà pareil dans la base.</div>}
+                      {pareil && <div className="mt-1 text-[11px] text-zinc-400">Déjà pareil dans nos bases.</div>}
                     </td>
                   </tr>
                 );
@@ -882,13 +884,8 @@ function ModaleAppliquer({ ligne, departementId, fermer, fait }: { ligne: Ligne;
         {erreur && <Alerte>{erreur}</Alerte>}
         <div className="flex flex-wrap justify-end gap-2">
           <Bouton onClick={fermer}>Annuler</Bouton>
-          {doublon && (
-            <Bouton chargement={envoi} onClick={() => envoyer(true)} title="La personne signalée est une autre personne (homonyme)">
-              C’est une autre personne : appliquer quand même
-            </Bouton>
-          )}
-          <Bouton variante="principal" disabled={!choisies.length} chargement={envoi} onClick={() => envoyer()}>
-            <PenLine /> Recopier {choisies.length ? `${choisies.length} rubrique(s)` : ""} dans la fiche
+          <Bouton variante="principal" disabled={!choisies.length} chargement={envoi} onClick={envoyer}>
+            <PenLine /> Corriger {choisies.length ? `${choisies.length} rubrique(s)` : ""} dans la liste
           </Bouton>
         </div>
       </div>
@@ -896,7 +893,7 @@ function ModaleAppliquer({ ligne, departementId, fermer, fait }: { ligne: Ligne;
   );
 }
 
-/** Ajouter à la base du personnel une personne absente, avec la mention du rapport. */
+/** Garder dans la liste Banque mondiale une personne absente de nos bases (aucune fiche créée). */
 function ModaleAjout({ ligne, fermer, fait }: { ligne: Ligne; fermer: () => void; fait: () => void }) {
   const [statut, setStatut] = useState(ligne.statut ?? "");
   const [envoi, setEnvoi] = useState(false);
@@ -914,11 +911,11 @@ function ModaleAjout({ ligne, fermer, fait }: { ligne: Ligne; fermer: () => void
     }
   };
   return (
-    <Modale titre={`Ajouter « ${ligne.nomComplet} » à la base du personnel`} ouverte fermer={fermer}>
+    <Modale titre={`Garder « ${ligne.nomComplet} » dans la liste Banque mondiale`} ouverte fermer={fermer}>
       <div className="space-y-4">
         <p className="text-[13px] text-zinc-600">
-          Une fiche est créée avec ce que donne le rapport (nom, naissance, genre, matricule, lieu de service, fonction, département, date de prise de service complète). Elle porte la mention{" "}
-          <strong>« Ajouté depuis le rapport de fin d’année de la DDEPPSA »</strong> et suit le circuit des agents ajoutés : <strong>à contrôler</strong>, puis décision du DG.
+          La personne n’est ni dans la base du personnel ni dans le registre. Elle est gardée <strong>dans la liste Banque mondiale</strong> avec ce que donne le rapport, et figure
+          dans l’export Excel. <strong>Aucune fiche n’est créée dans nos bases.</strong>
         </p>
         <Champ libelle="Type d’agent">
           <Liste value={statut} onChange={(e) => setStatut(e.target.value)} vide="Choisir…" options={Object.entries(STATUTS).map(([valeur, libelle]) => ({ valeur, libelle }))} />
@@ -927,7 +924,7 @@ function ModaleAjout({ ligne, fermer, fait }: { ligne: Ligne; fermer: () => void
         <div className="flex justify-end gap-2">
           <Bouton onClick={fermer}>Annuler</Bouton>
           <Bouton variante="principal" disabled={!statut} chargement={envoi} onClick={envoyer}>
-            <UserPlus /> Ajouter à la base
+            <UserPlus /> Garder dans la liste
           </Bouton>
         </div>
       </div>

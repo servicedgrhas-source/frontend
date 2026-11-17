@@ -1,15 +1,15 @@
 "use client";
 
-import { Building2, GitMerge, Pencil, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { GitMerge, Pencil } from "lucide-react";
+import { useState } from "react";
 import { FraicheurCalcul } from "@/components/fraicheur-calcul";
 import { useSession } from "@/components/session";
-import { Aide, Alerte, Badge, Bouton, Carte, Champ, Liste, Modale, Saisie, Segments, Tableau, useConfirmation, Vide } from "@/components/ui";
+import { Alerte, Badge, Bouton, Carte, Champ, Liste, Modale, Saisie, Segments, Tableau, useConfirmation, Vide } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
 import { peut, type Ton } from "@/lib/libelles";
 
 /*
- * Les écoles à contrôler (DG, 17/11/2026), dans Structures scolaires : les écoles qui se
+ * Les écoles à contrôler (DG, 17/11/2026), dans le volet Banque mondiale : les écoles qui se
  * ressemblent (même école ou deux écoles ?), les noms écrits de plusieurs façons, les écoles absentes
  * de l'organigramme (à rattacher à leur inspection), et les décisions prises. La page de la Banque
  * mondiale les montre seulement.
@@ -215,7 +215,6 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
   const [recherche, setRecherche] = useState("");
   const [page, setPage] = useState(1);
   const [ouverte, setOuverte] = useState<string | null>(null);
-  const [aRattacher, setARattacher] = useState<EcoleDetaillee | null>(null);
   const [enCours, setEnCours] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [succes, setSucces] = useState<string | null>(null);
@@ -233,7 +232,6 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
   const l = useApi<{ total: number; ecoles: EcoleDetaillee[] }>(onglet === "hors-organigramme" || onglet === "harmoniser" ? `${API}/liste/${onglet}${qs({ ...filtres, page })}` : null);
   const dec = useApi<DecisionEcole[]>(onglet === "decisions" ? `${API}/decisions` : null);
   const controle = peut.controler(profil.role);
-  const dg = profil.role === "DG" || profil.role === "ADMIN";
 
   const toutRelire = () => {
     resume.recharger();
@@ -326,7 +324,7 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <p className="max-w-3xl text-[13px] text-zinc-600">
             Les noms d’écoles écrits dans les fichiers (registre de la bourse, base du personnel) ne sont pas toujours ceux de l’organigramme. Ici, on tranche : <strong>même école</strong> ou <strong>deux écoles</strong>, nom
-            corrigé, pas une école, ou <strong>ajout à l’organigramme</strong> sous son inspection. Les fiches des personnes ne sont jamais modifiées ; chaque décision s’annule.
+            corrigé ou pas une école. Ce sont des décisions de <strong>comptage</strong>, propres au volet Banque mondiale : nos bases (fiches, organigramme) ne sont jamais modifiées ; chaque décision s’annule.
           </p>
           {n && <FraicheurCalcul calculeLe={n.calculeLe} aJour={n.aJour} recharger={resume.recharger} />}
         </div>
@@ -482,7 +480,7 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
           <p className="mb-3 text-[12px] text-zinc-500">
             {onglet === "harmoniser"
               ? "Une même école écrite de plusieurs façons dans les fichiers. Elle est déjà comptée une seule fois ; ouvrez-la pour lui donner son nom officiel, ou la compter avec une autre école."
-              : "Écoles connues seulement par le nom écrit dans les fichiers : elles ne sont pas dans l’organigramme (Établissements). Ajoutez-les sous leur inspection, ou ouvrez-les si c’est une autre école mal écrite (même école) ou pas une école."}
+              : "Écoles connues seulement par le nom écrit dans les fichiers : elles ne sont pas dans l’organigramme (Établissements). Ouvrez-les si c’est une autre école mal écrite (même école) ou pas une école. L’ajout à l’organigramme se fait dans Administration › Organigramme, pas ici."}
             {" "}Les plus nombreuses d’abord.
           </p>
           {l.erreur && <Alerte>{l.erreur}</Alerte>}
@@ -531,11 +529,6 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
                     </td>
                     <td>
                       <div className="flex flex-col items-end gap-1.5">
-                        {!e.organigramme && dg && (
-                          <Bouton variante="principal" onClick={() => setARattacher(e)}>
-                            <Building2 /> Ajouter à l’organigramme
-                          </Bouton>
-                        )}
                         <Bouton variante="discret" onClick={() => setOuverte(e.id)}>
                           <Pencil /> Décider
                         </Bouton>
@@ -546,7 +539,6 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
               </tbody>
             </Tableau>
           )}
-          {onglet === "hors-organigramme" && !dg && <p className="mt-3 text-[12px] text-zinc-500">L’ajout à l’organigramme est réservé au DG (comme dans Administration › Organigramme).</p>}
           <Pages page={page} pages={l.donnees ? Math.max(1, Math.ceil(l.donnees.total / 30)) : 1} changer={setPage} />
         </Carte>
       )}
@@ -559,17 +551,6 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
       )}
 
       {ouverte && <ModaleEcole id={ouverte} fermer={() => setOuverte(null)} decider={decider} annuler={annuler} controle={controle} departements={refs.departements} />}
-      {aRattacher && (
-        <ModaleOrganigramme
-          ecole={aRattacher}
-          fermer={() => setARattacher(null)}
-          fait={(nom) => {
-            setARattacher(null);
-            setSucces(`« ${nom} » est ajoutée à l’organigramme.`);
-            toutRelire();
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -705,136 +686,3 @@ function ModaleEcole({
   );
 }
 
-interface GroupeInspections {
-  departementId: number | null;
-  departement: string;
-  inspections: { id: number; nom: string; sigle: string; cycle: string | null }[];
-}
-
-/**
- * Ajouter une école hors organigramme sous son inspection : les inspections sont rangées par
- * département (celui de l'école d'abord) puis par cycle, avec une recherche.
- */
-function ModaleOrganigramme({ ecole, fermer, fait }: { ecole: EcoleDetaillee; fermer: () => void; fait: (nom: string) => void }) {
-  const ins = useApi<GroupeInspections[]>(`${API}/inspections`);
-  const [nom, setNom] = useState(ecole.nom);
-  const [cycle, setCycle] = useState(ecole.cycle ?? "");
-  const [departement, setDepartement] = useState(ecole.departementId ? String(ecole.departementId) : "");
-  const [cherche, setCherche] = useState("");
-  const [choisie, setChoisie] = useState<number | null>(null);
-  const [enCours, setEnCours] = useState(false);
-  const [erreur, setErreur] = useState<string | null>(null);
-
-  const groupe = ins.donnees?.find((g) => String(g.departementId ?? "") === departement);
-  const visibles = useMemo(() => {
-    const q = cherche.trim().toLowerCase();
-    const liste = (groupe?.inspections ?? []).filter((i) => !q || `${i.nom} ${i.sigle}`.toLowerCase().includes(q));
-    // Celles du cycle de l'école d'abord
-    return [...liste].sort((a, b) => Number(b.cycle === cycle) - Number(a.cycle === cycle));
-  }, [groupe, cherche, cycle]);
-  const parCycle = useMemo(() => {
-    const m = new Map<string, typeof visibles>();
-    for (const i of visibles) {
-      const k = i.cycle ?? "";
-      m.set(k, [...(m.get(k) ?? []), i]);
-    }
-    return [...m.entries()];
-  }, [visibles]);
-
-  const enregistrer = async () => {
-    if (!choisie) return;
-    setErreur(null);
-    setEnCours(true);
-    try {
-      await api.post(`${API}/organigramme`, { cle: ecole.id, nom: nom.trim(), cycle, inspectionId: choisie });
-      fait(nom.trim());
-    } catch (x) {
-      setErreur((x as Error).message);
-    } finally {
-      setEnCours(false);
-    }
-  };
-
-  return (
-    <Modale titre="Ajouter l’école à l’organigramme" ouverte fermer={fermer} large>
-      <div className="space-y-4 text-[13px]">
-        <FicheEcole e={ecole} />
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Champ libelle="Nom officiel de l’école">
-            <Saisie value={nom} onChange={(e) => setNom(e.target.value)} />
-          </Champ>
-          <Champ libelle="Cycle">
-            <Liste value={cycle} onChange={(e) => setCycle(e.target.value)} vide="Choisir le cycle…" options={Object.entries(CYCLES_ECOLES).map(([valeur, libelle]) => ({ valeur, libelle }))} />
-          </Champ>
-        </div>
-
-        <section className="space-y-2">
-          <h3 className="flex items-center gap-1 font-semibold">
-            Son inspection <Aide>L’école est placée sous cette inspection dans l’organigramme ; elle prend son département. Les inspections du cycle de l’école sont proposées en premier.</Aide>
-          </h3>
-          {ins.erreur && <Alerte>{ins.erreur}</Alerte>}
-          {!ins.donnees ? (
-            <Squelette n={2} h="h-10" />
-          ) : (
-            <>
-              <div className="flex flex-wrap gap-1.5">
-                {ins.donnees.map((g) => (
-                  <button
-                    key={g.departement}
-                    type="button"
-                    onClick={() => { setDepartement(String(g.departementId ?? "")); setChoisie(null); }}
-                    className={`rounded-full px-3 py-1 text-[12px] font-medium transition ${String(g.departementId ?? "") === departement ? "bg-nuit text-white" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"}`}
-                  >
-                    {g.departement} <span className="opacity-60">({g.inspections.length})</span>
-                  </button>
-                ))}
-              </div>
-              {!groupe ? (
-                <p className="text-[12px] text-zinc-500">Choisissez le département de l’école.</p>
-              ) : (
-                <>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-400" />
-                    <Saisie className="pl-9" value={cherche} onChange={(e) => setCherche(e.target.value)} placeholder={`Chercher une inspection de ${groupe.departement}…`} />
-                  </div>
-                  <div className="max-h-72 space-y-3 overflow-y-auto rounded-xl border border-zinc-200 p-2">
-                    {!visibles.length ? (
-                      <Vide>Aucune inspection.</Vide>
-                    ) : (
-                      parCycle.map(([c, liste]) => (
-                        <div key={c}>
-                          <div className="mb-1 px-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">{c ? CYCLES_ECOLES[c] ?? c : "Cycle non précisé"}{c === cycle && " · cycle de l’école"}</div>
-                          <div className="grid gap-1 sm:grid-cols-2">
-                            {liste.map((i) => (
-                              <button
-                                key={i.id}
-                                type="button"
-                                onClick={() => setChoisie(i.id)}
-                                className={`rounded-lg px-3 py-2 text-left text-[13px] transition ${choisie === i.id ? "bg-marque-600 text-white" : "bg-zinc-50 hover:bg-zinc-100"}`}
-                              >
-                                <span className="font-medium">{i.nom}</span>
-                                {i.sigle && i.sigle !== i.nom && <span className={`ml-1 text-[11px] ${choisie === i.id ? "text-white/70" : "text-zinc-500"}`}>({i.sigle})</span>}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </>
-              )}
-            </>
-          )}
-        </section>
-
-        {erreur && <Alerte>{erreur}</Alerte>}
-        <div className="flex justify-end gap-2 border-t border-zinc-100 pt-3">
-          <Bouton onClick={fermer}>Annuler</Bouton>
-          <Bouton variante="principal" chargement={enCours} disabled={!choisie || !cycle || !nom.trim()} onClick={enregistrer}>
-            <Building2 /> Ajouter à l’organigramme
-          </Bouton>
-        </div>
-      </div>
-    </Modale>
-  );
-}
