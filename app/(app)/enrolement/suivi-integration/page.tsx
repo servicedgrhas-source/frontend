@@ -3,6 +3,7 @@
 import { Download, FileText } from "lucide-react";
 import { useState } from "react";
 import { categoriesDe, nf, useConfigEnrolement } from "@/components/enrolement/volontaires";
+import { SansLienRegistre } from "@/components/enrolement/sans-lien-registre";
 import { FraicheurCalcul } from "@/components/fraicheur-calcul";
 import { useSession } from "@/components/session";
 import { Aide, Alerte, Badge, Bouton, Carte, Chargement, Chiffre, EnTete, Liste, Saisie, Segments, Tableau, Vide } from "@/components/ui";
@@ -118,7 +119,7 @@ export default function SuiviIntegration() {
   const [aRegler, setARegler] = useState(false);
   const [recherche, setRecherche] = useState("");
   const [page, setPage] = useState(1);
-  const [vue, setVue] = useState<"synthese" | "liste">("synthese");
+  const [vue, setVue] = useState<"synthese" | "liste" | "sansLien">("synthese");
   const [par, setPar] = useState<"population" | "departement" | "cycle" | "annee">("population");
   const [erreur, setErreur] = useState<string | null>(null);
   const filtres = { population: population || undefined, departementId: departementId || undefined, categorie: categorie || undefined, vague: vague || undefined, annee: annee || undefined, situation: situation || undefined, aRegler: aRegler ? 1 : undefined, recherche: recherche.trim() || undefined };
@@ -248,6 +249,7 @@ export default function SuiviIntegration() {
             options={[
               { valeur: "synthese", libelle: "Synthèse" },
               { valeur: "liste", libelle: `Liste nominative (${nf.format(d.donnees.total)})` },
+              { valeur: "sansLien", libelle: "Fiches du personnel sans lien avec le registre" },
             ]}
           />
 
@@ -363,6 +365,9 @@ export default function SuiviIntegration() {
               </div>
             </div>
           )}
+
+          {/* Lecture seule : le traitement se fait dans la base du personnel */}
+          {vue === "sansLien" && <SansLienRegistre />}
 
           {vue === "liste" && (
             <Carte

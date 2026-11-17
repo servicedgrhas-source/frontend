@@ -51,12 +51,16 @@ export function VueAgents() {
     manque: params.get("manque") ?? "",
     controle: params.get("controle") ?? "",
     anomalies: params.get("anomalies") ?? "",
+    effectif: params.get("effectif") ?? "",
     page: Number(params.get("page") ?? 1),
   };
   const liste = useApi<{ total: number; page: number; parPage: number; lignes: Ligne[]; parAnomalie?: { code: string; libelle: string; n: number }[] }>(`/recensement/agents${qs(f)}`);
   // Mode « fiches présentant des anomalies » : tous les problèmes, ou un seul (filtre « controle »)
   const enAnomalies = !!f.anomalies || !!f.controle;
   const tableau = useApi<{ controles: { code: string; libelle: string; n: number }[] }>("/recensement/tableau");
+  // Une catégorie du centre de contrôle des effectifs (tableau de bord du personnel)
+  const effectifs = useApi<{ groupes: { lignes: { code: string; libelle: string; explication: string }[] }[] }>(f.effectif ? "/recensement/tableau/effectifs" : null);
+  const filtreEffectif = effectifs.donnees?.groupes.flatMap((g) => g.lignes).find((x) => x.code === f.effectif);
   const c = config.donnees?.configuration;
   if (!peutRecenser(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS, aux DDEPPSA et aux chefs d’établissement.</Alerte>;
 
@@ -144,6 +148,16 @@ export function VueAgents() {
                 </button>
               ))}
             </div>
+          </div>
+        )}
+        {f.effectif && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
+            <span className="text-zinc-500">Centre de contrôle des effectifs :</span>
+            <span className="rounded-full bg-or-100 px-3 py-1 font-medium text-or-700" title={filtreEffectif?.explication}>{filtreEffectif?.libelle ?? f.effectif}</span>
+            <button type="button" className="font-medium text-marque-700 hover:underline" onClick={() => aller({ effectif: "" })}>
+              retirer
+            </button>
+            {filtreEffectif && <span className="basis-full text-zinc-500">{filtreEffectif.explication}</span>}
           </div>
         )}
         {!enAnomalies && (filtreManque || filtreControle) && (

@@ -2,11 +2,13 @@
 
 import { AlertTriangle, ArrowRight, CheckCircle2, FileWarning, Users } from "lucide-react";
 import Link from "next/link";
+import { CentreControleEffectifs } from "@/components/recensement/centre-controle";
 import { libelleStatut, peutRecenser, useConfigRecensement } from "@/components/recensement/commun";
 import { useSession } from "@/components/session";
 import { Alerte, Carte, Chargement, Chiffre, EnTete, Vide } from "@/components/ui";
 import { useApi } from "@/lib/api";
 import { accesDonne } from "@/lib/espaces";
+import { peut } from "@/lib/libelles";
 
 interface Tableau {
   total: number;
@@ -48,7 +50,7 @@ export default function TableauRecensement() {
     <div className="space-y-6">
       <EnTete
         titre="Personnel : tableau de bord"
-        sousTitre="Où en est la base du personnel : agents, fiches complètes, rubriques et pièces qui manquent, incohérences à corriger. Chaque ligne s’ouvre sur la liste des agents concernés."
+        sousTitre="Où en est la base du personnel : toutes les fiches du système justifiées (centre de contrôle), fiches complètes, rubriques et pièces qui manquent, incohérences à corriger. Chaque ligne s’ouvre sur la liste des agents concernés."
       />
 
       {!t.total ? (
@@ -73,6 +75,9 @@ export default function TableauRecensement() {
             <Chiffre href="/personnel/agents?complet=non" icone={<FileWarning />} ton="jaune" libelle="À compléter" valeur={nf.format(t.total - t.complets)} detail={`complétude moyenne : ${t.tauxMoyen} %`} />
             <Chiffre icone={<AlertTriangle />} ton={t.controles.length ? "rouge" : "gris"} libelle="Incohérences" valeur={nf.format(t.controles.reduce((s, x) => s + x.n, 0))} detail={`${t.controles.length} type(s) de contrôle`} />
           </div>
+
+          {/* Toutes les fiches du système, justifiées une à une (DGRHAS : tout le pays) */}
+          {peut.traiter(profil.role) && <CentreControleEffectifs />}
 
           <Carte titre="Incohérences et contrôles">
             {!t.controles.length ? (
