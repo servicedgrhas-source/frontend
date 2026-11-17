@@ -274,7 +274,7 @@ function ModaleImport({ fermer, fait }: { fermer: () => void; fait: (id: number)
 
 function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
   const d = useApi<{ rapport: Rapport; lignes: Ligne[] }>(`${API}/${id}`);
-  const [filtre, setFiltre] = useState<Ligne["resultat"] | "" | "A_DECIDER">("");
+  const [filtre, setFiltre] = useState<Ligne["resultat"] | "" | "DECIDES">("");
   const [secteur, setSecteur] = useState("");
   const [recherche, setRecherche] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
@@ -318,11 +318,14 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
 
   const r = d.donnees?.rapport;
   const lignes = d.donnees?.lignes ?? [];
-  const compte = (f: (l: Ligne) => boolean) => lignes.filter(f).length;
+  // Les pastilles comptent ce qui reste à traiter (sans décision) ; une ligne décidée passe dans
+  // « Déjà décidées » (17/11/2026 : une fiche confirmée doit quitter « Trouvés »)
+  const aTraiter = lignes.filter((l) => !l.decision);
+  const compte = (f: (l: Ligne) => boolean) => aTraiter.filter(f).length;
   const t = recherche.trim().toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
   const visibles = lignes.filter(
     (l) =>
-      (!filtre || (filtre === "A_DECIDER" ? !l.decision && l.resultat !== "TROUVE" : l.resultat === filtre)) &&
+      (filtre === "DECIDES" ? !!l.decision : !l.decision && (!filtre || l.resultat === filtre)) &&
       (!secteur || l.secteur === secteur) &&
       (!t || `${l.nomComplet} ${l.base?.nom ?? ""} ${l.matricule ?? ""}`.toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").includes(t)),
   );
@@ -335,12 +338,14 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
       }
       return n;
     });
-  const choisies = lignes.filter((l) => cochees.has(l.id));
+  // Seules les lignes cochées ET affichées (filtre, secteur, recherche) sont traitées
+  const choisies = visibles.filter((l) => cochees.has(l.id));
   const ACTIONS: Record<string, [string, (l: Ligne) => boolean, string]> = {
     CONFIRMER: ["Confirmer la fiche trouvée", (l) => !!l.base && !l.decision, "Confirmer la fiche trouvée pour"],
     COMPLETER: ["Compléter les fiches", (l) => l.base?.type === "PERSONNEL", "Recopier dans la fiche ce qui y manque (lieu de service, matricule, dates complètes), jamais ce qui diffère, pour"],
     AJOUTER: ["Ajouter à la base", (l) => !l.agentId && l.decision !== "AJOUTE", "Ajouter à la base du personnel, avec la mention « Ajouté depuis le rapport de la DDEPPSA » (fiches à contrôler, puis décision du DG),"],
     ABSENT: ["Déclarer absentes", (l) => !l.agentId && l.decision !== "ABSENT" && l.decision !== "AJOUTE", "Déclarer absentes de la base"],
+    ANNULER: ["Annuler la décision", (l) => !!l.decision && l.decision !== "AJOUTE", "Annuler la décision (la ligne revient « à traiter ») pour"],
   };
   const enLot = async (action: string) => {
     const [, possible, question] = ACTIONS[action];
@@ -418,18 +423,21 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
         <div className="flex flex-wrap gap-2">
           {(
             [
-              ["", "Toutes", lignes.length],
+              ["", "À traiter", aTraiter.length],
               ["TROUVE", "Trouvés", compte((l) => l.resultat === "TROUVE")],
               ["ECARTS", "À vérifier", compte((l) => l.resultat === "ECARTS")],
               ["PROBABLE", "Probables", compte((l) => l.resultat === "PROBABLE")],
               ["ABSENT", "Absents", compte((l) => l.resultat === "ABSENT")],
-              ["A_DECIDER", "Sans décision", compte((l) => !l.decision && l.resultat !== "TROUVE")],
+              ["DECIDES", "Déjà décidées", lignes.length - aTraiter.length],
             ] as [typeof filtre, string, number][]
           ).map(([v, libelle, n]) => (
             <button
               key={v || "toutes"}
               type="button"
-              onClick={() => setFiltre(v)}
+              onClick={() => {
+                setFiltre(v);
+                setCochees(new Set());
+              }}
               className={`rounded-full px-3 py-1 text-[12px] font-medium transition ${filtre === v ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"}`}
             >
               {libelle} ({nf.format(n)})
@@ -437,9 +445,15 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
           ))}
         </div>
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          <Liste value={secteur} onChange={(e) => setSecteur(e.target.value)} vide="Tous les secteurs" options={secteurs.map((s) => ({ valeur: s, libelle: SECTEURS[s] ?? s }))} />
+          <Liste value={secteur} onChange={(e) => {
+              setSecteur(e.target.value);
+              setCochees(new Set());
+            }} vide="Tous les secteurs" options={secteurs.map((s) => ({ valeur: s, libelle: SECTEURS[s] ?? s }))} />
           <div className="sm:col-span-2">
-            <Saisie value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder="Nom ou matricule…" />
+            <Saisie value={recherche} onChange={(e) => {
+                setRecherche(e.target.value);
+                setCochees(new Set());
+              }} placeholder="Nom ou matricule…" />
           </div>
         </div>
       </Carte>
@@ -457,7 +471,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
             Tout cocher ({nf.format(visibles.length)})
           </label>
           <span className="text-[12px] text-zinc-600">
-            <strong className="text-zinc-900">{nf.format(cochees.size)}</strong> cochée(s)
+            <strong className="text-zinc-900">{nf.format(choisies.length)}</strong> cochée(s)
           </span>
           <span className="flex-1" />
           {Object.entries(ACTIONS).map(([a, [libelle, possible]]) => {
