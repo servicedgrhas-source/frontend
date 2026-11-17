@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useMemo } from "react";
 import { EnteteOfficielle, SignatureOfficielle, editeLe } from "@/components/impression-officielle";
 import { PagesA4, StyleImpressionA4, type Bloc, type Tableau } from "@/components/pages-a4";
-import { dateEntree, dateFr, type DossierCarriere, echelonEnClair, GENRES, LIBELLE_ENTREE } from "@/components/recensement/carriere";
+import { dateEntree, dateFr, type DossierCarriere, echelonEnClair, GENRES, LIBELLE_ENTREE, retraiteEnClair } from "@/components/recensement/carriere";
 import { Alerte, Bouton, Chargement } from "@/components/ui";
 import { lireSession, useApi } from "@/lib/api";
 
@@ -167,6 +167,8 @@ function construire(d: DossierCarriere) {
                 .map((x) => `${dateFr(x.date)}${x.echelon ? ` (${x.echelle ? `${x.echelle}, ` : ""}${x.echelonLibelle ? echelonEnClair(x.echelonLibelle, d.situation.echelle?.libelleHorsClasse) : `${ordinal(x.echelon)} échelon`})` : ""}`)
                 .join(" ; "),
             )}
+          {/* Juste sous les promotions attendues (DG, 17/11/2026) */}
+          {d.situation.retraite && ligne("Départ à la retraite", retraiteEnClair(d.situation.retraite))}
           {ligne("Fonction", val("FONCTION"))}
           {ligne("Lieu de service", val("LIEU_SERVICE"))}
           {position && ligne("Position", position)}

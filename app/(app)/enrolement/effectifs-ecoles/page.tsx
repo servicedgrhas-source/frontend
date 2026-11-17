@@ -1,54 +1,21 @@
 "use client";
 
-import { Download, GitMerge, Pencil } from "lucide-react";
+import { ArrowRight, Download } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
+import { CYCLES_ECOLES as CYCLES, type DecisionEcole as Decision, EFFECTIFS, type Ecole, type EcoleDetaillee, FicheEcole, ListeDecisions, type Nombres, pourcent } from "@/components/ecoles/controle-ecoles";
 import { nf } from "@/components/enrolement/volontaires";
 import { FraicheurCalcul } from "@/components/fraicheur-calcul";
 import { useSession } from "@/components/session";
-import { Alerte, Badge, Bouton, Carte, Champ, Chiffre, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide } from "@/components/ui";
+import { Alerte, Badge, Bouton, Carte, Chiffre, EnTete, Liste, Saisie, Segments, Tableau, Vide } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
 import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
-type Effectif = "volontaires" | "communautaires" | "contractuels" | "fonctionnaires";
-const EFFECTIFS: [Effectif, string, string][] = [
-  ["volontaires", "Volontaires", "V"],
-  ["communautaires", "Communautaires", "C"],
-  ["contractuels", "Contractuels", "Ct"],
-  ["fonctionnaires", "Fonctionnaires", "F"],
-];
-
-const CYCLES: Record<string, string> = {
-  PRESCOLAIRE: "Préscolaire",
-  PRIMAIRE: "Primaire",
-  COLLEGE: "Collège",
-  LYCEE: "Lycée",
-  ALPHABETISATION: "Alphabétisation",
-};
-
-type Nombres = Record<Effectif, number> & { total: number };
-
-interface Ecole extends Nombres {
-  id: string;
-  departementId: number | null;
-  departement: string;
-  cycle: string | null;
-  nom: string;
-  nomCorrige: boolean;
-  organigramme: boolean;
-  ecritures: number;
-  jumelees: number;
-  proche: { id: string; nom: string; score: number } | null;
-}
-
-interface EcoleDetaillee extends Ecole {
-  variantes: { ecrit: string; n: number }[];
-}
-
 interface Effectifs {
   totaux: Nombres & { ecoles: number; sousSeuil: number };
   parDeppsa: (Nombres & { departement: string; ecoles: number; sousSeuil: number })[];
-  sansEcole: { effectif: Effectif; libelle: string; sans: number; administration: number; ecartees: number }[];
+  sansEcole: { effectif: string; libelle: string; sans: number; administration: number; ecartees: number }[];
   reclassees: number;
   aHarmoniser: number;
   horsOrganigramme: number;
@@ -60,20 +27,14 @@ interface Effectifs {
   aJour?: boolean;
 }
 
-interface Decision {
-  id: number;
-  type: "JUMELEE" | "DIFFERENTES" | "ECARTEE" | "MISE_A_JOUR";
-  ecole: { id: string; nom: string; departement: string; cycle: string | null };
-  autre: { id: string; nom: string; departement: string; cycle: string | null } | null;
-  nom: string | null;
-  departement: string | null;
-  cycle: string | null;
-  motif: string | null;
-  par: string | null;
-  le: string;
+/** Le lien vers Structures scolaires, où l'on tranche (DG, 17/11/2026 : ici, on regarde seulement). */
+function VersStructures({ onglet, children }: { onglet: string; children: React.ReactNode }) {
+  return (
+    <Link href={`/ecoles?controle=${onglet}`} className="inline-flex items-center gap-1 font-medium text-marque-700 hover:underline">
+      {children} <ArrowRight className="size-3.5" />
+    </Link>
+  );
 }
-
-const pourcent = (s: number) => `${Math.round(s * 100)} %`;
 
 /** Bloc gris qui pulse, à la place d'un contenu en cours de chargement. */
 function Os({ className }: { className?: string }) {
@@ -109,44 +70,12 @@ function Squelette() {
   );
 }
 
-/** Les effectifs d'une école en une ligne : « V 2 · C 14 · Ct 5 · F 13 ». */
-function EnBref({ e }: { e: Nombres }) {
-  return (
-    <span className="text-[12px] tabular-nums text-zinc-600">
-      {EFFECTIFS.map(([k, , abr]) => `${abr} ${e[k]}`).join(" · ")} — <strong>{e.total}</strong> personne(s)
-    </span>
-  );
-}
-
-/** Une école dans une comparaison : nom, DEPPSA, effectifs, écritures rencontrées. */
-function FicheEcole({ e }: { e: EcoleDetaillee }) {
-  return (
-    <div className="min-w-0 space-y-1.5 rounded-xl border border-zinc-200 p-3">
-      <div className="font-semibold">{e.nom}</div>
-      <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-zinc-500">
-        {e.departement} · {e.cycle ? CYCLES[e.cycle] : "cycle non reconnu"}
-        {e.organigramme ? <Badge ton="vert">dans l’organigramme</Badge> : <Badge ton="gris">hors organigramme</Badge>}
-        {e.jumelees > 0 && <Badge ton="bleu">{e.jumelees} école(s) jumelée(s)</Badge>}
-      </div>
-      <EnBref e={e} />
-      <ul className="space-y-0.5 text-[11px] text-zinc-500">
-        {e.variantes.map((v) => (
-          <li key={v.ecrit}>
-            « {v.ecrit} » <span className="tabular-nums">({v.n})</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 /**
  * Effectifs par école (demande de la Banque mondiale, 16/11/2026) : pour chaque école, rangée par
  * DEPPSA, le nombre de volontaires, de communautaires, de contractuels et de fonctionnaires. Les
  * écoles qui ont moins de 3 fonctionnaires sont signalées : elles passent en priorité. Les écoles
- * dont les noms se ressemblent se tranchent ici, comme les doublons de personnes : même école
- * (jumelées), deux écoles différentes, pas une école (écartée), nom ou DEPPSA corrigés. Aucun nom de
- * personne, seulement des nombres.
+ * dont les noms se ressemblent sont montrées ici ; elles se tranchent dans Structures scolaires
+ * (DG, 17/11/2026). Aucun nom de personne, seulement des nombres.
  */
 export default function EffectifsEcoles() {
   const { profil, refs } = useSession();
@@ -158,8 +87,6 @@ export default function EffectifsEcoles() {
   const [page, setPage] = useState(1);
   const [pageR, setPageR] = useState(1);
   const [vue, setVue] = useState<"deppsa" | "ecoles" | "ressemblances" | "decisions">("deppsa");
-  const [ouverte, setOuverte] = useState<string | null>(null);
-  const [enCours, setEnCours] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const s = Math.min(50, Math.max(1, Number(seuil) || 3));
   const filtres = { cycle, departementId: departementId || undefined, seuil: s };
@@ -172,35 +99,6 @@ export default function EffectifsEcoles() {
     f(v);
     setPage(1);
     setPageR(1);
-  };
-  const toutRelire = () => {
-    d.recharger();
-    r.recharger();
-    dec.recharger();
-  };
-  /** Une décision sur une école : enregistrée, puis tout est recompté. */
-  const decider = async (cle: string, corps: Record<string, unknown>) => {
-    setErreur(null);
-    setEnCours(cle);
-    try {
-      await api.post("/enrolement/effectifs-ecoles/decisions", corps);
-      toutRelire();
-      return true;
-    } catch (x) {
-      setErreur((x as Error).message);
-      return false;
-    } finally {
-      setEnCours(null);
-    }
-  };
-  const annuler = async (id: number) => {
-    setErreur(null);
-    try {
-      await api.delete(`/enrolement/effectifs-ecoles/decisions/${id}`);
-      toutRelire();
-    } catch (x) {
-      setErreur((x as Error).message);
-    }
   };
   const telecharger = () =>
     api.telecharger(`/enrolement/effectifs-ecoles/excel${qs({ ...filtres, sousSeuil: sousSeuil ? 1 : undefined })}`, "Effectifs par école.xlsx").catch((x: Error) => setErreur(x.message));
@@ -221,7 +119,7 @@ export default function EffectifsEcoles() {
     <div className="space-y-6">
       <EnTete
         titre="Effectifs par école (Banque mondiale)"
-        sousTitre={`Pour chaque école, rangée par DEPPSA : le nombre de volontaires, de communautaires, de contractuels et de fonctionnaires. En orange, les écoles qui ont moins de ${s} fonctionnaires : elles passent en priorité. Les écoles dont les noms se ressemblent se tranchent ici, comme les doublons de personnes. Seulement des nombres, aucun nom de personne.`}
+        sousTitre={`Pour chaque école, rangée par DEPPSA : le nombre de volontaires, de communautaires, de contractuels et de fonctionnaires. En orange, les écoles qui ont moins de ${s} fonctionnaires : elles passent en priorité. Les écoles dont les noms se ressemblent sont montrées ici et se tranchent dans Structures scolaires. Seulement des nombres, aucun nom de personne.`}
         actions={
           <Bouton onClick={telecharger} title="Par école, par DEPPSA, sans école, noms à harmoniser, écoles qui se ressemblent, DEPPSA reclassées (en-tête officiel)">
             <Download /> Excel
@@ -357,20 +255,25 @@ export default function EffectifsEcoles() {
                   </Tableau>
                 </Carte>
                 <Carte titre="Qualité des données (retours à faire)">
-                  <ul className="space-y-2 text-[13px] text-zinc-700">
+                  <ul className="space-y-3 text-[13px] text-zinc-700">
                     <li>
-                      <button type="button" className="text-left hover:underline" onClick={() => setVue("ressemblances")}>
-                        <strong className="tabular-nums">{nf.format(d.donnees.ressemblances)}</strong> paire(s) d’écoles dont les noms se ressemblent : à trancher (même école ou deux écoles).
-                      </button>
+                      <strong className="tabular-nums">{nf.format(d.donnees.ressemblances)}</strong> paire(s) d’écoles dont les noms se ressemblent : même école ou deux écoles ?{" "}
+                      <VersStructures onglet="ressemblances">Trancher</VersStructures>
                     </li>
                     <li>
-                      <strong className="tabular-nums">{nf.format(d.donnees.aHarmoniser)}</strong> école(s) dont le nom est écrit de plusieurs façons, déjà reconnues comme une seule (feuille « Noms à harmoniser » de l’Excel).
+                      <strong className="tabular-nums">{nf.format(d.donnees.aHarmoniser)}</strong> école(s) dont le nom est écrit de plusieurs façons, déjà comptées une seule fois.{" "}
+                      <VersStructures onglet="harmoniser">Voir et harmoniser</VersStructures>
                     </li>
                     <li>
-                      <strong className="tabular-nums">{nf.format(d.donnees.horsOrganigramme)}</strong> école(s) absentes de l’organigramme (Établissements) : connues seulement par le nom écrit dans les fichiers.
+                      <strong className="tabular-nums">{nf.format(d.donnees.horsOrganigramme)}</strong> école(s) absentes de l’organigramme : connues seulement par le nom écrit dans les fichiers.{" "}
+                      <VersStructures onglet="hors-organigramme">Ajouter à l’organigramme</VersStructures>
                     </li>
                     <li>
-                      <strong className="tabular-nums">{nf.format(d.donnees.reclassees)}</strong> fonctionnaire(s) ou contractuel(s) comptés dans une nouvelle DEPPSA (Congo-Oubangui, Djoué-Léfini, Nkéni-Alima) d’après leur école. Leur fiche n’est pas modifiée.
+                      <strong className="tabular-nums">{nf.format(d.donnees.reclassees)}</strong> fonctionnaire(s) ou contractuel(s) comptés dans une nouvelle DEPPSA (Congo-Oubangui, Djoué-Léfini, Nkéni-Alima).
+                      <span className="mt-0.5 block text-[12px] text-zinc-500">
+                        Leur fiche du personnel porte encore l’ancien département (par exemple Plateaux), mais leur école n’existe que dans la nouvelle DEPPSA (d’après l’organigramme et le registre) : ce tableau les compte donc là où
+                        est leur école. Leur fiche n’est pas modifiée ; la liste est dans la feuille « DEPPSA reclassées » de l’Excel.
+                      </span>
                     </li>
                   </ul>
                 </Carte>
@@ -398,7 +301,6 @@ export default function EffectifsEcoles() {
                       ))}
                       <th className="text-right">Total</th>
                       <th>Nom le plus proche</th>
-                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -432,11 +334,6 @@ export default function EffectifsEcoles() {
                               <span className="text-zinc-400">—</span>
                             )}
                           </td>
-                          <td>
-                            <Bouton variante="discret" onClick={() => setOuverte(e.id)} title="Comparer avec les écoles proches, jumeler, corriger, écarter">
-                              <Pencil /> Décider
-                            </Bouton>
-                          </td>
                         </tr>
                       );
                     })}
@@ -462,7 +359,8 @@ export default function EffectifsEcoles() {
           {vue === "ressemblances" && (
             <Carte titre={`Écoles qui se ressemblent (${nf.format(r.donnees?.total ?? d.donnees.ressemblances)})`}>
               <p className="mb-3 text-[12px] text-zinc-500">
-                Deux écoles de la même DEPPSA dont les noms se ressemblent. « Même école » les compte ensemble sous le nom choisi ; « Deux écoles différentes » ne les propose plus. Rien n’est modifié dans les fichiers ni dans les fiches, et chaque décision peut être annulée (onglet « Décisions »).
+                Deux écoles de la même DEPPSA dont les noms se ressemblent. Ici on les regarde seulement : on tranche (même école ou deux écoles) dans{" "}
+                <VersStructures onglet="ressemblances">Structures scolaires › Écoles à contrôler</VersStructures>
               </p>
               {r.erreur && <Alerte>{r.erreur}</Alerte>}
               {!r.donnees || r.chargement ? (
@@ -485,17 +383,6 @@ export default function EffectifsEcoles() {
                       <div className="grid gap-3 md:grid-cols-2">
                         <FicheEcole e={p.a} />
                         <FicheEcole e={p.b} />
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Bouton variante="principal" chargement={enCours === p.b.id} onClick={() => decider(p.b.id, { type: "JUMELEE", cle: p.b.id, autreCle: p.a.id })}>
-                          <GitMerge /> Même école : garder « {p.a.nom} »
-                        </Bouton>
-                        <Bouton chargement={enCours === p.a.id} onClick={() => decider(p.a.id, { type: "JUMELEE", cle: p.a.id, autreCle: p.b.id })}>
-                          <GitMerge /> Même école : garder « {p.b.nom} »
-                        </Bouton>
-                        <Bouton variante="discret" onClick={() => decider(p.a.id, { type: "DIFFERENTES", cle: p.a.id, autreCle: p.b.id })}>
-                          Deux écoles différentes
-                        </Bouton>
                       </div>
                     </div>
                   ))}
@@ -529,212 +416,13 @@ export default function EffectifsEcoles() {
               ) : !dec.donnees.length ? (
                 <Vide>Aucune décision pour le moment.</Vide>
               ) : (
-                <ListeDecisions decisions={dec.donnees} annuler={annuler} controle={peut.controler(profil.role)} />
+                <ListeDecisions decisions={dec.donnees} controle={false} />
               )}
             </Carte>
           )}
         </>
       )}
 
-      {ouverte && (
-        <ModaleEcole
-          id={ouverte}
-          fermer={() => setOuverte(null)}
-          decider={decider}
-          annuler={annuler}
-          controle={peut.controler(profil.role)}
-          departements={refs.departements}
-        />
-      )}
     </div>
-  );
-}
-
-const LIBELLE_DECISION: Record<Decision["type"], string> = {
-  JUMELEE: "Même école",
-  DIFFERENTES: "Deux écoles différentes",
-  ECARTEE: "Écartée (pas une école)",
-  MISE_A_JOUR: "Mise à jour",
-};
-
-/** Les décisions, avec « Annuler » pour revenir au comptage d'avant. */
-function ListeDecisions({ decisions, annuler, controle }: { decisions: Decision[]; annuler: (id: number) => void; controle: boolean }) {
-  return (
-    <Tableau>
-      <thead>
-        <tr>
-          <th>Décision</th>
-          <th>École</th>
-          <th>Détail</th>
-          <th>Par</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {decisions.map((x) => (
-          <tr key={x.id} className="align-top">
-            <td>
-              <Badge ton={x.type === "JUMELEE" ? "bleu" : x.type === "ECARTEE" ? "rouge" : x.type === "MISE_A_JOUR" ? "vert" : "gris"}>{LIBELLE_DECISION[x.type]}</Badge>
-            </td>
-            <td>
-              <span className="font-medium">{x.ecole.nom}</span>
-              <div className="text-[11px] text-zinc-500">{x.ecole.departement}</div>
-            </td>
-            <td className="text-[12px] text-zinc-600">
-              {x.type === "JUMELEE" && x.autre && <>comptée avec « {x.autre.nom} »</>}
-              {x.type === "DIFFERENTES" && x.autre && <>pas la même que « {x.autre.nom} »</>}
-              {x.type === "MISE_A_JOUR" && [x.nom && `nom : « ${x.nom} »`, x.departement && `DEPPSA : ${x.departement}`, x.cycle && `cycle : ${CYCLES[x.cycle] ?? x.cycle}`].filter(Boolean).join(" · ")}
-              {x.motif && <div className="text-zinc-500">Motif : {x.motif}</div>}
-            </td>
-            <td className="text-[12px] text-zinc-500">
-              {x.par}
-              <br />
-              {new Date(x.le).toLocaleString("fr-FR")}
-            </td>
-            <td>
-              {(x.type !== "ECARTEE" || controle) && (
-                <Bouton variante="discret" onClick={() => annuler(x.id)} title="Revenir au comptage d’avant cette décision">
-                  Annuler
-                </Bouton>
-              )}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </Tableau>
-  );
-}
-
-/** Une école : la comparer aux plus proches, la jumeler, corriger son nom ou sa DEPPSA, l'écarter. */
-function ModaleEcole({
-  id,
-  fermer,
-  decider,
-  annuler,
-  controle,
-  departements,
-}: {
-  id: string;
-  fermer: () => void;
-  decider: (cle: string, corps: Record<string, unknown>) => Promise<boolean>;
-  annuler: (id: number) => void;
-  controle: boolean;
-  departements: { id: number; nom: string }[];
-}) {
-  const d = useApi<{ ecole: EcoleDetaillee; proches: (Ecole & { score: number })[]; decisions: Decision[] }>(`/enrolement/effectifs-ecoles/ecole${qs({ id })}`);
-  const [cherche, setCherche] = useState("");
-  const e = d.donnees?.ecole;
-  const autres = useApi<Effectifs>(cherche.trim().length >= 2 && e ? `/enrolement/effectifs-ecoles${qs({ cycle: "TOUS", departementId: e.departementId ?? undefined, recherche: cherche.trim(), taille: 8 })}` : null);
-  const [nom, setNom] = useState<string | null>(null);
-  const [dep, setDep] = useState<string | null>(null);
-  const [cyc, setCyc] = useState<string | null>(null);
-  const [motif, setMotif] = useState("");
-  const [ecarter, setEcarter] = useState(false);
-  const fait = async (corps: Record<string, unknown>) => {
-    if (await decider(id, { cle: id, motif: motif.trim() || undefined, ...corps })) fermer();
-  };
-  const candidats = [...(d.donnees?.proches ?? []), ...(autres.donnees?.ecoles ?? []).filter((x) => x.id !== id && !d.donnees?.proches.some((p) => p.id === x.id)).map((x) => ({ ...x, score: NaN }))];
-
-  return (
-    <Modale titre={e ? e.nom : "École"} ouverte fermer={fermer} large>
-      {d.erreur && <Alerte>{d.erreur}</Alerte>}
-      {!e ? (
-        <div className="space-y-3">
-          <Os className="h-24 w-full" />
-          <Os className="h-40 w-full" />
-        </div>
-      ) : (
-        <div className="space-y-5 text-[13px]">
-          <FicheEcole e={e} />
-
-          <section className="space-y-2">
-            <h3 className="font-semibold">Même école qu’une autre ?</h3>
-            <p className="text-[12px] text-zinc-500">Les écoles de la même DEPPSA dont le nom se rapproche le plus. « Même école » compte ses effectifs avec l’autre, sous le nom de l’autre.</p>
-            <Saisie value={cherche} onChange={(x) => setCherche(x.target.value)} placeholder="Chercher une autre école de la DEPPSA…" />
-            {!candidats.length ? (
-              <Vide>Aucune école proche.</Vide>
-            ) : (
-              <ul className="divide-y divide-zinc-100">
-                {candidats.map((p) => (
-                  <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                    <div className="min-w-0">
-                      <div className="font-medium">
-                        {p.nom} {!Number.isNaN(p.score) && <span className="text-[12px] font-normal text-zinc-500">({pourcent(p.score)})</span>}
-                      </div>
-                      <EnBref e={p} />
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      <Bouton variante="principal" onClick={() => fait({ type: "JUMELEE", autreCle: p.id })} title={`Compter « ${e.nom} » avec « ${p.nom} »`}>
-                        <GitMerge /> Même école
-                      </Bouton>
-                      <Bouton variante="discret" onClick={() => fait({ type: "DIFFERENTES", autreCle: p.id })}>
-                        Différentes
-                      </Bouton>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section className="space-y-2">
-            <h3 className="font-semibold">Mettre à jour</h3>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Champ libelle="Nom de l’école">
-                <Saisie value={nom ?? e.nom} onChange={(x) => setNom(x.target.value)} />
-              </Champ>
-              <Champ libelle="DEPPSA">
-                <Liste value={dep ?? String(e.departementId ?? "")} onChange={(x) => setDep(x.target.value)} vide="—" options={departements.map((x) => ({ valeur: x.id, libelle: x.nom }))} />
-              </Champ>
-              <Champ libelle="Cycle">
-                <Liste value={cyc ?? e.cycle ?? ""} onChange={(x) => setCyc(x.target.value)} vide="—" options={Object.entries(CYCLES).map(([valeur, libelle]) => ({ valeur, libelle }))} />
-              </Champ>
-            </div>
-            <Champ libelle="Motif (facultatif)">
-              <Saisie value={motif} onChange={(x) => setMotif(x.target.value)} placeholder="Ex. : nom officiel d’après la DEPPSA" />
-            </Champ>
-            <Bouton
-              disabled={(nom === null || nom.trim() === e.nom) && (dep === null || dep === String(e.departementId ?? "")) && (cyc === null || cyc === (e.cycle ?? ""))}
-              onClick={() =>
-                fait({
-                  type: "MISE_A_JOUR",
-                  nom: nom !== null && nom.trim() !== e.nom ? nom.trim() : undefined,
-                  departementId: dep && dep !== String(e.departementId ?? "") ? Number(dep) : undefined,
-                  cycle: cyc && cyc !== (e.cycle ?? "") ? cyc : undefined,
-                })
-              }
-            >
-              <Pencil /> Enregistrer la mise à jour
-            </Bouton>
-          </section>
-
-          {controle && (
-            <section className="space-y-2 rounded-xl border border-rouge-100 p-3">
-              <h3 className="font-semibold text-rouge-600">Ce n’est pas une école</h3>
-              <p className="text-[12px] text-zinc-500">Mairie, centre de santé, nom vide de sens… ou école fermée : elle n’est plus comptée, ses {e.total} personne(s) passent dans « sans école ». Réservé au contrôle ; annulable.</p>
-              {!ecarter ? (
-                <Bouton variante="danger" onClick={() => setEcarter(true)}>
-                  Écarter cette école
-                </Bouton>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  <Bouton variante="danger" onClick={() => fait({ type: "ECARTEE" })}>
-                    Oui, écarter
-                  </Bouton>
-                  <Bouton onClick={() => setEcarter(false)}>Non</Bouton>
-                </div>
-              )}
-            </section>
-          )}
-
-          {d.donnees!.decisions.length > 0 && (
-            <section className="space-y-2">
-              <h3 className="font-semibold">Décisions déjà prises</h3>
-              <ListeDecisions decisions={d.donnees!.decisions} annuler={(x) => { annuler(x); fermer(); }} controle={controle} />
-            </section>
-          )}
-        </div>
-      )}
-    </Modale>
   );
 }

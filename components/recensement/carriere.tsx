@@ -90,6 +90,15 @@ export interface DossierCarriere {
     dernierEchelon: boolean;
     /** Échelon au-delà du 1er sans date de dernière promotion : promotions attendues impossibles à calculer. */
     dateManquante?: boolean;
+    /** Départ à la retraite (fonctionnaires et contractuels) : âge de la catégorie, sinon de la configuration. */
+    retraite?: {
+      age: number;
+      date: string;
+      ageActuel: number;
+      source: "CATEGORIE" | "CONFIGURATION";
+      categorie: string | null;
+      atteinte: boolean;
+    } | null;
   };
   elements: ElementCarriere[];
   types: {
@@ -318,6 +327,12 @@ export function echelonEnClair(k: string, horsClasse = "Hors classe") {
   return `${n === "1" ? "1er" : `${n}e`} échelon${k.startsWith("HC ") ? ` ${horsClasse.toLowerCase()}` : ""}`;
 }
 
+/** Le départ à la retraite en une phrase : « le 12/03/2031, à 60 ans (âge de la catégorie I) ». */
+export function retraiteEnClair(r: NonNullable<DossierCarriere["situation"]["retraite"]>) {
+  const regle = r.source === "CATEGORIE" ? `âge de la retraite de sa catégorie${r.categorie ? ` : ${r.categorie}` : ""}` : "âge de la retraite de la configuration";
+  return `${r.atteinte ? "Âge atteint depuis le" : "Le"} ${dateFr(r.date)}, à ${r.age} ans (${regle}) ; l’agent a ${r.ageActuel} ans`;
+}
+
 /** Situation actuelle, en tête du dossier. */
 export function Situation({ d }: { d: DossierCarriere }) {
   const v = d.situation.valeurs;
@@ -357,6 +372,25 @@ export function Situation({ d }: { d: DossierCarriere }) {
         "date inconnue"
       ),
     },
+    // Départ à la retraite (DG, 17/11/2026) : fonctionnaires et contractuels
+    ...(d.situation.retraite
+      ? [
+          {
+            l: "Départ à la retraite",
+            v: (
+              <>
+                {dateFr(d.situation.retraite.date)}
+                <span className={`block text-[11px] ${d.situation.retraite.atteinte ? "font-semibold text-rouge-600" : "text-zinc-500"}`}>
+                  {d.situation.retraite.atteinte ? "âge de la retraite atteint · " : ""}à {d.situation.retraite.age} ans (
+                  {d.situation.retraite.source === "CATEGORIE" ? `âge de sa catégorie${d.situation.retraite.categorie ? ` : ${d.situation.retraite.categorie}` : ""}` : "âge de la configuration"}) · a {d.situation.retraite.ageActuel} ans
+                </span>
+              </>
+            ),
+          },
+        ]
+      : ["FONCTIONNAIRE", "CONTRACTUEL"].includes(d.agent.statut)
+        ? [{ l: "Départ à la retraite", v: <span className="text-zinc-500">à calculer : date de naissance ou âge de la catégorie manquant</span> }]
+        : []),
     { l: "Fonction", v: val("FONCTION") ?? "—" },
     { l: "Lieu de service", v: val("LIEU_SERVICE") ?? "—" },
     {

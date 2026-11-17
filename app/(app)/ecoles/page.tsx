@@ -2,14 +2,16 @@
 
 import { School } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { ControleEcoles } from "@/components/ecoles/controle-ecoles";
 import { BarreExport } from "@/components/export-liste";
 import { Pagination } from "@/components/pagination";
 import { useSession } from "@/components/session";
-import { Alerte, Badge, Carte, Chargement, EnTete, Liste, Saisie, Tableau, Vide } from "@/components/ui";
+import { Alerte, Badge, Carte, Chargement, EnTete, Liste, Saisie, Segments, Tableau, Vide } from "@/components/ui";
 import { useApi } from "@/lib/api";
 import { CYCLES } from "@/lib/ecoles";
+import { peut } from "@/lib/libelles";
 
 interface Ligne {
   id: number;
@@ -26,7 +28,15 @@ interface Ligne {
 const TAILLE = 50;
 
 /** Écoles du périmètre : un chef d'établissement arrive directement sur la sienne. */
-export default function Ecoles() {
+export default function Page() {
+  return (
+    <Suspense fallback={<Chargement />}>
+      <Ecoles />
+    </Suspense>
+  );
+}
+
+function Ecoles() {
   const { profil, refs } = useSession();
   const router = useRouter();
   const [q, setQ] = useState("");
@@ -36,6 +46,10 @@ export default function Ecoles() {
   const [page, setPage] = useState(1);
   const [erreurExport, setErreurExport] = useState<string | null>(null);
   const central = !["DDEPPSA", "STRUCTURE"].includes(profil.role);
+  // Les écoles à contrôler (DG, 17/11/2026) : ressemblances, hors organigramme, noms, décisions
+  const controle = peut.traiter(profil.role);
+  const onglet = useSearchParams().get("controle") ?? undefined;
+  const [vue, setVue] = useState<"ecoles" | "controle">(onglet && controle ? "controle" : "ecoles");
   const d = useApi<{ annee: string; page: number; pages: number; total: number; lignes: Ligne[] }>(
     `/etablissements?q=${encodeURIComponent(recherche)}&departement=${departement}&cycle=${cycle}&page=${page}&taille=${TAILLE}`,
   );
@@ -59,6 +73,20 @@ export default function Ecoles() {
         titre="Écoles et classes"
         sousTitre="Pour chaque école : ses bâtiments et ses salles, les classes ouvertes de l’année, les agents qui y sont rattachés, et le besoin en enseignants qui s’en déduit (déficit ou pléthore)."
       />
+      {controle && (
+        <Segments
+          valeur={vue}
+          changer={setVue}
+          options={[
+            { valeur: "ecoles", libelle: "Écoles et classes" },
+            { valeur: "controle", libelle: "Écoles à contrôler (noms, organigramme)" },
+          ]}
+        />
+      )}
+      {vue === "controle" ? (
+        <ControleEcoles key={onglet} ongletInitial={onglet} />
+      ) : (
+      <>
       <div className="grid gap-3 sm:grid-cols-[1fr_14rem_12rem]">
         <Saisie value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher une école (nom, localité)…" />
         {central ? (
@@ -134,6 +162,8 @@ export default function Ecoles() {
           </>
         )}
       </Carte>
+      </>
+      )}
     </div>
   );
 }

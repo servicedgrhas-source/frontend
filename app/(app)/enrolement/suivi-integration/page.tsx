@@ -4,9 +4,10 @@ import { Download, FileText } from "lucide-react";
 import { useState } from "react";
 import { categoriesDe, nf, useConfigEnrolement } from "@/components/enrolement/volontaires";
 import { SansLienRegistre } from "@/components/enrolement/sans-lien-registre";
+import { CarteListe, type LigneParcours, ListePersonnelSuivi, ModaleParcours } from "@/components/enrolement/suivi-listes";
 import { FraicheurCalcul } from "@/components/fraicheur-calcul";
 import { useSession } from "@/components/session";
-import { Aide, Alerte, Badge, Bouton, Carte, Chargement, Chiffre, EnTete, Liste, Saisie, Segments, Tableau, Vide } from "@/components/ui";
+import { Aide, Alerte, Badge, Bouton, Carte, Chargement, EnTete, Liste, Saisie, Segments, Tableau, Vide } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
 import { accesDonne } from "@/lib/espaces";
 import type { Ton } from "@/lib/libelles";
@@ -23,23 +24,7 @@ interface Groupe {
   aVerifier: number;
 }
 
-interface Ligne {
-  id: string;
-  nom: string;
-  population: "VOLONTAIRE" | "COMMUNAUTAIRE";
-  registre: "EN_POSTE" | "SORTI" | "ABSENT";
-  motifSortie: string | null;
-  dernierMoisBourse: string | null;
-  vague: number | null;
-  departement: string;
-  cycle: string;
-  texte: { nature: string; numero: string; date: string | null; source: string } | null;
-  note: { numero: string | null; date: string | null; lieu: string | null; departement?: string | null; source: string } | null;
-  salaire: { statut: string | null; matricule: string | null; indice: string | null; premierMois: string | null } | null;
-  piste: string | null;
-  situation: string;
-  aRegler: string[];
-}
+type Ligne = LigneParcours;
 
 interface Suivi {
   synthese: {
@@ -55,6 +40,7 @@ interface Suivi {
   };
   sources: Record<string, number>;
   total: number;
+  etapes: Record<string, string>;
   page: number;
   taille: number;
   lignes: Ligne[];
@@ -119,11 +105,15 @@ export default function SuiviIntegration() {
   const [aRegler, setARegler] = useState(false);
   const [recherche, setRecherche] = useState("");
   const [page, setPage] = useState(1);
-  const [vue, setVue] = useState<"synthese" | "liste" | "sansLien">("synthese");
+  const [vue, setVue] = useState<"synthese" | "liste" | "personnel" | "sansLien">("synthese");
+  // La carte cliquée : une étape du parcours (liste nominative) ou un groupe de la base du personnel
+  const [etape, setEtape] = useState("");
+  const [groupe, setGroupe] = useState("tous");
+  const [ouverte, setOuverte] = useState<Ligne | null>(null);
   const [par, setPar] = useState<"population" | "departement" | "cycle" | "annee">("population");
   const [erreur, setErreur] = useState<string | null>(null);
   const filtres = { population: population || undefined, departementId: departementId || undefined, categorie: categorie || undefined, vague: vague || undefined, annee: annee || undefined, situation: situation || undefined, aRegler: aRegler ? 1 : undefined, recherche: recherche.trim() || undefined };
-  const d = useApi<Suivi>(`/enrolement/suivi-integration${qs({ ...filtres, page, taille: 50 })}`);
+  const d = useApi<Suivi>(`/enrolement/suivi-integration${qs({ ...filtres, etape: etape || undefined, page, taille: 50 })}`);
   if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
 
   const changer = (f: (v: string) => void) => (v: string) => {
@@ -143,6 +133,20 @@ export default function SuiviIntegration() {
   const b = d.donnees?.basePersonnel ?? { total: 0, fonctionnaires: 0, contractuels: 0, payes: 0, attente: 0, avecStructure: 0, sansStructure: 0 };
   const groupes = s ? (par === "population" ? s.parPopulation : par === "departement" ? s.parDepartement : par === "cycle" ? s.parCycle : s.parAnnee) : [];
   const pages = d.donnees ? Math.max(1, Math.ceil(d.donnees.total / d.donnees.taille)) : 1;
+  /** Ouvrir la liste d'une carte, et y descendre. */
+  const descendre = () => setTimeout(() => document.getElementById("listes-suivi")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  const voirPersonnel = (g: string) => {
+    setGroupe(g);
+    setVue("personnel");
+    descendre();
+  };
+  const voirEtape = (e: string) => {
+    setEtape(e);
+    setSituation("");
+    setPage(1);
+    setVue("liste");
+    descendre();
+  };
 
   return (
     <div className="space-y-6">
@@ -205,10 +209,10 @@ export default function SuiviIntegration() {
               1. Toute la base du personnel <Aide>{MOTS.base}</Aide>
             </h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Chiffre libelle="Fonctionnaires et contractuels" valeur={nf.format(b.total)} ton="gris" detail={`${nf.format(b.fonctionnaires)} fonctionnaires · ${nf.format(b.contractuels)} contractuels`} />
-              <Chiffre libelle="Payés (matricule solde)" valeur={nf.format(b.payes)} ton="vert" detail={b.total ? `${Math.round((b.payes * 1000) / b.total) / 10} % : ont un salaire` : ""} />
-              <Chiffre libelle="En attente de matricule" valeur={nf.format(b.attente)} ton="jaune" detail="recrutés, salaire pas encore confirmé" />
-              <Chiffre libelle="Affectés, structure connue" valeur={nf.format(b.avecStructure)} ton="bleu" detail={`${nf.format(b.sansStructure)} avec une structure à compléter`} />
+              <CarteListe libelle="Fonctionnaires et contractuels" valeur={b.total} active={vue === "personnel" && groupe === "tous"} ouvrir={() => voirPersonnel("tous")} detail={`${nf.format(b.fonctionnaires)} fonctionnaires · ${nf.format(b.contractuels)} contractuels`} />
+              <CarteListe libelle="Payés (matricule solde)" valeur={b.payes} ton="vert" active={vue === "personnel" && groupe === "payes"} ouvrir={() => voirPersonnel("payes")} detail={b.total ? `${Math.round((b.payes * 1000) / b.total) / 10} % : ont un salaire` : ""} />
+              <CarteListe libelle="En attente de matricule" valeur={b.attente} ton="jaune" active={vue === "personnel" && groupe === "attente"} ouvrir={() => voirPersonnel("attente")} detail="recrutés, salaire pas encore confirmé" />
+              <CarteListe libelle="Affectés, structure connue" valeur={b.avecStructure} ton="bleu" active={vue === "personnel" && groupe === "structure"} ouvrir={() => voirPersonnel("structure")} detail={`${nf.format(b.sansStructure)} avec une structure à compléter`} />
             </div>
           </section>
 
@@ -218,20 +222,18 @@ export default function SuiviIntegration() {
               2. Volontaires et communautaires : où en sont-ils ? <Aide>{MOTS.retrouver}</Aide>
             </h2>
             <div className="flex flex-wrap items-stretch gap-2">
-              {[
-                { libelle: "Payés en bourse un jour", n: s!.total.base, detail: "registre de la bourse", aide: MOTS.registre, ton: "" },
-                { libelle: "Recrutés", n: s!.total.recrutes, detail: `${s!.taux.integration} % du registre`, aide: MOTS.recrute, ton: "" },
-                { libelle: "Affectés", n: s!.total.affectes, detail: `${s!.taux.affectation} % des recrutés`, aide: MOTS.affecte, ton: "" },
-                { libelle: "Payés (matricule solde)", n: s!.total.payes, detail: s!.total.attente ? `${nf.format(s!.total.attente)} en attente de matricule` : `${s!.taux.priseEnCharge} % des recrutés`, aide: MOTS.paye, ton: s!.total.attente ? "jaune" : "vert" },
-              ].map((e, i) => (
+              {([
+                { etape: "registre", libelle: "Payés en bourse un jour", n: s!.total.base, detail: "registre de la bourse", aide: MOTS.registre, ton: "gris" },
+                { etape: "recrutes", libelle: "Recrutés", n: s!.total.recrutes, detail: `${s!.taux.integration} % du registre`, aide: MOTS.recrute, ton: "gris" },
+                { etape: "affectes", libelle: "Affectés", n: s!.total.affectes, detail: `${s!.taux.affectation} % des recrutés`, aide: MOTS.affecte, ton: "gris" },
+                s!.total.payes || !s!.total.attente
+                  ? { etape: "payes", libelle: "Payés (matricule solde)", n: s!.total.payes, detail: s!.total.attente ? `${nf.format(s!.total.attente)} en attente de matricule` : `${s!.taux.priseEnCharge} % des recrutés`, aide: MOTS.paye, ton: s!.total.attente ? "jaune" : "vert" }
+                  : { etape: "attente", libelle: "Payés (matricule solde)", n: s!.total.payes, detail: `${nf.format(s!.total.attente)} en attente de matricule`, aide: MOTS.paye, ton: "jaune" },
+              ] as const).map((e, i) => (
                 <div key={e.libelle} className="flex min-w-[150px] flex-1 items-stretch gap-2">
                   {i > 0 && <span className="self-center text-zinc-400" aria-hidden>→</span>}
-                  <div className={`flex-1 rounded-2xl p-4 shadow-sm ${e.ton === "jaune" ? "bg-or-100" : "bg-white"}`}>
-                    <div className={`text-xs ${e.ton === "jaune" ? "text-or-700" : "text-zinc-500"}`}>
-                      {e.libelle} <Aide>{e.aide}</Aide>
-                    </div>
-                    <div className={`mt-0.5 text-2xl font-semibold tabular-nums ${e.ton === "jaune" ? "text-or-700" : "text-encre"}`}>{nf.format(e.n)}</div>
-                    <div className={`text-[12px] ${e.ton === "jaune" ? "text-or-700" : "text-zinc-500"}`}>{e.detail}</div>
+                  <div className="flex-1">
+                    <CarteListe libelle={e.libelle} aide={<Aide>{e.aide}</Aide>} valeur={e.n} detail={e.detail} ton={e.ton as Ton} active={vue === "liste" && etape === e.etape} ouvrir={() => voirEtape(e.etape)} />
                   </div>
                 </div>
               ))}
@@ -243,15 +245,18 @@ export default function SuiviIntegration() {
             </p>
           </section>
 
-          <Segments
-            valeur={vue}
-            changer={setVue}
-            options={[
-              { valeur: "synthese", libelle: "Synthèse" },
-              { valeur: "liste", libelle: `Liste nominative (${nf.format(d.donnees.total)})` },
-              { valeur: "sansLien", libelle: "Fiches du personnel sans lien avec le registre" },
-            ]}
-          />
+          <div id="listes-suivi" className="scroll-mt-4">
+            <Segments
+              valeur={vue}
+              changer={setVue}
+              options={[
+                { valeur: "synthese", libelle: "Synthèse" },
+                { valeur: "liste", libelle: `Liste nominative (${nf.format(d.donnees.total)})` },
+                { valeur: "personnel", libelle: "Base du personnel" },
+                { valeur: "sansLien", libelle: "Fiches du personnel sans lien avec le registre" },
+              ]}
+            />
+          </div>
 
           {vue === "synthese" && (
             <div className="space-y-6">
@@ -369,11 +374,23 @@ export default function SuiviIntegration() {
           {/* Lecture seule : le traitement se fait dans la base du personnel */}
           {vue === "sansLien" && <SansLienRegistre />}
 
+          {/* Les cartes « Toute la base du personnel » : liste en lecture seule */}
+          {vue === "personnel" && <ListePersonnelSuivi groupe={groupe} changerGroupe={setGroupe} departementId={departementId} />}
+
           {vue === "liste" && (
             <Carte
               titre={`Liste nominative (${nf.format(d.donnees.total)})`}
               actions={<Saisie className="w-72" value={recherche} onChange={(e) => { setRecherche(e.target.value); setPage(1); }} placeholder="Nom, n° de texte, de note, matricule…" />}
             >
+              {etape && (
+                <div className="mb-3 flex flex-wrap items-center gap-2 text-[12px]">
+                  <span className="text-zinc-500">Étape du parcours :</span>
+                  <span className="rounded-full bg-marque-50 px-3 py-1 font-medium text-marque-700">{d.donnees.etapes[etape] ?? etape}</span>
+                  <button type="button" className="font-medium text-marque-700 hover:underline" onClick={() => { setEtape(""); setPage(1); }}>
+                    retirer
+                  </button>
+                </div>
+              )}
               {situation && (
                 <p className="mb-2 text-[12px] text-zinc-600">
                   Situation : <strong>{d.donnees.situations[situation]}</strong>{" "}
@@ -399,8 +416,12 @@ export default function SuiviIntegration() {
                   </thead>
                   <tbody>
                     {d.donnees.lignes.map((l) => (
-                      <tr key={l.id} className="align-top">
-                        <td className="font-medium">{l.nom}</td>
+                      <tr key={l.id} className="cursor-pointer align-top hover:bg-zinc-50" onClick={() => setOuverte(l)}>
+                        <td>
+                          <button type="button" className="text-left font-medium text-marque-700 hover:underline">
+                            {l.nom}
+                          </button>
+                        </td>
                         <td className="text-[12px] text-zinc-600">
                           {l.population === "COMMUNAUTAIRE" ? "Communautaire" : `Volontaire${l.vague ? ` · ${l.vague}e vague` : ""}`}
                           <br />
@@ -454,6 +475,7 @@ export default function SuiviIntegration() {
                   </Bouton>
                 </div>
               )}
+              {ouverte && <ModaleParcours l={ouverte} situation={d.donnees.situations[ouverte.situation]} ton={TON[ouverte.situation] ?? "gris"} fermer={() => setOuverte(null)} />}
             </Carte>
           )}
         </>
