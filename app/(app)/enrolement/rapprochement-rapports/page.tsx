@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Check, Download, FileSpreadsheet, PenLine, RefreshCw, Search, Trash2, Upload, UserPlus, UserX } from "lucide-react";
+import { ArrowLeft, Check, Download, FileSpreadsheet, PenLine, RefreshCw, Search, Send, Trash2, Upload, UserPlus, UserX } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { FicheVolontaire } from "@/components/enrolement/volontaires";
@@ -81,6 +81,8 @@ interface Ligne {
   applique: Record<string, { avant: unknown; apres: unknown }> | null;
   appliquePar: string | null;
   appliqueLe: string | null;
+  /** La proposition faite à la base du personnel et son contrôle. */
+  proposition: { id: number; etat: "A_CONTROLER" | "VALIDEE" | "REJETEE"; controlePar: string | null; note: string | null } | null;
   base: FicheBase | null;
 }
 
@@ -105,6 +107,11 @@ const METHODES: Record<string, string> = {
   MEME_PERSONNE: "même personne qu’une autre ligne du rapport",
   NOM_AUTRE_ANNEE: "même nom, autre année de naissance",
 };
+/** Les corrections qu'on peut proposer à la base du personnel (pas le nom ni la naissance). */
+const PROPOSABLES = ["LIEU_SERVICE", "DATE_PRISE_SERVICE", "DEPARTEMENT", "MATRICULE_SOLDE"];
+const aProposer = (l: Ligne) =>
+  l.base?.type === "PERSONNEL" && !!l.agentId && PROPOSABLES.some((k) => l.applique?.[k]) && l.proposition?.etat !== "A_CONTROLER" && l.proposition?.etat !== "VALIDEE";
+
 const STATUTS: Record<string, string> = { FONCTIONNAIRE: "Fonctionnaire", CONTRACTUEL: "Contractuel", VOLONTAIRE: "Volontaire", COMMUNAUTAIRE: "Communautaire" };
 const SECTEURS: Record<string, string> = { PUBLIC: "Public", CONVENTIONNE: "Conventionné", PRIVE: "Privé" };
 const CYCLES: Record<string, string> = { PRESCOLAIRE: "préscolaire", PRIMAIRE: "primaire", COLLEGE: "collège", LYCEE: "lycée" };
@@ -142,8 +149,9 @@ export default function RapprochementRapports() {
           <>
             Les états nominatifs du personnel des rapports de fin d’année des DDEPPSA, comparés à <strong>toute la base du personnel</strong> et à tout le{" "}
             <strong>registre des volontaires et des communautaires</strong>. Chaque personne est cherchée par son matricule, puis par son nom et son année de naissance, puis par un nom
-            proche. On confirme, on choisit une autre fiche, ou on déclare absent : tout est gardé. <strong>Nos bases ne sont jamais modifiées</strong> : les
-            corrections et les personnes gardées restent dans la liste Banque mondiale, que l’on exporte.
+            proche. On confirme, on choisit une autre fiche, ou on déclare absent : tout est gardé. <strong>Nos bases ne sont jamais modifiées ici</strong> : les
+            corrections et les personnes gardées restent dans la liste Banque mondiale, que l’on exporte. Une correction fiable (lieu de service, prise de service, département, matricule) peut être{" "}
+            <strong>proposée à la base du personnel</strong> : elle n’est appliquée que si le contrôle des modifications la valide.
           </>
         }
         actions={
@@ -346,6 +354,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
     CONFIRMER: ["Confirmer la fiche trouvée", (l) => !!l.base && !l.decision, "Confirmer la fiche trouvée pour"],
     AJOUTER: ["Garder dans la liste", (l) => !l.base && l.decision !== "AJOUTE", "Garder dans la liste Banque mondiale (aucune fiche n’est créée dans nos bases)"],
     ABSENT: ["Déclarer absentes", (l) => !l.agentId && l.decision !== "ABSENT" && l.decision !== "AJOUTE", "Déclarer absentes de nos bases"],
+    PROPOSER: ["Proposer à la base", aProposer, "Proposer au contrôle des modifications les corrections (lieu de service, prise de service, département, matricule ; la fiche ne change que si le contrôle valide) de"],
     ANNULER: ["Annuler la décision", (l) => !!l.decision && !(l.decision === "AJOUTE" && l.agentId), "Annuler la décision (la ligne revient « à traiter ») pour"],
   };
   const enLot = async (action: string) => {
@@ -367,6 +376,26 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
       setErreur((e as Error).message);
     } finally {
       setLotEnCours(null);
+    }
+  };
+  // Une ligne : proposer ses corrections au contrôle des modifications
+  const proposer = async (l: Ligne) => {
+    const quoi = PROPOSABLES.filter((k) => l.applique?.[k]).map((k) => LIBELLES_RUBRIQUES[k].toLowerCase());
+    if (
+      !(await demander(
+        `Proposer à la base du personnel la correction de « ${l.base?.nom ?? l.nomComplet} » (${quoi.join(", ")}) ? La fiche ne change pas tout de suite : le contrôle des modifications valide ou rejette.`,
+        "Oui, proposer",
+      ))
+    )
+      return;
+    setErreur(null);
+    setSucces(null);
+    try {
+      await api.post(`${API}/lignes/${l.id}/proposer`, {});
+      setSucces(`Proposition envoyée au contrôle des modifications pour « ${l.base?.nom ?? l.nomComplet} ».`);
+      d.recharger();
+    } catch (e) {
+      setErreur((e as Error).message);
     }
   };
   // La même personne sur plusieurs listes (directeur et enseignant…) : les lignes d'une même fiche
@@ -509,6 +538,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
               decider={(c) => decider(l, c)}
               choisir={() => setChoisir(l)}
               appliquer={() => setAppliquer(l)}
+              proposer={() => proposer(l)}
               voirRegistre={setVolontaire}
             />
           ))}
@@ -565,6 +595,7 @@ function CarteLigne({
   decider,
   choisir,
   appliquer,
+  proposer,
   voirRegistre,
 }: {
   l: Ligne;
@@ -577,6 +608,7 @@ function CarteLigne({
   decider: (c: { decision: string | null; agentId?: number; volontaireId?: string }) => void;
   choisir: () => void;
   appliquer: () => void;
+  proposer: () => void;
   voirRegistre: (id: string) => void;
 }) {
   const [libelle, ton] = RESULTATS[l.resultat];
@@ -679,6 +711,15 @@ function CarteLigne({
           {Object.entries(l.applique)
             .map(([k, v]) => `${LIBELLES_RUBRIQUES[k] ?? k} : « ${valeurLisible(v.apres)} » (nos bases : « ${valeurLisible(v.avant)} »)`)
             .join(" ; ")}
+          {l.proposition && (
+            <div className="mt-1">
+              {l.proposition.etat === "A_CONTROLER"
+                ? "Proposée à la base du personnel : en attente du contrôle des modifications."
+                : l.proposition.etat === "VALIDEE"
+                  ? `Proposée à la base du personnel : validée${l.proposition.controlePar ? ` par ${l.proposition.controlePar}` : ""}, la fiche est à jour.`
+                  : `Proposée à la base du personnel : rejetée${l.proposition.controlePar ? ` par ${l.proposition.controlePar}` : ""}${l.proposition.note ? ` (« ${l.proposition.note} »)` : ""}.`}
+            </div>
+          )}
         </div>
       )}
       {!!l.candidats.length && (
@@ -706,6 +747,11 @@ function CarteLigne({
         {f && (
           <Bouton chargement={enCours} onClick={appliquer} title="Corrige la ligne de la liste Banque mondiale ; la fiche de nos bases ne change pas">
             <PenLine /> Corriger la liste
+          </Bouton>
+        )}
+        {aProposer(l) && (
+          <Bouton chargement={enCours} onClick={proposer} title="La fiche ne change que si le contrôle des modifications valide">
+            <Send /> Proposer à la base
           </Bouton>
         )}
         {!f && l.decision !== "AJOUTE" && (

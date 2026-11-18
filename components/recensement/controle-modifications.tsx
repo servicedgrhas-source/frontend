@@ -16,6 +16,9 @@ interface Modification {
   structure: string | null;
   faitePar: string | null;
   faiteLe: string;
+  /** Proposition (rapports des DDEPPSA) : la fiche n'est pas encore modifiée. */
+  proposition: boolean;
+  source: string | null;
   champs: { code: string; libelle: string; avant: string; apres: string }[];
 }
 
@@ -42,12 +45,17 @@ export function ControleModifications() {
     setErreur(null);
     setEnvoi(true);
     try {
-      const x = await api.post<{ controlees: number; restaurees: number; gardees: number }>("/recensement/modifications/controle", { ids, decision, note });
+      const x = await api.post<{ controlees: number; restaurees: number; gardees: number; appliquees: number; erreurs: { id: number; message: string }[] }>("/recensement/modifications/controle", {
+        ids,
+        decision,
+        note,
+      });
       setMessage(
         decision === "VALIDER"
-          ? `${x.controlees} modification(s) validée(s).`
+          ? `${x.controlees} modification(s) validée(s)${x.appliquees ? ` ; ${x.appliquees} rubrique(s) proposée(s) appliquée(s) aux fiches` : ""}${x.gardees ? ` ; ${x.gardees} laissée(s) car la fiche a changé depuis la proposition` : ""}.`
           : `${x.controlees} modification(s) rejetée(s) : ${x.restaurees} rubrique(s) remise(s) à leur ancienne valeur${x.gardees ? `, ${x.gardees} laissée(s) car modifiée(s) de nouveau depuis` : ""}.`,
       );
+      if (x.erreurs?.length) setErreur(`Non validée(s), à revoir : ${x.erreurs.map((e) => e.message).join(" ; ")}`);
       setChoisies(new Set());
       setRejet(null);
       setMotif("");
@@ -70,7 +78,8 @@ export function ControleModifications() {
   return (
     <Carte titre={`4. Fiches modifiées au recensement : contrôle${r.donnees ? ` (${r.donnees.total})` : ""}`}>
       <p className="-mt-2 mb-4 text-[13px] leading-relaxed text-zinc-600">
-        Une fiche complétée ou corrigée depuis cette page passe au contrôle, comme un agent ajouté. Pour chaque rubrique changée : l’ancienne valeur (barrée) et la nouvelle.{" "}
+        Une fiche complétée ou corrigée depuis cette page passe au contrôle, comme un agent ajouté. Pour chaque rubrique changée : l’ancienne valeur (barrée) et la nouvelle. Les{" "}
+        <strong>propositions</strong> (venues des rapports de fin d’année des DDEPPSA) ne sont pas encore dans la fiche : « Valider » les applique, « Rejeter » ne change rien.{" "}
         {controleur
           ? "Validez ce qui est juste ; rejetez le reste (la fiche reprend alors ses anciennes valeurs). Cochez plusieurs lignes pour décider d’un coup."
           : "Le bureau du contrôle les valide ou les rejette."}
@@ -116,9 +125,15 @@ export function ControleModifications() {
                     </Link>
                     <span className="text-[12px] text-zinc-400">
                       {m.numeroFiche}
-                      {m.structure ? ` · ${m.structure}` : ""} · modifiée par {m.faitePar ?? "—"} le {quand(m.faiteLe)}
+                      {m.structure ? ` · ${m.structure}` : ""} · {m.proposition ? "proposée" : "modifiée"} par {m.faitePar ?? "—"} le {quand(m.faiteLe)}
                     </span>
                   </div>
+                  {m.proposition && (
+                    <div className="mt-1 rounded-xl bg-sky-50 px-3 py-1.5 text-[12px] text-sky-800 ring-1 ring-sky-100">
+                      <strong>Proposition, pas encore dans la fiche</strong>
+                      {m.source ? ` — ${m.source}` : ""}. Valider l’applique ; rejeter ne change rien.
+                    </div>
+                  )}
                   <table className="mt-1.5 w-full text-[12px]">
                     <tbody>
                       {m.champs.map((x) => (
@@ -152,7 +167,10 @@ export function ControleModifications() {
       {rejet && (
         <Modale titre={`Rejeter ${rejet.length} modification(s)`} ouverte fermer={() => setRejet(null)}>
           <div className="space-y-3">
-            <p className="text-[13px] text-zinc-600">Les rubriques reprennent leur ancienne valeur (sauf celles modifiées de nouveau depuis). Dites pourquoi : la personne qui a modifié le lira.</p>
+            <p className="text-[13px] text-zinc-600">
+              Les rubriques modifiées reprennent leur ancienne valeur (sauf celles modifiées de nouveau depuis) ; une proposition est simplement écartée (la fiche n’a pas changé). Dites pourquoi : la personne qui a
+              modifié ou proposé le lira.
+            </p>
             <Champ libelle="Motif du rejet *">
               <Zone value={motif} onChange={(e) => setMotif(e.target.value)} placeholder="Ex. le matricule ne correspond pas au bulletin de solde" />
             </Champ>
