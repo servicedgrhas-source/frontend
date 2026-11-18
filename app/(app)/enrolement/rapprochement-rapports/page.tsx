@@ -117,6 +117,21 @@ const proposables = (l: Ligne) => [...PROPOSABLES, ...(l.base && !l.base.dateNai
   // Une date réduite à l’année reste dans la liste : une fiche exige la date complète
   return !!v && !(k.startsWith("DATE") && /^\d{4}$/.test(String(v as string)));
 });
+/**
+ * Ce que le rapport donne et que nos bases n'ont pas (18/11/2026) : « Compléter la liste » le prend en
+ * série, sans jamais remplacer une valeur de nos bases ni le nom.
+ */
+const aCompleter = (l: Ligne) => {
+  const f = l.base;
+  if (!f) return false;
+  const manque = (base: string | null, rapport: unknown, k: string) => !base && !!rapport && !l.applique?.[k];
+  return (
+    manque(f.lieu, l.ecole, "LIEU_SERVICE") ||
+    (f.type === "PERSONNEL" && manque(f.matricule, l.matricule, "MATRICULE_SOLDE")) ||
+    manque(f.dateNaissance, l.dateNaissance ?? l.anneeNaissance, "DATE_NAISSANCE") ||
+    manque(f.priseService, l.priseService, "DATE_PRISE_SERVICE")
+  );
+};
 const aProposer = (l: Ligne) =>
   l.base?.type === "PERSONNEL" && !!l.agentId && proposables(l).length > 0 && l.proposition?.etat !== "A_CONTROLER" && l.proposition?.etat !== "VALIDEE";
 
@@ -366,6 +381,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
     CONFIRMER: ["Confirmer la fiche trouvée", (l) => !!l.base && !l.decision, "Confirmer la fiche trouvée pour"],
     AJOUTER: ["Garder dans la liste", (l) => !l.base && l.decision !== "AJOUTE", "Garder dans la liste Banque mondiale (aucune fiche n’est créée dans nos bases)"],
     ABSENT: ["Déclarer absentes", (l) => !l.agentId && l.decision !== "ABSENT" && l.decision !== "AJOUTE", "Déclarer absentes de nos bases"],
+    COMPLETER_LISTE: ["Compléter la liste", aCompleter, "Prendre du rapport tout ce qui manque dans nos bases (lieu de service, matricule, dates, département ; jamais le nom, jamais une valeur déjà dans nos bases), dans la liste Banque mondiale seulement, pour"],
     PROPOSER_AJOUT: ["Proposer l’ajout à la base", aProposerAjout, "Proposer l’ajout à la base du personnel (aucune fiche n’est créée avant la validation du contrôle des modifications ; le type d’agent doit être écrit dans le rapport) de"],
     PROPOSER: ["Proposer à la base", aProposer, "Proposer au contrôle des modifications les corrections (lieu de service, prise de service, département, matricule ; la fiche ne change que si le contrôle valide) de"],
     ANNULER: ["Annuler la décision", (l) => !!l.decision && !(l.decision === "AJOUTE" && l.agentId), "Annuler la décision (la ligne revient « à traiter ») pour"],
