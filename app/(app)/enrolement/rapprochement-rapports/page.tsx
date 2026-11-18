@@ -2,7 +2,7 @@
 
 import { ArrowLeft, Check, Download, FileSpreadsheet, Loader2, PenLine, RefreshCw, Search, Send, Trash2, Upload, UserPlus, UserX } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FicheVolontaire } from "@/components/enrolement/volontaires";
 import { SqueletteCartesRapprochement } from "@/components/squelette";
 import { useSession } from "@/components/session";
@@ -357,18 +357,50 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
   const [cochees, setCochees] = useState<Set<number>>(new Set());
   const [lotEnCours, setLotEnCours] = useState<string | null>(null);
   const [erreursLot, setErreursLot] = useState<{ nom: string; message: string }[]>([]);
+  // Les personnes laissées de côté pour une raison normale (déjà proposée, fiche probable…), par raison
+  const [ignorees, setIgnorees] = useState<{ motif: string; n: number; noms: string[] }[]>([]);
   const [ajouter, setAjouter] = useState<Ligne | null>(null);
   const [proposerAjout, setProposerAjout] = useState<Ligne | null>(null);
   const [confirmation, demander] = useConfirmation();
 
-  /** Met à jour tout de suite les lignes touchées (la liste suit l'action), puis relit en silence. */
-  const appliquerLocal = (ids: number[], patch: (l: Ligne) => Partial<Ligne>) => {
-    const courant = d.donnees;
+  // Toujours les dernières données (pas la copie prise au moment du clic : une action en série dure
+  // parfois une minute, et d'autres décisions ont pu être prises entre-temps — 19/11/2026)
+  const donneesRef = useRef(d.donnees);
+  useEffect(() => {
+    donneesRef.current = d.donnees;
+  }, [d.donnees]);
+  const relecture = useRef(0);
+  /** Relit le rapport sur le serveur et l'affiche (seule la dernière relecture lancée compte). */
+  const rafraichir = async () => {
+    const n = ++relecture.current;
+    try {
+      const x = await api.get<{ rapport: Rapport; lignes: Ligne[] }>(`${API}/${id}`);
+      if (n === relecture.current) {
+        donneesRef.current = x;
+        d.setDonnees(x);
+      }
+    } catch {
+      d.recharger();
+    }
+  };
+  /**
+   * Met à jour tout de suite les lignes touchées (la liste suit l'action), puis relit le rapport sur
+   * le serveur : les pastilles, les cartes et les compteurs montrent ce qui a vraiment été fait.
+   */
+  const appliquerLocal = async (ids: number[], patch: (l: Ligne) => Partial<Ligne>) => {
+    const courant = donneesRef.current;
     if (courant) {
       const touchees = new Set(ids);
-      d.setDonnees({ ...courant, lignes: courant.lignes.map((l) => (touchees.has(l.id) ? { ...l, ...patch(l) } : l)) });
+      const x = { ...courant, lignes: courant.lignes.map((l) => (touchees.has(l.id) ? { ...l, ...patch(l) } : l)) };
+      donneesRef.current = x;
+      d.setDonnees(x);
     }
-    d.recharger();
+    await rafraichir();
+  };
+  /** Après une fenêtre (corriger, garder, proposer l'ajout) : la carte suit, marquée « Traitement… » le temps de relire. */
+  const suivre = (ligneId: number, patch: (l: Ligne) => Partial<Ligne>) => {
+    traiter([ligneId], true);
+    void appliquerLocal([ligneId], patch).finally(() => traiter([ligneId], false));
   };
   const decider = async (l: Ligne, corps: { decision: string | null; agentId?: number; volontaireId?: string }) => {
     if (enTraitement.has(l.id)) return;
@@ -376,7 +408,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
     traiter([l.id], true);
     try {
       await api.post(`${API}/lignes/${l.id}/decision`, corps);
-      appliquerLocal([l.id], () => ({ decision: (corps.decision as Ligne["decision"]) ?? null }));
+      await appliquerLocal([l.id], () => ({ decision: (corps.decision as Ligne["decision"]) ?? null }));
     } catch (x) {
       setErreur((x as Error).message);
     } finally {
@@ -388,7 +420,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
     setCalcul(true);
     try {
       await api.post(`${API}/${id}/recalculer`, {});
-      d.recharger();
+      await rafraichir();
     } catch (x) {
       setErreur((x as Error).message);
     } finally {
@@ -439,20 +471,37 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
     setErreur(null);
     setSucces(null);
     setErreursLot([]);
+    setIgnorees([]);
     setLotEnCours(action);
     traiter(ids, true);
     // Décochées tout de suite : on ne peut pas relancer la même action sur les mêmes lignes
     setCochees(new Set());
     try {
-      const x = await api.post<{ faits: number; proposees?: number; erreurs: { ligneId?: number; nom: string; message: string }[] }>(`${API}/${id}/lot`, { action, ids, ...options });
-      setSucces(
-        action === "PRENDRE_RAPPORT"
-          ? `${nf.format(x.faits)} personne(s) sur ${nf.format(ids.length)} : valeurs du rapport prises dans la liste Banque mondiale.${options?.proposer ? ` ${nf.format(x.proposees ?? 0)} proposition(s) envoyée(s) au contrôle des modifications (la fiche ne change que s’il valide).` : ""}`
-          : `${nf.format(x.faits)} personne(s) traitée(s) sur ${nf.format(ids.length)}.`,
-      );
+      const x = await api.post<{
+        faits: number;
+        proposees?: number;
+        confirmees?: number;
+        ignorees?: { motif: string; n: number; noms: string[]; ligneIds: number[] }[];
+        erreurs: { ligneId?: number; nom: string; message: string }[];
+      }>(`${API}/${id}/lot`, { action, ids, ...options });
+      const ign = x.ignorees ?? [];
+      const nIgn = ign.reduce((n, g) => n + g.n, 0);
+      const confirmees = x.confirmees ? ` ${nf.format(x.confirmees)} fiche(s) confirmée(s) : ces personnes passent dans « Déjà décidées ».` : "";
+      const MESSAGES: Record<string, string> = {
+        CONFIRMER: `${nf.format(x.faits)} fiche(s) confirmée(s) : ces personnes passent dans « Déjà décidées ».`,
+        AJOUTER: `${nf.format(x.faits)} personne(s) gardée(s) dans la liste Banque mondiale.`,
+        ABSENT: `${nf.format(x.faits)} personne(s) déclarée(s) absentes de nos bases.`,
+        ANNULER: `${nf.format(x.faits)} décision(s) annulée(s) : ces personnes reviennent « à traiter ».`,
+        PROPOSER_AJOUT: `${nf.format(x.faits)} ajout(s) proposé(s) au contrôle des modifications (aucune fiche n’est créée avant sa validation).`,
+        PROPOSER: `${nf.format(x.faits)} proposition(s) envoyée(s) au contrôle des modifications (la fiche ne change que s’il valide).${confirmees}`,
+        PRENDRE_RAPPORT: `${x.faits ? `${nf.format(x.faits)} personne(s) : valeurs du rapport prises dans la liste Banque mondiale.` : "Rien de nouveau à prendre dans la liste : c’était déjà fait."}${options?.proposer ? ` ${nf.format(x.proposees ?? 0)} proposition(s) envoyée(s) au contrôle des modifications.` : ""}${confirmees}`,
+      };
+      setSucces(`${MESSAGES[action] ?? `${nf.format(x.faits)} personne(s) traitée(s).`}${nIgn ? ` ${nf.format(nIgn)} laissée(s) de côté (raisons ci-dessous).` : ""}`);
       setErreursLot(x.erreurs);
-      const refusees = new Set(x.erreurs.map((e) => e.ligneId).filter((v): v is number => !!v));
+      setIgnorees(ign);
+      const refusees = new Set([...x.erreurs.map((e) => e.ligneId), ...ign.flatMap((g) => g.ligneIds)].filter((v): v is number => !!v));
       const faites = ids.filter((i) => !refusees.has(i));
+      const confirmer = (l: Ligne): Partial<Ligne> => (!l.decision && l.base && l.resultat !== "PROBABLE" ? { decision: "CONFIRME" } : {});
       const PATCH: Record<string, (l: Ligne) => Partial<Ligne>> = {
         CONFIRMER: () => ({ decision: "CONFIRME" }),
         AJOUTER: () => ({ decision: "AJOUTE" }),
@@ -461,7 +510,12 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
         PROPOSER: (l) => ({ proposition: { id: l.proposition?.id ?? 0, etat: "A_CONTROLER", controlePar: null, note: null } }),
         PROPOSER_AJOUT: (l) => ({ propositionAjout: { id: l.propositionAjout?.id ?? 0, etat: "A_CONTROLER", controlePar: null, note: null } }),
       };
-      appliquerLocal(faites, PATCH[action] ?? (() => ({})));
+      // Les lignes faites prennent leur nouvel état ; la confirmation vaut aussi pour les lignes
+      // laissées de côté parce que « déjà proposées » (prendre / proposer reconnaît la fiche)
+      await appliquerLocal(ids, (l) => ({
+        ...(faites.includes(l.id) ? (PATCH[action]?.(l) ?? {}) : {}),
+        ...(action === "PRENDRE_RAPPORT" || action === "PROPOSER" ? confirmer(l) : {}),
+      }));
     } catch (e) {
       setErreur((e as Error).message);
     } finally {
@@ -485,7 +539,10 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
     try {
       await api.post(`${API}/lignes/${l.id}/proposer`, {});
       setSucces(`Proposition envoyée au contrôle des modifications pour « ${l.base?.nom ?? l.nomComplet} ».`);
-      appliquerLocal([l.id], () => ({ proposition: { id: l.proposition?.id ?? 0, etat: "A_CONTROLER", controlePar: null, note: null } }));
+      await appliquerLocal([l.id], (x) => ({
+        proposition: { id: l.proposition?.id ?? 0, etat: "A_CONTROLER", controlePar: null, note: null },
+        ...(!x.decision && x.resultat !== "PROBABLE" ? { decision: "CONFIRME" as const } : {}),
+      }));
     } catch (e) {
       setErreur((e as Error).message);
     } finally {
@@ -538,9 +595,29 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
       {exporter && <ModaleExport id={id} nom={`Rapprochement ${r?.departement ?? ""} ${r?.anneeScolaire ?? ""}.xlsx`} fermer={() => setExporter(false)} />}
       {erreur && <Alerte>{erreur}</Alerte>}
       {succes && <Alerte ton="vert">{succes}</Alerte>}
+      {ignorees.length > 0 && (
+        <div className="rounded-2xl bg-zinc-50 px-4 py-3 text-[13px] text-zinc-700 ring-1 ring-zinc-200">
+          <p className="font-medium">Laissées de côté (rien d’anormal) :</p>
+          <ul className="mt-1 space-y-1">
+            {ignorees.map((g) => (
+              <li key={g.motif}>
+                <details>
+                  <summary className="cursor-pointer">
+                    <strong className="tabular-nums">{nf.format(g.n)}</strong> — {g.motif} <span className="text-[12px] text-marque-700">(voir les noms)</span>
+                  </summary>
+                  <p className="mt-1 pl-4 text-[12px] text-zinc-500">
+                    {g.noms.join(" · ")}
+                    {g.n > g.noms.length ? ` … et ${nf.format(g.n - g.noms.length)} autre(s)` : ""}
+                  </p>
+                </details>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {erreursLot.length > 0 && (
         <Alerte ton="jaune">
-          <p className="font-medium">{nf.format(erreursLot.length)} personne(s) non traitée(s) :</p>
+          <p className="font-medium">{nf.format(erreursLot.length)} personne(s) en erreur :</p>
           <ul className="mt-1 list-disc pl-5">
             {erreursLot.slice(0, 30).map((x, i) => (
               <li key={i}>
@@ -676,7 +753,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
           fait={() => {
             setProposerAjout(null);
             setSucces(`L’ajout de « ${proposerAjout.nomComplet} » est proposé au contrôle des modifications : la fiche ne sera créée que s’il valide.`);
-            appliquerLocal([proposerAjout.id], () => ({ propositionAjout: { id: 0, etat: "A_CONTROLER", controlePar: null, note: null } }));
+            suivre(proposerAjout.id, () => ({ propositionAjout: { id: 0, etat: "A_CONTROLER", controlePar: null, note: null } }));
           }}
         />
       )}
@@ -687,7 +764,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
           fait={() => {
             setAjouter(null);
             setSucces(`« ${ajouter.nomComplet} » est gardé(e) dans la liste Banque mondiale (nos bases ne changent pas).`);
-            appliquerLocal([ajouter.id], () => ({ decision: "AJOUTE" }));
+            suivre(ajouter.id, () => ({ decision: "AJOUTE" }));
           }}
         />
       )}
@@ -711,7 +788,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
                 .join(" "),
             );
             // Corriger, c'est reconnaître la personne : la ligne quitte « à traiter » tout de suite
-            appliquerLocal([appliquer.id], (x) => ({
+            suivre(appliquer.id, (x) => ({
               decision: x.decision ?? (x.base && n ? "CONFIRME" : null),
               ...(propose ? { proposition: { id: x.proposition?.id ?? 0, etat: "A_CONTROLER" as const, controlePar: null, note: null } } : {}),
             }));
@@ -1274,6 +1351,10 @@ function ModalePrendre({ n, annee, fermer, lancer }: { n: number; annee: string;
         <p className="text-zinc-600">
           Le rapport de fin d’année {annee} est <strong>plus récent</strong> que nos bases (enrôlement 2022-2024). Ses valeurs vont dans la <strong>liste Banque mondiale</strong> (écran et export
           Excel) pour les personnes cochées qui ont une fiche. Le nom n’est jamais remplacé en série (il est souvent abrégé dans le rapport) : corrigez-le personne par personne.
+        </p>
+        <p className="rounded-xl bg-marque-50 px-3 py-2 text-[12px] text-marque-800">
+          Prendre le rapport, c’est reconnaître la fiche trouvée : ces personnes passent dans <strong>« Déjà décidées »</strong> (fiche confirmée). Les fiches seulement « probables » restent à
+          traiter : confirmez-les d’abord une par une. « Annuler la décision » les remet à traiter.
         </p>
         <div>
           <div className="mb-1.5 text-[11px] font-semibold text-zinc-400 uppercase">Rubriques à prendre du rapport</div>

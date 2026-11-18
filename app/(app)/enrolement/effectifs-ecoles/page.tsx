@@ -12,10 +12,25 @@ import { api, qs, useApi } from "@/lib/api";
 import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
+/**
+ * Une DEPPSA (ou le total) : écoles qui atteignent le seuil (au moins 3 fonctionnaires ou
+ * contractuels) et les autres, avec leur part ; personnel qui travaille dans les premières.
+ */
+type ParSeuil = Nombres & {
+  departement: string;
+  ecoles: number;
+  auMoins: number;
+  moins: number;
+  partAuMoins: number;
+  partMoins: number;
+  personnelAuMoins: number;
+  partPersonnelAuMoins: number;
+  fcAuMoins: number;
+  partFcAuMoins: number;
+};
 interface Effectifs {
-  /** toutesEcoles : toutes les écoles (case « seulement… » cochée ou non), pour « 10 sur 31 ». */
-  totaux: Nombres & { ecoles: number; sousSeuil: number; toutesEcoles: number };
-  parDeppsa: (Nombres & { departement: string; ecoles: number; sousSeuil: number; toutesEcoles: number })[];
+  totaux: ParSeuil;
+  parDeppsa: ParSeuil[];
   sansEcole: { effectif: string; libelle: string; sans: number; administration: number; ecartees: number }[];
   reclassees: number;
   aHarmoniser: number;
@@ -71,10 +86,13 @@ function Squelette() {
   );
 }
 
+const pc = (v: number) => `${v.toLocaleString("fr-FR")} %`;
+
 /**
  * Effectifs par école (demande de la Banque mondiale, 16/11/2026) : pour chaque école, rangée par
- * DEPPSA, le nombre de volontaires, de communautaires, de contractuels et de fonctionnaires. Les
- * écoles de 3 fonctionnaires et moins (contractuels compris) sont signalées : elles passent en priorité. Les écoles
+ * DEPPSA, le nombre de volontaires, de communautaires, de contractuels et de fonctionnaires. Le seuil
+ * de la Banque mondiale (DG, 18/11/2026) : les écoles qui ont AU MOINS 3 fonctionnaires ou
+ * contractuels (3 et plus), leur nombre et leur part, et la part du personnel qui y travaille. Les écoles
  * dont les noms se ressemblent sont montrées ici ; elles se tranchent dans « Écoles à contrôler »
  * (DG, 17/11/2026). Aucun nom de personne, seulement des nombres.
  */
@@ -83,7 +101,8 @@ export default function EffectifsEcoles() {
   const [cycle, setCycle] = useState("PRESCOLAIRE");
   const [departementId, setDepartementId] = useState("");
   const [seuil, setSeuil] = useState("3");
-  const [sousSeuil, setSousSeuil] = useState(false);
+  // « » : toutes les écoles ; AU_MOINS : au moins 3 F/C ; MOINS : moins de 3
+  const [seuilFiltre, setSeuilFiltre] = useState<"" | "AU_MOINS" | "MOINS">("");
   const [recherche, setRecherche] = useState("");
   const [page, setPage] = useState(1);
   // Les écoles qui se ressemblent et les décisions : dans Structures scolaires › Écoles à contrôler (18/11/2026)
@@ -91,7 +110,7 @@ export default function EffectifsEcoles() {
   const [erreur, setErreur] = useState<string | null>(null);
   const s = Math.min(50, Math.max(1, Number(seuil) || 3));
   const filtres = { cycle, departementId: departementId || undefined, seuil: s };
-  const d = useApi<Effectifs>(`/enrolement/effectifs-ecoles${qs({ ...filtres, sousSeuil: sousSeuil ? 1 : undefined, recherche: recherche.trim() || undefined, page, taille: 50 })}`);
+  const d = useApi<Effectifs>(`/enrolement/effectifs-ecoles${qs({ ...filtres, seuilFiltre: seuilFiltre || undefined, recherche: recherche.trim() || undefined, page, taille: 50 })}`);
   if (!peut.traiter(profil.role) && !accesDonne(profil)) return <Alerte>Accès réservé aux agents de la DGRHAS.</Alerte>;
 
   const changer = (f: (v: string) => void) => (v: string) => {
@@ -99,13 +118,13 @@ export default function EffectifsEcoles() {
     setPage(1);
   };
   const telecharger = () =>
-    api.telecharger(`/enrolement/effectifs-ecoles/excel${qs({ ...filtres, sousSeuil: sousSeuil ? 1 : undefined })}`, "Effectifs par école.xlsx").catch((x: Error) => setErreur(x.message));
+    api.telecharger(`/enrolement/effectifs-ecoles/excel${qs({ ...filtres, seuilFiltre: seuilFiltre || undefined })}`, "Effectifs par école.xlsx").catch((x: Error) => setErreur(x.message));
   const t = d.donnees?.totaux;
   const pages = d.donnees ? Math.max(1, Math.ceil(d.donnees.total / 50)) : 1;
-  const voirEcoles = (dep: string | null, sous: boolean) => {
+  const voirEcoles = (dep: string | null, quelles: "" | "AU_MOINS" | "MOINS") => {
     const id = dep ? refs.departements.find((x) => x.nom === dep)?.id : undefined;
     if (dep && id) setDepartementId(String(id));
-    setSousSeuil(sous);
+    setSeuilFiltre(quelles);
     setVue("ecoles");
     setPage(1);
   };
@@ -116,7 +135,7 @@ export default function EffectifsEcoles() {
     <div className="space-y-6">
       <EnTete
         titre="Effectifs par école (Banque mondiale)"
-        sousTitre={`Pour chaque école, rangée par DEPPSA : le nombre de volontaires, de communautaires, de contractuels et de fonctionnaires. En orange, les écoles qui ont ${s} fonctionnaires et moins, contractuels compris : elles passent en priorité. Une même école écrite de plusieurs façons est comptée une seule fois (noms vérifiés par la DGRHAS). Seulement des nombres, aucun nom de personne.`}
+        sousTitre={`Pour chaque école, rangée par DEPPSA : le nombre de volontaires, de communautaires, de contractuels et de fonctionnaires. Seuil de la Banque mondiale : les écoles qui ont au moins ${s} fonctionnaires ou contractuels (${s} et plus), combien elles sont, leur part, et la part du personnel qui y travaille. Une même école écrite de plusieurs façons est comptée une seule fois. Seulement des nombres, aucun nom de personne.`}
         actions={
           <Bouton onClick={telecharger} title="Par école, par DEPPSA, sans école, noms à harmoniser, écoles qui se ressemblent, DEPPSA reclassées (en-tête officiel)">
             <Download /> Excel
@@ -134,14 +153,19 @@ export default function EffectifsEcoles() {
           />
           <Liste value={departementId} onChange={(e) => changer(setDepartementId)(e.target.value)} vide="Toutes les DEPPSA" options={refs.departements.map((x) => ({ valeur: x.id, libelle: x.nom }))} />
           <label className="flex items-center gap-2 whitespace-nowrap text-[13px]">
-            Seuil :
-            <Saisie type="number" min={1} max={50} className="w-20 shrink-0" value={seuil} onChange={(e) => changer(setSeuil)(e.target.value)} />
-            fonctionnaires
+            Seuil : au moins
+            <Saisie type="number" min={1} max={50} className="w-16 shrink-0" value={seuil} onChange={(e) => changer(setSeuil)(e.target.value)} />
+            <span title="fonctionnaires ou contractuels">F/C</span>
           </label>
-          <label className="flex items-center gap-2 text-[13px]">
-            <input type="checkbox" className="size-4 accent-marque-600" checked={sousSeuil} onChange={(e) => { setSousSeuil(e.target.checked); setPage(1); }} />
-            Seulement les écoles de {s} fonctionnaires et moins (avec contractuels)
-          </label>
+          <Liste
+            value={seuilFiltre}
+            onChange={(e) => changer((v) => setSeuilFiltre(v as typeof seuilFiltre))(e.target.value)}
+            options={[
+              { valeur: "", libelle: "Liste : toutes les écoles" },
+              { valeur: "AU_MOINS", libelle: `Liste : écoles d’au moins ${s} fonct. ou contr.` },
+              { valeur: "MOINS", libelle: `Liste : écoles de moins de ${s} fonct. ou contr.` },
+            ]}
+          />
         </div>
       </Carte>
 
@@ -151,14 +175,18 @@ export default function EffectifsEcoles() {
       ) : (
         <>
           <FraicheurCalcul calculeLe={d.donnees.calculeLe} aJour={d.donnees.aJour} recharger={d.recharger} />
-          <div className="grid gap-3 sm:grid-cols-3 2xl:grid-cols-6">
-            <Chiffre libelle="Écoles" valeur={nf.format(t.ecoles)} ton="gris" detail={cycle === "TOUS" ? "tous les cycles" : (CYCLES[cycle] ?? "cycle non reconnu")} />
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Chiffre libelle="Écoles comptées" valeur={nf.format(t.ecoles)} ton="gris" detail={`${cycle === "TOUS" ? "tous les cycles" : (CYCLES[cycle] ?? "cycle non reconnu")}${departementId ? "" : " · tout le territoire"}`} />
+            <Chiffre libelle={`Au moins ${s} fonct. ou contr.`} valeur={nf.format(t.auMoins)} ton="vert" detail={`${pc(t.partAuMoins)} des écoles atteignent le seuil`} />
+            <Chiffre libelle={`Moins de ${s} fonct. ou contr.`} valeur={nf.format(t.moins)} ton="rouge" detail={`${pc(t.partMoins)} des écoles`} />
             <Chiffre
-              libelle={`${s} fonctionnaires et moins`}
-              valeur={nf.format(t.sousSeuil)}
-              ton="rouge"
-              detail={t.toutesEcoles ? `sur ${nf.format(t.toutesEcoles)} écoles en tout (${Math.round((t.sousSeuil * 100) / t.toutesEcoles)} %)` : ""}
+              libelle={`Personnel des écoles d’au moins ${s}`}
+              valeur={pc(t.partPersonnelAuMoins)}
+              ton="vert"
+              detail={`${nf.format(t.personnelAuMoins)} sur ${nf.format(t.total)} personnes comptées (${pc(t.partFcAuMoins)} des fonct. et contr.)`}
             />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {EFFECTIFS.map(([k, libelle]) => (
               <Chiffre key={k} libelle={libelle} valeur={nf.format(t[k])} ton={k === "fonctionnaires" ? "vert" : k === "contractuels" ? "bleu" : "gris"} detail={t.total ? `${Math.round((t[k] * 100) / t.total)} % du personnel compté` : ""} />
             ))}
@@ -181,9 +209,13 @@ export default function EffectifsEcoles() {
                     <tr>
                       <th>DEPPSA</th>
                       <th className="text-right">Écoles</th>
-                      <th className="text-right" title={`Écoles de ${s} fonctionnaires et moins (contractuels compris), sur toutes les écoles de la DEPPSA`}>
-                        {s} fonct. et moins
-                        <span className="block text-[10px] font-normal normal-case">sur toutes les écoles</span>
+                      <th className="text-right" title={`Écoles qui ont au moins ${s} fonctionnaires ou contractuels (${s} et plus)`}>
+                        Au moins {s} F/C
+                        <span className="block text-[10px] font-normal normal-case">part des écoles</span>
+                      </th>
+                      <th className="text-right" title={`Écoles qui ont moins de ${s} fonctionnaires ou contractuels`}>
+                        Moins de {s} F/C
+                        <span className="block text-[10px] font-normal normal-case">part des écoles</span>
                       </th>
                       {EFFECTIFS.map(([k, l]) => (
                         <th key={k} className="text-right">
@@ -191,26 +223,40 @@ export default function EffectifsEcoles() {
                         </th>
                       ))}
                       <th className="text-right">Total</th>
+                      <th className="text-right" title={`Personnel compté (volontaires, communautaires, contractuels, fonctionnaires) qui travaille dans les écoles d’au moins ${s} fonctionnaires ou contractuels`}>
+                        Personnel des écoles ≥ {s}
+                        <span className="block text-[10px] font-normal normal-case">part du personnel</span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {d.donnees.parDeppsa.map((x) => (
                       <tr key={x.departement}>
                         <td>
-                          <button type="button" className="text-left hover:underline" onClick={() => voirEcoles(x.departement, false)} title="Voir les écoles de cette DEPPSA">
+                          <button type="button" className="text-left hover:underline" onClick={() => voirEcoles(x.departement, "")} title="Voir les écoles de cette DEPPSA">
                             {x.departement}
                           </button>
                         </td>
                         <td className="text-right tabular-nums">{nf.format(x.ecoles)}</td>
                         <td className="text-right tabular-nums">
-                          {x.sousSeuil ? (
-                            <button type="button" className="font-semibold text-rouge-600 hover:underline" onClick={() => voirEcoles(x.departement, true)} title="Voir ces écoles">
-                              {nf.format(x.sousSeuil)}
+                          {x.auMoins ? (
+                            <button type="button" className="font-semibold text-marque-700 hover:underline" onClick={() => voirEcoles(x.departement, "AU_MOINS")} title="Voir ces écoles">
+                              {nf.format(x.auMoins)}
                             </button>
                           ) : (
                             0
                           )}
-                          <span className="text-zinc-400"> sur {nf.format(x.toutesEcoles)}</span>
+                          <span className="block text-[11px] text-zinc-500">{pc(x.partAuMoins)}</span>
+                        </td>
+                        <td className="text-right tabular-nums">
+                          {x.moins ? (
+                            <button type="button" className="font-semibold text-rouge-600 hover:underline" onClick={() => voirEcoles(x.departement, "MOINS")} title="Voir ces écoles">
+                              {nf.format(x.moins)}
+                            </button>
+                          ) : (
+                            0
+                          )}
+                          <span className="block text-[11px] text-zinc-500">{pc(x.partMoins)}</span>
                         </td>
                         {EFFECTIFS.map(([k]) => (
                           <td key={k} className="text-right tabular-nums">
@@ -218,14 +264,22 @@ export default function EffectifsEcoles() {
                           </td>
                         ))}
                         <td className="text-right tabular-nums">{nf.format(x.total)}</td>
+                        <td className="text-right tabular-nums">
+                          {nf.format(x.personnelAuMoins)}
+                          <span className="block text-[11px] text-zinc-500">{pc(x.partPersonnelAuMoins)}</span>
+                        </td>
                       </tr>
                     ))}
                     <tr className="font-semibold">
-                      <td>Total</td>
+                      <td>{departementId ? "Total" : "Total (tout le territoire)"}</td>
                       <td className="text-right tabular-nums">{nf.format(t.ecoles)}</td>
                       <td className="text-right tabular-nums">
-                        {nf.format(t.sousSeuil)}
-                        <span className="font-normal text-zinc-400"> sur {nf.format(t.toutesEcoles)}</span>
+                        {nf.format(t.auMoins)}
+                        <span className="block text-[11px] font-normal text-zinc-500">{pc(t.partAuMoins)}</span>
+                      </td>
+                      <td className="text-right tabular-nums">
+                        {nf.format(t.moins)}
+                        <span className="block text-[11px] font-normal text-zinc-500">{pc(t.partMoins)}</span>
                       </td>
                       {EFFECTIFS.map(([k]) => (
                         <td key={k} className="text-right tabular-nums">
@@ -233,6 +287,10 @@ export default function EffectifsEcoles() {
                         </td>
                       ))}
                       <td className="text-right tabular-nums">{nf.format(t.total)}</td>
+                      <td className="text-right tabular-nums">
+                        {nf.format(t.personnelAuMoins)}
+                        <span className="block text-[11px] font-normal text-zinc-500">{pc(t.partPersonnelAuMoins)}</span>
+                      </td>
                     </tr>
                   </tbody>
                 </Tableau>
@@ -264,6 +322,10 @@ export default function EffectifsEcoles() {
                 <Carte titre="Comment ces chiffres sont comptés">
                   <ul className="space-y-3 text-[13px] text-zinc-700">
                     <li>
+                      <strong>Seuil de la Banque mondiale</strong> : une école l’atteint quand elle a <strong>au moins {s} fonctionnaires ou contractuels</strong> ({s} et plus ; un contractuel compte comme un
+                      fonctionnaire). Les volontaires et les communautaires ne comptent pas pour le seuil, mais ils sont dans le personnel compté.
+                    </li>
+                    <li>
                       Une même école écrite de plusieurs façons dans les fichiers est comptée une seule fois ; les noms d’écoles sont vérifiés par la DGRHAS.{" "}
                       {peut.traiter(profil.role) && <VersStructures onglet="ressemblances">Structures scolaires › Écoles à contrôler</VersStructures>}
                     </li>
@@ -282,7 +344,7 @@ export default function EffectifsEcoles() {
 
           {vue === "ecoles" && (
             <Carte
-              titre={`Par école (${nf.format(d.donnees.total)})`}
+              titre={`${seuilFiltre === "AU_MOINS" ? `Écoles d’au moins ${s} fonct. ou contr.` : seuilFiltre === "MOINS" ? `Écoles de moins de ${s} fonct. ou contr.` : "Par école"} (${nf.format(d.donnees.total)})`}
               actions={<Saisie className="w-64" value={recherche} onChange={(e) => { setRecherche(e.target.value); setPage(1); }} placeholder="Nom de l’école…" />}
             >
               {!d.donnees.ecoles.length ? (
@@ -299,14 +361,15 @@ export default function EffectifsEcoles() {
                         </th>
                       ))}
                       <th className="text-right">Total</th>
+                      <th>Seuil</th>
                       <th>Nom le plus proche</th>
                     </tr>
                   </thead>
                   <tbody>
                     {d.donnees.ecoles.map((e) => {
-                      const sous = e.fonctionnaires + e.contractuels <= s;
+                      const atteint = e.fonctionnaires + e.contractuels >= s;
                       return (
-                        <tr key={e.id} className={sous ? "bg-or-100/50" : undefined}>
+                        <tr key={e.id}>
                           <td className="text-[12px] text-zinc-600">{e.departement}</td>
                           <td>
                             <span className="font-medium">{e.nom}</span>
@@ -319,11 +382,12 @@ export default function EffectifsEcoles() {
                             </div>
                           </td>
                           {EFFECTIFS.map(([k]) => (
-                            <td key={k} className={`text-right tabular-nums ${k === "fonctionnaires" && sous ? "font-semibold text-rouge-600" : ""}`}>
+                            <td key={k} className="text-right tabular-nums">
                               {nf.format(e[k])}
                             </td>
                           ))}
                           <td className="text-right tabular-nums font-semibold">{nf.format(e.total)}</td>
+                          <td>{atteint ? <Badge ton="vert">au moins {s}</Badge> : <Badge ton="rouge">moins de {s}</Badge>}</td>
                           <td className="text-[12px]">
                             {e.proche ? (
                               <span className="text-or-700">

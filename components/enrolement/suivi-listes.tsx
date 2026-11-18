@@ -277,6 +277,8 @@ export interface LigneParcours {
   population: "VOLONTAIRE" | "COMMUNAUTAIRE";
   registre: "EN_POSTE" | "SORTI" | "ABSENT";
   motifSortie: string | null;
+  /** Date de sortie de la bourse (jj/mm/aaaa), si elle est écrite. */
+  dateSortie?: string | null;
   dernierMoisBourse: string | null;
   vague: number | null;
   departement: string;
@@ -296,7 +298,7 @@ export function ModaleParcours({ l, situation, ton, fermer }: { l: LigneParcours
       titre: "Payé en bourse",
       fait: l.registre !== "ABSENT",
       contenu:
-        l.registre === "EN_POSTE" ? "En poste : payé chaque mois en bourse." : l.registre === "SORTI" ? `Sorti de la bourse${l.motifSortie ? ` : ${l.motifSortie}` : ""}${l.dernierMoisBourse ? ` (dernier mois : ${l.dernierMoisBourse})` : ""}.` : "Absent du registre de la bourse.",
+        l.registre === "EN_POSTE" ? "En poste : payé chaque mois en bourse." : l.registre === "SORTI" ? `Sorti de la bourse${l.motifSortie ? ` : ${l.motifSortie}` : ""}${l.dateSortie ? ` le ${l.dateSortie}` : ""}${l.dernierMoisBourse ? ` (dernier mois : ${l.dernierMoisBourse})` : ""}.` : "Absent du registre de la bourse.",
     },
     {
       titre: "Recruté (texte d’intégration)",

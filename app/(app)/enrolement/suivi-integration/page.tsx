@@ -26,9 +26,19 @@ interface Groupe {
 
 type Ligne = LigneParcours;
 
+/** Ce que sont devenues les fiches du registre : des chiffres qui s'additionnent (DG, 18/11/2026). */
+interface Repartition {
+  fiches: number;
+  doublons: number;
+  enPoste: { total: number; nonRecrutes: number; aVerifier: number; recrutes: number };
+  sortis: { total: number; aVerifier: number; parMotif: { code: string; libelle: string; n: number; sansDate: number; du: string | null; au: string | null }[] };
+  recrutes: { total: number; avecFiche: number; payes: number; attente: number; attenteSortisFP: number; sansFiche: number; sansFicheEnPoste: number };
+}
+
 interface Suivi {
   synthese: {
     total: Omit<Groupe, "libelle">;
+    repartition: Repartition;
     taux: { integration: number; affectation: number; priseEnCharge: number };
     absentsRegistre: number;
     parSituation: { code: string; libelle: string; n: number }[];
@@ -216,34 +226,8 @@ export default function SuiviIntegration() {
             </div>
           </section>
 
-          {/* 2. Le parcours des volontaires et communautaires, étape par étape */}
-          <section className="space-y-2">
-            <h2 className="text-[15px] font-semibold text-encre">
-              2. Volontaires et communautaires : où en sont-ils ? <Aide>{MOTS.retrouver}</Aide>
-            </h2>
-            <div className="flex flex-wrap items-stretch gap-2">
-              {([
-                { etape: "registre", libelle: "Inscrits au registre de la bourse", n: s!.total.base, detail: "payés au moins un mois en bourse (en poste ou sortis)", aide: MOTS.registre, ton: "gris" },
-                { etape: "recrutes", libelle: "Recrutés", n: s!.total.recrutes, detail: `${s!.taux.integration} % du registre`, aide: MOTS.recrute, ton: "gris" },
-                { etape: "affectes", libelle: "Affectés", n: s!.total.affectes, detail: `${s!.taux.affectation} % des recrutés`, aide: MOTS.affecte, ton: "gris" },
-                s!.total.payes || !s!.total.attente
-                  ? { etape: "payes", libelle: "Payés (matricule solde)", n: s!.total.payes, detail: s!.total.attente ? `${nf.format(s!.total.attente)} en attente de matricule` : `${s!.taux.priseEnCharge} % des recrutés`, aide: MOTS.paye, ton: s!.total.attente ? "jaune" : "vert" }
-                  : { etape: "attente", libelle: "Payés (matricule solde)", n: s!.total.payes, detail: `${nf.format(s!.total.attente)} en attente de matricule`, aide: MOTS.paye, ton: "jaune" },
-              ] as const).map((e, i) => (
-                <div key={e.libelle} className="flex min-w-[150px] flex-1 items-stretch gap-2">
-                  {i > 0 && <span className="self-center text-zinc-400" aria-hidden>→</span>}
-                  <div className="flex-1">
-                    <CarteListe libelle={e.libelle} aide={<Aide>{e.aide}</Aide>} valeur={e.n} detail={e.detail} ton={e.ton as Ton} active={vue === "liste" && etape === e.etape} ouvrir={() => voirEtape(e.etape)} />
-                  </div>
-                </div>
-              ))}
-            </div>
-            <p className="text-[12px] text-zinc-600">
-              Hors du parcours : <strong>{nf.format(s!.total.reste)}</strong> encore payés en bourse, pas encore recrutés
-              {s!.total.aVerifier > 0 && <> · <strong>{nf.format(s!.total.aVerifier)}</strong> à vérifier (même nom qu’un fonctionnaire, sans date de naissance pour être sûr : pas comptés)</>}
-              {s!.absentsRegistre > 0 && <> · <strong>{nf.format(s!.absentsRegistre)}</strong> recrue(s) des textes absentes du registre</>}.
-            </p>
-          </section>
+          {/* 2. Le registre de la bourse : chaque fiche comptée une fois, des chiffres qui s'additionnent */}
+          <BlocRegistre r={s!.repartition} taux={s!.taux.integration} absents={s!.absentsRegistre} etape={vue === "liste" ? etape : ""} voir={voirEtape} />
 
           <div id="listes-suivi" className="scroll-mt-4">
             <Segments
@@ -251,7 +235,7 @@ export default function SuiviIntegration() {
               changer={setVue}
               options={[
                 { valeur: "synthese", libelle: "Synthèse" },
-                { valeur: "liste", libelle: `Liste nominative (${nf.format(d.donnees.total)})` },
+                { valeur: "liste", libelle: "Liste nominative" },
                 { valeur: "personnel", libelle: "Base du personnel" },
                 { valeur: "sansLien", libelle: "Fiches du personnel sans lien avec le registre" },
               ]}
@@ -379,7 +363,7 @@ export default function SuiviIntegration() {
 
           {vue === "liste" && (
             <Carte
-              titre={`Liste nominative (${nf.format(d.donnees.total)})`}
+              titre={`Liste nominative : ${nf.format(d.donnees.total)} personne(s)`}
               actions={<Saisie className="w-72" value={recherche} onChange={(e) => { setRecherche(e.target.value); setPage(1); }} placeholder="Nom, n° de texte, de note, matricule…" />}
             >
               {etape && (
@@ -452,7 +436,21 @@ export default function SuiviIntegration() {
                             <span className="text-zinc-400">—</span>
                           )}
                         </td>
-                        <td className="text-[12px] text-zinc-600">{l.registre === "EN_POSTE" ? "en cours" : l.registre === "SORTI" ? <>{l.motifSortie}<br />dernier mois : {l.dernierMoisBourse}</> : "absent du registre"}</td>
+                        <td className="min-w-[10rem] text-[12px] text-zinc-600">
+                          {l.registre === "EN_POSTE" ? (
+                            "en cours"
+                          ) : l.registre === "SORTI" ? (
+                            <>
+                              <span className="font-medium text-zinc-800">Sorti : {l.motifSortie}</span>
+                              <br />
+                              {l.dateSortie ? `le ${l.dateSortie}` : <span className="text-or-700">date de sortie non écrite</span>}
+                              <br />
+                              dernier mois payé : {l.dernierMoisBourse}
+                            </>
+                          ) : (
+                            "absent du registre"
+                          )}
+                        </td>
                         <td>
                           <Badge ton={TON[l.situation] ?? "gris"}>{d.donnees!.situations[l.situation]}</Badge>
                           {l.aRegler.length > 0 && <div className="mt-1 text-[11px] text-rouge-600">{l.aRegler.join(" · ")}</div>}
@@ -481,5 +479,100 @@ export default function SuiviIntegration() {
         </>
       )}
     </div>
+  );
+}
+
+/** Une ligne cliquable d'un bloc : libellé, nombre, et la liste qui s'ouvre. */
+function Detail({ libelle, n, sous, ton, active, ouvrir }: { libelle: React.ReactNode; n: number; sous?: React.ReactNode; ton?: string; active?: boolean; ouvrir?: () => void }) {
+  const corps = (
+    <>
+      <span className="min-w-0">
+        <span className={ton ?? "text-zinc-700"}>{libelle}</span>
+        {sous && <span className="block text-[11px] text-zinc-500">{sous}</span>}
+      </span>
+      <span className="shrink-0 font-semibold tabular-nums">{nf.format(n)}</span>
+    </>
+  );
+  return ouvrir ? (
+    <button type="button" onClick={ouvrir} title="Voir la liste" className={`flex w-full items-start justify-between gap-3 rounded-xl px-2 py-1.5 text-left text-[13px] hover:bg-zinc-50 ${active ? "bg-marque-50 ring-1 ring-marque-200" : ""}`}>
+      {corps}
+    </button>
+  ) : (
+    <div className="flex w-full items-start justify-between gap-3 px-2 py-1.5 text-[13px]">{corps}</div>
+  );
+}
+
+/**
+ * Le registre de la bourse, sans ambiguïté (DG, 18/11/2026) : chaque fiche est comptée une fois —
+ * encore en bourse + sortis = total ; les sortis par motif avec leurs dates ; les recrutés, avec ou
+ * sans fiche de fonctionnaire, payés ou en attente de matricule. Chaque ligne ouvre sa liste.
+ */
+function BlocRegistre({ r, taux, absents, etape, voir }: { r: Repartition; taux: number; absents: number; etape: string; voir: (e: string) => void }) {
+  const periode = (m: Repartition["sortis"]["parMotif"][number]) =>
+    [m.du ? (m.du === m.au ? `le ${m.du}` : `du ${m.du} au ${m.au}`) : "", m.sansDate ? `${nf.format(m.sansDate)} sans date de sortie` : ""].filter(Boolean).join(" · ");
+  return (
+    <section className="space-y-3">
+      <h2 className="text-[15px] font-semibold text-encre">
+        2. Le registre de la bourse : ce que sont devenues les {nf.format(r.fiches)} fiches <Aide>{MOTS.registre}</Aide>
+      </h2>
+      <p className="text-[13px] text-zinc-600">
+        Chaque fiche est comptée une seule fois : <strong>{nf.format(r.enPoste.total)}</strong> encore en bourse + <strong>{nf.format(r.sortis.total)}</strong> sorties ={" "}
+        <strong>{nf.format(r.fiches)}</strong>.{" "}
+        {r.doublons > 0 && (
+          <>
+            Parmi les sorties, {nf.format(r.doublons)} {r.doublons > 1 ? "fiches étaient des doublons" : "fiche était un doublon"} (la même personne inscrite deux fois) : le registre compte donc{" "}
+            <strong>{nf.format(r.fiches - r.doublons)}</strong> personnes.
+          </>
+        )}{" "}
+        Cliquez une ligne pour voir la liste.
+      </p>
+      <div className="grid gap-3 lg:grid-cols-3">
+        <Carte titre={`Encore en bourse : ${nf.format(r.enPoste.total)}`}>
+          <p className="-mt-1 mb-2 text-[12px] text-zinc-500">En poste et payés chaque mois en bourse.</p>
+          <Detail libelle="Tous" n={r.enPoste.total} active={etape === "enposte"} ouvrir={() => voir("enposte")} />
+          <Detail libelle="Pas encore recrutés" n={r.enPoste.nonRecrutes} sous="ni fonctionnaire, ni contractuel, ni texte reçu" />
+          {r.enPoste.aVerifier > 0 && <Detail libelle="À vérifier" n={r.enPoste.aVerifier} ton="text-or-700" sous="même nom qu’un fonctionnaire, sans date de naissance pour être sûr" />}
+          {r.enPoste.recrutes > 0 && <Detail libelle="Déjà recrutés, encore payés en bourse" n={r.enPoste.recrutes} ton="text-rouge-600" sous="texte reçu ou fonctionnaire : la bourse doit s’arrêter" />}
+        </Carte>
+        <Carte titre={`Sortis de la bourse : ${nf.format(r.sortis.total)}`}>
+          <p className="-mt-1 mb-2 text-[12px] text-zinc-500">Ne sont plus payés en bourse. Le motif et la date de sortie de chacun sont dans la liste.</p>
+          <Detail libelle="Tous les sortis" n={r.sortis.total} active={etape === "sortis"} ouvrir={() => voir("sortis")} />
+          {r.sortis.parMotif.map((m) => (
+            <Detail key={m.code} libelle={m.libelle} n={m.n} sous={periode(m)} ton={m.code === "RECRUTE_FP" ? "text-marque-700" : undefined} active={etape === `sorti:${m.code}`} ouvrir={() => voir(`sorti:${m.code}`)} />
+          ))}
+        </Carte>
+        <Carte titre={`Recrutés : ${nf.format(r.recrutes.total)} (${taux} % du registre)`}>
+          <p className="-mt-1 mb-2 text-[12px] text-zinc-500">{MOTS.recrute}</p>
+          <Detail libelle="Tous les recrutés" n={r.recrutes.total} active={etape === "recrutes"} ouvrir={() => voir("recrutes")} />
+          <Detail libelle="Devenus fonctionnaires ou contractuels (fiche du personnel)" n={r.recrutes.avecFiche} active={etape === "recrutes-fiche"} ouvrir={() => voir("recrutes-fiche")} />
+          <div className="ml-4 border-l border-zinc-200 pl-2">
+            <Detail libelle="Payés (matricule solde)" n={r.recrutes.payes} ton="text-marque-700" active={etape === "payes"} ouvrir={() => voir("payes")} />
+            <Detail libelle="En attente de matricule" n={r.recrutes.attente} ton="text-or-700" sous="fiche de fonctionnaire sans matricule solde : salaire pas encore confirmé" active={etape === "attente"} ouvrir={() => voir("attente")} />
+          </div>
+          <Detail
+            libelle="Pas encore dans la base du personnel"
+            n={r.recrutes.sansFiche}
+            sous={`texte d’intégration reçu ou sortie « recruté »${r.recrutes.sansFicheEnPoste ? ` · dont ${nf.format(r.recrutes.sansFicheEnPoste)} encore payés en bourse` : ""}`}
+            active={etape === "recrutes-sans-fiche"}
+            ouvrir={() => voir("recrutes-sans-fiche")}
+          />
+        </Carte>
+      </div>
+      {r.recrutes.attente > 0 && (
+        <Alerte ton="jaune">
+          <strong>Les {nf.format(r.recrutes.attente)} « en attente de matricule »</strong>
+          {r.recrutes.attenteSortisFP === r.recrutes.attente
+            ? " sont tous des volontaires ou communautaires sortis de la bourse avec le motif « recruté à la Fonction publique »."
+            : r.recrutes.attenteSortisFP
+              ? ` : ${nf.format(r.recrutes.attenteSortisFP)} sont sortis de la bourse avec le motif « recruté à la Fonction publique ».`
+              : " sont passés de la bourse à une fiche de fonctionnaire ou de contractuel."} Leur fiche de fonctionnaire existe, mais elle n’a pas encore de matricule solde : leur salaire n’est pas encore confirmé par la Solde. Ce sont les mêmes personnes que la carte « En attente de matricule » de la base du personnel, au-dessus.
+        </Alerte>
+      )}
+      {absents > 0 && (
+        <p className="text-[12px] text-zinc-600">
+          Hors du registre : <strong>{nf.format(absents)}</strong> recrue(s) des textes d’origine volontaire ou communautaire, introuvables dans le registre de la bourse (dans la liste nominative, situation « absent du registre »).
+        </p>
+      )}
+    </section>
   );
 }
