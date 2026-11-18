@@ -7,6 +7,7 @@ import { CYCLES } from "@/lib/ecoles";
 
 interface Ecole {
   nom: string;
+  code?: string | null;
   cycle: string | null;
   inspection: string | null;
   localite: string | null;
@@ -18,7 +19,8 @@ interface Ecole {
 
 const COLONNES: ColonneImprimee<Ecole>[] = [
   { titre: "N°", largeur: 5, valeur: (_l, i) => i + 1, droite: true },
-  { titre: "École", largeur: 28, valeur: (l) => l.nom },
+  { titre: "Code", largeur: 9, valeur: (l) => l.code ?? "—" },
+  { titre: "École", largeur: 24, valeur: (l) => l.nom },
   { titre: "Cycle", largeur: 10, valeur: (l) => (l.cycle ? (CYCLES[l.cycle] ?? l.cycle) : "—") },
   { titre: "Inspection", largeur: 13, valeur: (l) => l.inspection ?? "—" },
   { titre: "Localité", largeur: 15, valeur: (l) => l.localite ?? "—" },

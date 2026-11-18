@@ -14,6 +14,7 @@ import { CYCLES } from "@/lib/ecoles";
 interface Ligne {
   id: number;
   nom: string;
+  code: string | null;
   cycle: string | null;
   localite: string | null;
   departement: string | null;
@@ -68,7 +69,7 @@ function Ecoles() {
         sousTitre="Pour chaque école : ses bâtiments et ses salles, les classes ouvertes de l’année, les agents qui y sont rattachés, et le besoin en enseignants qui s’en déduit (déficit ou pléthore)."
       />
       <div className="grid gap-3 sm:grid-cols-[1fr_14rem_12rem]">
-        <Saisie value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher une école (nom, localité)…" />
+        <Saisie value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher une école (nom, localité, code)…" />
         {central ? (
           <Liste value={departement} onChange={(e) => {
               setDepartement(e.target.value);
@@ -120,6 +121,7 @@ function Ecoles() {
                         <School className="size-3.5 text-zinc-400" />
                         {l.nom}
                       </Link>
+                      {l.code && <div className="mt-0.5 pl-5.5 font-mono text-[11px] text-zinc-400">{l.code}</div>}
                     </td>
                     <td>{l.cycle ? <Badge ton="gris">{CYCLES[l.cycle] ?? l.cycle}</Badge> : "—"}</td>
                     <td className="text-[12px] text-zinc-600">{l.inspection ?? "—"}</td>
