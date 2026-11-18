@@ -532,6 +532,13 @@ export const ESPACES: Espace[] = [
         explication: "Pour chaque école : bâtiments, salles, classes ouvertes de l’année, agents rattachés, et le besoin en enseignants qui s’en déduit.",
       },
       {
+        href: "/ecoles/a-controler",
+        libelle: "Écoles à contrôler",
+        icone: Building2,
+        visible: traiter,
+        explication: "Les écoles qui se ressemblent (même école ou deux écoles) et celles absentes de l’organigramme (à proposer au DG) : pour compter juste les effectifs par école.",
+      },
+      {
         groupe: "Besoins en personnel",
         href: "/ecoles/besoins",
         libelle: "Besoins en enseignants",
@@ -648,7 +655,7 @@ export const ESPACES: Espace[] = [
     titre: "Banque mondiale",
     icone: Landmark,
     description:
-      "Le travail pour la Banque mondiale : suivi de l’intégration, effectifs par école, écoles à contrôler, rapprochement des rapports des DDEPPSA. Ce volet LIT nos bases mais n’y écrit JAMAIS : les corrections, décisions et listes faites ici restent ici (DG, 17/11/2026).",
+      "Le travail pour la Banque mondiale : suivi de l’intégration, effectifs par école, rapprochement des rapports des DDEPPSA. Ce volet LIT nos bases mais n’y écrit JAMAIS : les corrections, décisions et listes faites ici restent ici (DG, 17/11/2026).",
     rubriques: [
       {
         href: "/enrolement/suivi-integration",
@@ -663,13 +670,6 @@ export const ESPACES: Espace[] = [
         icone: BarChart3,
         visible: traiter,
         explication: "Volontaires, communautaires, contractuels et fonctionnaires de chaque école, par DEPPSA ; les écoles de 3 fonctionnaires ou moins (contractuels compris) en priorité ; Excel.",
-      },
-      {
-        href: "/enrolement/ecoles-a-controler",
-        libelle: "Écoles à contrôler",
-        icone: Building2,
-        visible: traiter,
-        explication: "Les écoles qui se ressemblent (même école ou deux écoles), les noms à harmoniser, les écoles absentes de l’organigramme : des décisions de comptage, propres à ce volet.",
       },
       {
         href: "/enrolement/rapprochement-rapports",

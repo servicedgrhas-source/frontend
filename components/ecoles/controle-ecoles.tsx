@@ -1,6 +1,6 @@
 "use client";
 
-import { GitMerge, Pencil } from "lucide-react";
+import { Building2, Download, GitMerge, Pencil } from "lucide-react";
 import { useState } from "react";
 import { FraicheurCalcul } from "@/components/fraicheur-calcul";
 import { useSession } from "@/components/session";
@@ -9,7 +9,7 @@ import { api, qs, useApi } from "@/lib/api";
 import { peut, type Ton } from "@/lib/libelles";
 
 /*
- * Les écoles à contrôler (DG, 17/11/2026), dans le volet Banque mondiale : les écoles qui se
+ * Les écoles à contrôler (DG, 17/11/2026), dans Structures scolaires (18/11/2026) : les écoles qui se
  * ressemblent (même école ou deux écoles ?), les noms écrits de plusieurs façons, les écoles absentes
  * de l'organigramme (à rattacher à leur inspection), et les décisions prises. La page de la Banque
  * mondiale les montre seulement.
@@ -51,6 +51,8 @@ export interface Ecole extends Nombres {
 
 export interface EcoleDetaillee extends Ecole {
   variantes: { ecrit: string; n: number }[];
+  /** La proposition d'ajout à l'organigramme (DG), s'il y en a une (18/11/2026). */
+  proposition?: { etat: "A_CONTROLER" | "VALIDEE" | "REJETEE"; note: string | null; controlePar: string | null } | null;
 }
 
 export interface DecisionEcole {
@@ -202,19 +204,21 @@ export function ListeDecisions({ decisions, annuler, controle }: { decisions: De
   );
 }
 
+// « Noms à harmoniser » n'est plus à l'écran (18/11/2026) : rien à décider, la liste reste dans l'Excel
 type Onglet = "ressemblances" | "hors-organigramme" | "harmoniser" | "decisions";
 
 /** Les écoles à contrôler : ressemblances, hors organigramme, noms à harmoniser, décisions. */
 export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
   const { profil, refs } = useSession();
   const [onglet, setOnglet] = useState<Onglet>(
-    ["ressemblances", "hors-organigramme", "harmoniser", "decisions"].includes(ongletInitial ?? "") ? (ongletInitial as Onglet) : "ressemblances",
+    ["ressemblances", "hors-organigramme", "decisions"].includes(ongletInitial ?? "") ? (ongletInitial as Onglet) : "ressemblances",
   );
   const [departementId, setDepartementId] = useState("");
   const [cycle, setCycle] = useState("TOUS");
   const [recherche, setRecherche] = useState("");
   const [page, setPage] = useState(1);
   const [ouverte, setOuverte] = useState<string | null>(null);
+  const [aProposer, setAProposer] = useState<EcoleDetaillee | null>(null);
   const [enCours, setEnCours] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [succes, setSucces] = useState<string | null>(null);
@@ -324,9 +328,17 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <p className="max-w-3xl text-[13px] text-zinc-600">
             Les noms d’écoles écrits dans les fichiers (registre de la bourse, base du personnel) ne sont pas toujours ceux de l’organigramme. Ici, on tranche : <strong>même école</strong> ou <strong>deux écoles</strong>, nom
-            corrigé ou pas une école. Ce sont des décisions de <strong>comptage</strong>, propres au volet Banque mondiale : nos bases (fiches, organigramme) ne sont jamais modifiées ; chaque décision s’annule.
+            corrigé ou pas une école. Ce sont des décisions de <strong>comptage</strong>, pour compter juste les effectifs par école : les fiches et l’organigramme ne sont pas modifiés ici ; chaque décision s’annule.
           </p>
-          {n && <FraicheurCalcul calculeLe={n.calculeLe} aJour={n.aJour} recharger={resume.recharger} />}
+          <div className="flex flex-col items-end gap-2">
+            {n && <FraicheurCalcul calculeLe={n.calculeLe} aJour={n.aJour} recharger={resume.recharger} />}
+            <Bouton
+              onClick={() => api.telecharger(`${API}/excel${qs(filtres)}`, "Écoles à contrôler.xlsx").catch((x: Error) => setErreur(x.message))}
+              title="Effectifs par école, plus les noms d’écoles à harmoniser dans les fichiers d’origine et les écoles qui se ressemblent"
+            >
+              <Download /> Excel (noms à harmoniser compris)
+            </Bouton>
+          </div>
         </div>
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
           <Liste value={departementId} onChange={(e) => changer(setDepartementId)(e.target.value)} vide="Toutes les DEPPSA" options={refs.departements.map((x) => ({ valeur: x.id, libelle: x.nom }))} />
@@ -345,7 +357,6 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
         options={[
           { valeur: "ressemblances", libelle: `Écoles qui se ressemblent${n ? ` (${nf.format(n.ressemblances)})` : ""}` },
           { valeur: "hors-organigramme", libelle: `Hors organigramme${n ? ` (${nf.format(n.horsOrganigramme)})` : ""}` },
-          { valeur: "harmoniser", libelle: `Noms à harmoniser${n ? ` (${nf.format(n.aHarmoniser)})` : ""}` },
           { valeur: "decisions", libelle: `Décisions${n ? ` (${nf.format(n.decisions)})` : ""}` },
         ]}
       />
@@ -480,7 +491,7 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
           <p className="mb-3 text-[12px] text-zinc-500">
             {onglet === "harmoniser"
               ? "Une même école écrite de plusieurs façons dans les fichiers. Elle est déjà comptée une seule fois ; ouvrez-la pour lui donner son nom officiel, ou la compter avec une autre école."
-              : "Écoles connues seulement par le nom écrit dans les fichiers : elles ne sont pas dans l’organigramme (Établissements). Ouvrez-les si c’est une autre école mal écrite (même école) ou pas une école. L’ajout à l’organigramme se fait dans Administration › Organigramme, pas ici."}
+              : "Écoles connues seulement par le nom écrit dans les fichiers : elles ne sont pas dans l’organigramme (Établissements). Ouvrez-les si c’est une autre école mal écrite (même école) ou pas une école. Une vraie école peut être proposée à l’organigramme : elle n’y entre que si le DG valide (Administration › Organigramme)."}
             {" "}Les plus nombreuses d’abord.
           </p>
           {l.erreur && <Alerte>{l.erreur}</Alerte>}
@@ -509,6 +520,13 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
                       <div className="mt-0.5 flex flex-wrap gap-1">
                         {e.organigramme ? <Badge ton="vert">dans l’organigramme</Badge> : <Badge ton="gris">hors organigramme</Badge>}
                         {e.proche && <Badge ton="jaune">≈ {e.proche.nom} ({pourcent(e.proche.score)})</Badge>}
+                        {e.proposition?.etat === "A_CONTROLER" && <Badge ton="bleu">proposée à l’organigramme : en attente du DG</Badge>}
+                        {e.proposition?.etat === "VALIDEE" && <Badge ton="vert">ajoutée à l’organigramme</Badge>}
+                        {e.proposition?.etat === "REJETEE" && (
+                          <Badge ton="rouge">
+                            proposition rejetée{e.proposition.note ? ` : « ${e.proposition.note} »` : ""}
+                          </Badge>
+                        )}
                       </div>
                     </td>
                     <td className="text-[12px] text-zinc-600">
@@ -532,6 +550,11 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
                         <Bouton variante="discret" onClick={() => setOuverte(e.id)}>
                           <Pencil /> Décider
                         </Bouton>
+                        {!e.organigramme && e.proposition?.etat !== "A_CONTROLER" && e.proposition?.etat !== "VALIDEE" && (
+                          <Bouton variante="discret" onClick={() => setAProposer(e)} title="L’école n’entre dans l’organigramme que si le DG valide">
+                            <Building2 /> Proposer à l’organigramme
+                          </Bouton>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -550,8 +573,90 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
         </Carte>
       )}
 
+      {aProposer && (
+        <ModaleProposition
+          ecole={aProposer}
+          fermer={() => setAProposer(null)}
+          fait={(nom) => {
+            setAProposer(null);
+            setSucces(`« ${nom} » est proposée à l’organigramme : elle y entrera si le DG valide (Administration › Organigramme).`);
+            toutRelire();
+          }}
+        />
+      )}
       {ouverte && <ModaleEcole id={ouverte} fermer={() => setOuverte(null)} decider={decider} annuler={annuler} controle={controle} departements={refs.departements} />}
     </div>
+  );
+}
+
+interface GroupeInspections {
+  departementId: number | null;
+  departement: string;
+  inspections: { id: number; nom: string; sigle: string; cycle: string | null }[];
+}
+
+/**
+ * Proposer une école hors organigramme à l'organigramme (18/11/2026) : nom officiel, cycle et
+ * inspection. Rien n'est créé ici : la proposition attend la décision du DG.
+ */
+function ModaleProposition({ ecole, fermer, fait }: { ecole: EcoleDetaillee; fermer: () => void; fait: (nom: string) => void }) {
+  const ins = useApi<GroupeInspections[]>(`${API}/inspections`);
+  const [nom, setNom] = useState(ecole.nom);
+  const [cycle, setCycle] = useState(ecole.cycle ?? "");
+  const [dep, setDep] = useState(ecole.departementId === null ? "" : String(ecole.departementId));
+  const [inspection, setInspection] = useState("");
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const groupe = ins.donnees?.find((g) => String(g.departementId ?? "") === dep);
+  // Les inspections du cycle de l'école d'abord
+  const liste = [...(groupe?.inspections ?? [])].sort((a, b) => Number(b.cycle === cycle) - Number(a.cycle === cycle) || a.nom.localeCompare(b.nom));
+  const envoyer = async () => {
+    setErreur(null);
+    setEnvoi(true);
+    try {
+      await api.post(`${API}/propositions`, { cle: ecole.id, nom: nom.trim(), cycle, inspectionId: Number(inspection) });
+      fait(nom.trim());
+    } catch (x) {
+      setErreur((x as Error).message);
+    } finally {
+      setEnvoi(false);
+    }
+  };
+  return (
+    <Modale titre={`Proposer « ${ecole.nom} » à l’organigramme`} ouverte fermer={fermer}>
+      <div className="space-y-4">
+        <p className="text-[13px] text-zinc-600">
+          L’école n’est <strong>pas créée tout de suite</strong> : la proposition part au DG (Administration › Organigramme), qui la valide ou la rejette. Écrivez son nom officiel et choisissez son inspection.
+        </p>
+        <Champ libelle="Nom officiel">
+          <Saisie value={nom} onChange={(e) => setNom(e.target.value)} />
+        </Champ>
+        <Champ libelle="Cycle">
+          <Liste value={cycle} onChange={(e) => setCycle(e.target.value)} vide="Choisir…" options={Object.entries(CYCLES_ECOLES).map(([valeur, libelle]) => ({ valeur, libelle }))} />
+        </Champ>
+        <Champ libelle="DEPPSA">
+          <Liste
+            value={dep}
+            onChange={(e) => {
+              setDep(e.target.value);
+              setInspection("");
+            }}
+            vide="Choisir…"
+            options={(ins.donnees ?? []).map((g) => ({ valeur: String(g.departementId ?? ""), libelle: g.departement }))}
+          />
+        </Champ>
+        <Champ libelle="Inspection">
+          <Liste value={inspection} onChange={(e) => setInspection(e.target.value)} vide={ins.donnees ? "Choisir…" : "Chargement…"} options={liste.map((i) => ({ valeur: String(i.id), libelle: `${i.nom}${i.cycle ? ` (${CYCLES_ECOLES[i.cycle] ?? i.cycle})` : ""}` }))} />
+        </Champ>
+        {erreur && <Alerte>{erreur}</Alerte>}
+        <div className="flex justify-end gap-2">
+          <Bouton onClick={fermer}>Annuler</Bouton>
+          <Bouton variante="principal" disabled={!nom.trim() || !cycle || !inspection} chargement={envoi} onClick={envoyer}>
+            <Building2 /> Proposer au DG
+          </Bouton>
+        </div>
+      </div>
+    </Modale>
   );
 }
 

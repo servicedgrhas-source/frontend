@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { ETAT_AJOUT, libelleStatut, type Manques, peutControlerAjout, peutRecenser, Taux, useConfigRecensement } from "@/components/recensement/commun";
 import { ApercuFiche } from "@/components/recensement/apercu-fiche";
+import { PropositionsAgents } from "@/components/banque-mondiale/propositions";
 import { ControleModifications } from "@/components/recensement/controle-modifications";
 import { ImportFichier } from "@/components/recensement/import-fichier";
 import { useSession } from "@/components/session";
@@ -265,6 +266,7 @@ function Recensement() {
         </div>
       </Carte>
       <ControleModifications />
+      <PropositionsAgents />
       {apercu !== null && (
         <ApercuFiche
           id={apercu}

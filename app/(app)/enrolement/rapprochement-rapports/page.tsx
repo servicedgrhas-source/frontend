@@ -83,6 +83,8 @@ interface Ligne {
   appliqueLe: string | null;
   /** La proposition faite à la base du personnel et son contrôle. */
   proposition: { id: number; etat: "A_CONTROLER" | "VALIDEE" | "REJETEE"; controlePar: string | null; note: string | null } | null;
+  /** La proposition d'ajout à la base du personnel d'une personne absente (18/11/2026). */
+  propositionAjout: { id: number; etat: "A_CONTROLER" | "VALIDEE" | "REJETEE"; controlePar: string | null; note: string | null } | null;
   base: FicheBase | null;
 }
 
@@ -113,6 +115,9 @@ const PROPOSABLES = ["LIEU_SERVICE", "DATE_PRISE_SERVICE", "DEPARTEMENT", "MATRI
 const proposables = (l: Ligne) => [...PROPOSABLES, ...(l.base && !l.base.dateNaissance ? ["DATE_NAISSANCE"] : [])].filter((k) => l.applique?.[k]);
 const aProposer = (l: Ligne) =>
   l.base?.type === "PERSONNEL" && !!l.agentId && proposables(l).length > 0 && l.proposition?.etat !== "A_CONTROLER" && l.proposition?.etat !== "VALIDEE";
+
+/** Une personne absente de nos bases que l'on peut proposer à l'ajout (rien n'est créé avant la validation). */
+const aProposerAjout = (l: Ligne) => !l.agentId && !l.volontaireId && l.propositionAjout?.etat !== "A_CONTROLER" && l.propositionAjout?.etat !== "VALIDEE";
 
 const STATUTS: Record<string, string> = { FONCTIONNAIRE: "Fonctionnaire", CONTRACTUEL: "Contractuel", VOLONTAIRE: "Volontaire", COMMUNAUTAIRE: "Communautaire" };
 const SECTEURS: Record<string, string> = { PUBLIC: "Public", CONVENTIONNE: "Conventionné", PRIVE: "Privé" };
@@ -301,6 +306,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
   const [lotEnCours, setLotEnCours] = useState<string | null>(null);
   const [erreursLot, setErreursLot] = useState<{ nom: string; message: string }[]>([]);
   const [ajouter, setAjouter] = useState<Ligne | null>(null);
+  const [proposerAjout, setProposerAjout] = useState<Ligne | null>(null);
   const [confirmation, demander] = useConfirmation();
 
   const decider = async (l: Ligne, corps: { decision: string | null; agentId?: number; volontaireId?: string }) => {
@@ -356,6 +362,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
     CONFIRMER: ["Confirmer la fiche trouvée", (l) => !!l.base && !l.decision, "Confirmer la fiche trouvée pour"],
     AJOUTER: ["Garder dans la liste", (l) => !l.base && l.decision !== "AJOUTE", "Garder dans la liste Banque mondiale (aucune fiche n’est créée dans nos bases)"],
     ABSENT: ["Déclarer absentes", (l) => !l.agentId && l.decision !== "ABSENT" && l.decision !== "AJOUTE", "Déclarer absentes de nos bases"],
+    PROPOSER_AJOUT: ["Proposer l’ajout à la base", aProposerAjout, "Proposer l’ajout à la base du personnel (aucune fiche n’est créée avant la validation du contrôle des modifications ; le type d’agent doit être écrit dans le rapport) de"],
     PROPOSER: ["Proposer à la base", aProposer, "Proposer au contrôle des modifications les corrections (lieu de service, prise de service, département, matricule ; la fiche ne change que si le contrôle valide) de"],
     ANNULER: ["Annuler la décision", (l) => !!l.decision && !(l.decision === "AJOUTE" && l.agentId), "Annuler la décision (la ligne revient « à traiter ») pour"],
   };
@@ -535,6 +542,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
               aussi={autresListes(l)}
               cocher={(oui) => cocher([l.id], oui)}
               ajouter={() => setAjouter(l)}
+              proposerAjout={() => setProposerAjout(l)}
               departement={r?.departement ?? null}
               enCours={enCours === l.id}
               decider={(c) => decider(l, c)}
@@ -558,6 +566,18 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
         />
       )}
       {volontaire && <FicheVolontaire id={volontaire} fermer={() => setVolontaire(null)} />}
+      {proposerAjout && (
+        <ModaleAjout
+          ligne={proposerAjout}
+          proposer
+          fermer={() => setProposerAjout(null)}
+          fait={() => {
+            setProposerAjout(null);
+            setSucces(`L’ajout de « ${proposerAjout.nomComplet} » est proposé au contrôle des modifications : la fiche ne sera créée que s’il valide.`);
+            d.recharger();
+          }}
+        />
+      )}
       {ajouter && (
         <ModaleAjout
           ligne={ajouter}
@@ -592,6 +612,7 @@ function CarteLigne({
   coche,
   cocher,
   ajouter,
+  proposerAjout,
   departement,
   enCours,
   decider,
@@ -605,6 +626,7 @@ function CarteLigne({
   coche: boolean;
   cocher: (oui: boolean) => void;
   ajouter: () => void;
+  proposerAjout: () => void;
   departement: string | null;
   enCours: boolean;
   decider: (c: { decision: string | null; agentId?: number; volontaireId?: string }) => void;
@@ -724,6 +746,15 @@ function CarteLigne({
           )}
         </div>
       )}
+      {l.propositionAjout && (
+        <div className={`mt-3 rounded-2xl px-4 py-2.5 text-[12px] ring-1 ${l.propositionAjout.etat === "REJETEE" ? "bg-rouge-50 text-rouge-800 ring-rouge-100" : "bg-sky-50 text-sky-800 ring-sky-100"}`}>
+          {l.propositionAjout.etat === "A_CONTROLER"
+            ? "Ajout proposé à la base du personnel : en attente du contrôle des modifications (aucune fiche pour l’instant)."
+            : l.propositionAjout.etat === "VALIDEE"
+              ? `Ajout validé${l.propositionAjout.controlePar ? ` par ${l.propositionAjout.controlePar}` : ""} : la fiche est créée dans la base du personnel.`
+              : `Ajout rejeté${l.propositionAjout.controlePar ? ` par ${l.propositionAjout.controlePar}` : ""}${l.propositionAjout.note ? ` (« ${l.propositionAjout.note} »)` : ""}.`}
+        </div>
+      )}
       {!!l.candidats.length && (
         <div className="mt-3">
           <div className="mb-1 text-[11px] font-semibold text-zinc-400 uppercase">Autres fiches possibles</div>
@@ -754,6 +785,11 @@ function CarteLigne({
         {aProposer(l) && (
           <Bouton chargement={enCours} onClick={proposer} title="La fiche ne change que si le contrôle des modifications valide">
             <Send /> Proposer à la base
+          </Bouton>
+        )}
+        {!f && aProposerAjout(l) && (
+          <Bouton chargement={enCours} onClick={proposerAjout} title="La fiche n’est créée que si le contrôle des modifications valide">
+            <UserPlus /> Proposer l’ajout à la base
           </Bouton>
         )}
         {!f && l.decision !== "AJOUTE" && (
@@ -941,8 +977,11 @@ function ModaleAppliquer({ ligne, departementId, fermer, fait }: { ligne: Ligne;
   );
 }
 
-/** Garder dans la liste Banque mondiale une personne absente de nos bases (aucune fiche créée). */
-function ModaleAjout({ ligne, fermer, fait }: { ligne: Ligne; fermer: () => void; fait: () => void }) {
+/**
+ * Garder dans la liste Banque mondiale une personne absente de nos bases (aucune fiche créée), ou
+ * proposer son ajout à la base du personnel (la fiche n'est créée que si le contrôle valide).
+ */
+function ModaleAjout({ ligne, fermer, fait, proposer = false }: { ligne: Ligne; fermer: () => void; fait: () => void; proposer?: boolean }) {
   const [statut, setStatut] = useState(ligne.statut ?? "");
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -950,7 +989,7 @@ function ModaleAjout({ ligne, fermer, fait }: { ligne: Ligne; fermer: () => void
     setErreur(null);
     setEnvoi(true);
     try {
-      await api.post(`${API}/lignes/${ligne.id}/ajouter`, { statut });
+      await api.post(`${API}/lignes/${ligne.id}/${proposer ? "proposer-ajout" : "ajouter"}`, { statut });
       fait();
     } catch (x) {
       setErreur((x as Error).message);
@@ -959,12 +998,19 @@ function ModaleAjout({ ligne, fermer, fait }: { ligne: Ligne; fermer: () => void
     }
   };
   return (
-    <Modale titre={`Garder « ${ligne.nomComplet} » dans la liste Banque mondiale`} ouverte fermer={fermer}>
+    <Modale titre={proposer ? `Proposer l’ajout de « ${ligne.nomComplet} » à la base du personnel` : `Garder « ${ligne.nomComplet} » dans la liste Banque mondiale`} ouverte fermer={fermer}>
       <div className="space-y-4">
-        <p className="text-[13px] text-zinc-600">
-          La personne n’est ni dans la base du personnel ni dans le registre. Elle est gardée <strong>dans la liste Banque mondiale</strong> avec ce que donne le rapport, et figure
-          dans l’export Excel. <strong>Aucune fiche n’est créée dans nos bases.</strong>
-        </p>
+        {proposer ? (
+          <p className="text-[13px] text-zinc-600">
+            La personne n’est ni dans la base du personnel ni dans le registre. Son ajout est <strong>proposé au contrôle des modifications</strong> (Recensement), avec ce que donne le
+            rapport (et vos corrections de la liste). <strong>Aucune fiche n’est créée</strong> tant que le contrôle n’a pas validé ; un rejet ne crée rien.
+          </p>
+        ) : (
+          <p className="text-[13px] text-zinc-600">
+            La personne n’est ni dans la base du personnel ni dans le registre. Elle est gardée <strong>dans la liste Banque mondiale</strong> avec ce que donne le rapport, et figure
+            dans l’export Excel. <strong>Aucune fiche n’est créée dans nos bases.</strong>
+          </p>
+        )}
         <Champ libelle="Type d’agent">
           <Liste value={statut} onChange={(e) => setStatut(e.target.value)} vide="Choisir…" options={Object.entries(STATUTS).map(([valeur, libelle]) => ({ valeur, libelle }))} />
         </Champ>
@@ -972,7 +1018,7 @@ function ModaleAjout({ ligne, fermer, fait }: { ligne: Ligne; fermer: () => void
         <div className="flex justify-end gap-2">
           <Bouton onClick={fermer}>Annuler</Bouton>
           <Bouton variante="principal" disabled={!statut} chargement={envoi} onClick={envoyer}>
-            <UserPlus /> Garder dans la liste
+            <UserPlus /> {proposer ? "Proposer l’ajout" : "Garder dans la liste"}
           </Bouton>
         </div>
       </div>

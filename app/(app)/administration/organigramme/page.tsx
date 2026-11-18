@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, ChevronUp, D
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { PropositionsEcoles } from "@/components/banque-mondiale/propositions";
 import { useSession } from "@/components/session";
 import { Aide, Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, EnTete, Liste, Modale, Saisie, Segments, ZoneFichier, cx, useConfirmation } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
@@ -471,6 +472,7 @@ export default function Organigramme() {
           <Plus /> Ajouter une direction générale
         </Bouton>
       )}
+      <PropositionsEcoles apres={() => structures.recharger()} />
       {vue === "departements" && dg && <ImportEtablissements apres={() => structures.recharger()} />}
       {vue === "departements" && dg && <PrefixesInspections apres={() => structures.recharger()} />}
       {vue === "departements" && dg && (

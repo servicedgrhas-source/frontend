@@ -9,9 +9,9 @@ import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 /*
- * Écoles à contrôler, dans le volet Banque mondiale (17/11/2026) : écoles qui se ressemblent, noms à
- * harmoniser, écoles hors organigramme, décisions. Ce sont des décisions de comptage, propres à ce
- * volet : nos bases (fiches, organigramme) ne sont jamais modifiées.
+ * Écoles à contrôler, dans Structures scolaires (DG, 18/11/2026 : à sa place, près des écoles) :
+ * écoles qui se ressemblent, écoles hors organigramme (à proposer au DG), décisions. Des décisions de
+ * comptage : les fiches et l'organigramme ne sont pas modifiés ici.
  */
 export default function Page() {
   return (
@@ -28,8 +28,8 @@ function EcolesAControler() {
   return (
     <div className="space-y-4">
       <EnTete
-        titre="Écoles à contrôler (Banque mondiale)"
-        sousTitre="Les noms d’écoles écrits de plusieurs façons, les écoles qui se ressemblent, celles qui ne sont pas dans l’organigramme. On tranche ici pour compter juste dans les effectifs par école : rien n’est modifié dans nos bases."
+        titre="Écoles à contrôler"
+        sousTitre="Les écoles qui se ressemblent et celles qui ne sont pas dans l’organigramme. On tranche ici pour compter juste les effectifs par école ; une vraie école absente de l’organigramme est proposée au DG. Les fiches et l’organigramme ne sont pas modifiés ici."
       />
       <ControleEcoles key={onglet} ongletInitial={onglet} />
     </div>
