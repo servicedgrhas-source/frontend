@@ -62,7 +62,8 @@
 .os {
   position: relative;
   overflow: hidden;
-  background: #dde2dd;
+  /* Plus foncé (18/11/2026 : l'ancien gris ne se voyait pas sur le fond clair) */
+  background: #c9d1ca;
   border-radius: 0.75rem;
 }
 .os::after {
@@ -70,11 +71,11 @@
   position: absolute;
   inset: 0;
   transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
-  animation: reflet 1.15s ease-in-out infinite;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.95), transparent);
+  animation: reflet 1.1s ease-in-out infinite;
 }
 .os-sombre {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.2);
 }
 .os-sombre::after {
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);

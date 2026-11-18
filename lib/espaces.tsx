@@ -669,7 +669,7 @@ export const ESPACES: Espace[] = [
         libelle: "Effectifs par école",
         icone: BarChart3,
         visible: traiter,
-        explication: "Volontaires, communautaires, contractuels et fonctionnaires de chaque école, par DEPPSA ; les écoles de 3 fonctionnaires ou moins (contractuels compris) en priorité ; Excel.",
+        explication: "Volontaires, communautaires, contractuels et fonctionnaires de chaque école, par DEPPSA ; les écoles de 3 fonctionnaires et moins (contractuels compris) en priorité ; Excel.",
       },
       {
         href: "/enrolement/rapprochement-rapports",

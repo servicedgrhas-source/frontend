@@ -185,3 +185,40 @@ export function SqueletteApplication() {
     </div>
   );
 }
+
+/** Une personne du rapprochement (rapport à gauche, nos bases à droite), pendant le chargement. */
+export function SqueletteCartesRapprochement({ n = 3 }: { n?: number }) {
+  return (
+    <div className="space-y-3" aria-busy="true" aria-label="Chargement des personnes">
+      {Array.from({ length: n }, (_, i) => (
+        <div key={i} className="space-y-4 rounded-3xl bg-white p-4 shadow-doux">
+          <div className="flex items-center gap-3">
+            <Os className="size-4 rounded" />
+            <Os className="h-4 w-16" />
+            <Os className="h-4 w-48" />
+            <Os className="h-6 w-28 rounded-full" />
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {[0, 1].map((c) => (
+              <div key={c} className="space-y-2 rounded-2xl bg-zinc-50 p-3">
+                <Os className="h-3 w-32" />
+                <Os className="h-5 w-56" />
+                {Array.from({ length: 5 }, (_, k) => (
+                  <div key={k} className="flex gap-3">
+                    <Os className="h-3 w-24" />
+                    <Os className="h-3 w-40" />
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Os className="h-10 w-52 rounded-xl" />
+            <Os className="h-10 w-36 rounded-xl" />
+            <Os className="h-10 w-44 rounded-xl" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}

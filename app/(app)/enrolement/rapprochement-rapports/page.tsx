@@ -4,6 +4,7 @@ import { ArrowLeft, Check, Download, FileSpreadsheet, Loader2, PenLine, RefreshC
 import Link from "next/link";
 import { useState } from "react";
 import { FicheVolontaire } from "@/components/enrolement/volontaires";
+import { SqueletteCartesRapprochement } from "@/components/squelette";
 import { useSession } from "@/components/session";
 import { Alerte, Badge, Bouton, Carte, Champ, EnTete, Liste, Modale, Saisie, Tableau, useConfirmation, Vide, ZoneFichier } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
@@ -197,7 +198,7 @@ export default function RapprochementRapports() {
         {!liste.donnees ? (
           <div className="space-y-2">
             {[0, 1, 2].map((i) => (
-              <div key={i} className="h-12 animate-pulse rounded-xl bg-zinc-100" />
+              <div key={i} className="h-12 os" />
             ))}
           </div>
         ) : !liste.donnees.length ? (
@@ -586,11 +587,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
       )}
 
       {!d.donnees ? (
-        <div className="space-y-3">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="h-40 animate-pulse rounded-3xl bg-white" />
-          ))}
-        </div>
+        <SqueletteCartesRapprochement />
       ) : !visibles.length ? (
         <Vide>Aucune personne pour ces filtres.</Vide>
       ) : (
@@ -898,7 +895,7 @@ function ModaleChoix({ ligne, fermer, prendre }: { ligne: Ligne; fermer: () => v
         {q.length >= 2 && !r.donnees ? (
           <div className="space-y-2">
             {[0, 1, 2].map((i) => (
-              <div key={i} className="h-10 animate-pulse rounded-xl bg-zinc-100" />
+              <div key={i} className="h-10 os" />
             ))}
           </div>
         ) : r.donnees && !r.donnees.length ? (
