@@ -49,6 +49,8 @@ interface FicheBase {
   departement: string | null;
   statut: string;
   etat: string | null;
+  /** Les autres informations de la fiche (genre, téléphone…), lisibles. */
+  infos?: Record<string, string>;
 }
 interface Candidat {
   agentId?: number;
@@ -87,6 +89,12 @@ interface Ligne {
   /** La proposition d'ajout à la base du personnel d'une personne absente (18/11/2026). */
   propositionAjout: { id: number; etat: "A_CONTROLER" | "VALIDEE" | "REJETEE"; controlePar: string | null; note: string | null } | null;
   base: FicheBase | null;
+  /** Les autres informations du bottin (genre, téléphone, diplômes…), lisibles (18/11/2026). */
+  infos: Record<string, string>;
+  /** Celles que la fiche du personnel n'a pas encore. */
+  infosNouvelles: string[];
+  /** Celles que la fiche a autrement (le rapport est plus récent). */
+  infosDifferentes: string[];
 }
 
 const RESULTATS: Record<Ligne["resultat"], [string, Ton]> = {
@@ -119,22 +127,34 @@ const proposables = (l: Ligne) => [...PROPOSABLES, ...(l.base && !l.base.dateNai
   return !!v && !(k.startsWith("DATE") && /^\d{4}$/.test(String(v as string)));
 });
 /**
- * Ce que le rapport donne et que nos bases n'ont pas (18/11/2026) : « Compléter la liste » le prend en
- * série, sans jamais remplacer une valeur de nos bases ni le nom.
+ * Les autres informations du bottin que la Banque mondiale n'utilise pas mais qui servent à nos bases
+ * (DG, 18/11/2026 : « ces infos ne doivent pas dormir ») : proposées à la fiche du personnel.
  */
-const aCompleter = (l: Ligne) => {
-  const f = l.base;
-  if (!f) return false;
-  const manque = (base: string | null, rapport: unknown, k: string) => !base && !!rapport && !l.applique?.[k];
-  return (
-    manque(f.lieu, l.ecole, "LIEU_SERVICE") ||
-    (f.type === "PERSONNEL" && manque(f.matricule, l.matricule, "MATRICULE_SOLDE")) ||
-    manque(f.dateNaissance, l.dateNaissance ?? l.anneeNaissance, "DATE_NAISSANCE") ||
-    manque(f.priseService, l.priseService, "DATE_PRISE_SERVICE")
-  );
+const LIBELLES_INFOS: Record<string, string> = {
+  GENRE: "Genre",
+  LIEU_NAISSANCE: "Lieu de naissance",
+  NATIONALITE: "Nationalité",
+  SITUATION_MATRIMONIALE: "Situation matrimoniale",
+  NOMBRE_ENFANTS: "Nombre d’enfants",
+  TELEPHONE_1: "Téléphone",
+  FONCTION: "Fonction",
+  CATEGORIE: "Catégorie",
+  ECHELON: "Échelon",
+  INDICE_SOLDE: "Indice solde",
+  DIPLOME_PRO: "Diplôme professionnel",
+  AUTRES_DIPLOMES: "Diplôme académique",
+  DATE_RECRUTEMENT: "Date de recrutement",
 };
+/** Les rubriques de la liste Banque mondiale que l'on peut prendre du rapport en série (jamais le nom). */
+const RUBRIQUES_PRENDRE = ["LIEU_SERVICE", "MATRICULE_SOLDE", "DATE_NAISSANCE", "DATE_PRISE_SERVICE", "DEPARTEMENT"];
+/** Une fiche seulement « probable » n'est pas touchée tant qu'on ne l'a pas confirmée. */
+const probableNonConfirmee = (l: Ligne) => l.resultat === "PROBABLE" && !l.decision;
 const aProposer = (l: Ligne) =>
-  l.base?.type === "PERSONNEL" && !!l.agentId && proposables(l).length > 0 && l.proposition?.etat !== "A_CONTROLER" && l.proposition?.etat !== "VALIDEE";
+  l.base?.type === "PERSONNEL" &&
+  !!l.agentId &&
+  !probableNonConfirmee(l) &&
+  l.proposition?.etat !== "A_CONTROLER" &&
+  (l.infosNouvelles.length > 0 || (proposables(l).length > 0 && l.proposition?.etat !== "VALIDEE"));
 
 /** Une personne absente de nos bases que l'on peut proposer à l'ajout (rien n'est créé avant la validation). */
 const aProposerAjout = (l: Ligne) => !l.agentId && !l.volontaireId && l.propositionAjout?.etat !== "A_CONTROLER" && l.propositionAjout?.etat !== "VALIDEE";
@@ -404,16 +424,18 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
     CONFIRMER: ["Confirmer la fiche trouvée", (l) => !!l.base && !l.decision, "Confirmer la fiche trouvée pour"],
     AJOUTER: ["Garder dans la liste", (l) => !l.base && l.decision !== "AJOUTE", "Garder dans la liste Banque mondiale (aucune fiche n’est créée dans nos bases)"],
     ABSENT: ["Déclarer absentes", (l) => !l.agentId && l.decision !== "ABSENT" && l.decision !== "AJOUTE", "Déclarer absentes de nos bases"],
-    COMPLETER_LISTE: ["Compléter la liste", aCompleter, "Prendre du rapport tout ce qui manque dans nos bases (lieu de service, matricule, dates, département ; jamais le nom, jamais une valeur déjà dans nos bases), dans la liste Banque mondiale seulement, pour"],
+    PRENDRE_RAPPORT: ["Prendre le rapport…", (l) => !!l.base, ""],
     PROPOSER_AJOUT: ["Proposer l’ajout à la base", aProposerAjout, "Proposer l’ajout à la base du personnel (aucune fiche n’est créée avant la validation du contrôle des modifications ; le type d’agent doit être écrit dans le rapport) de"],
-    PROPOSER: ["Proposer à la base", aProposer, "Proposer au contrôle des modifications les corrections (lieu de service, prise de service, département, matricule ; la fiche ne change que si le contrôle valide) de"],
+    PROPOSER: ["Proposer à la base", aProposer, "Proposer au contrôle des modifications ce que le rapport apporte : les corrections de la liste (lieu de service, prise de service, département, matricule) et les autres informations que la fiche n’a pas (genre, téléphone, situation, enfants, fonction, diplômes, échelon…). La fiche ne change que si le contrôle valide. Pour"],
     ANNULER: ["Annuler la décision", (l) => !!l.decision && !(l.decision === "AJOUTE" && l.agentId), "Annuler la décision (la ligne revient « à traiter ») pour"],
   };
-  const enLot = async (action: string) => {
+  const [prendre, setPrendre] = useState(false);
+  const enLot = async (action: string, options?: Record<string, unknown>) => {
     const [, possible, question] = ACTIONS[action];
     const ids = choisies.filter(possible).map((l) => l.id);
     if (!ids.length) return setErreur("Aucune des personnes cochées n’est concernée par cette action.");
-    if (!(await demander(`${question} ${nf.format(ids.length)} personne(s) ?`, "Oui, continuer"))) return;
+    // « Prendre le rapport » : la fenêtre de choix tient lieu de confirmation
+    if (!options && !(await demander(`${question} ${nf.format(ids.length)} personne(s) ?`, "Oui, continuer"))) return;
     setErreur(null);
     setSucces(null);
     setErreursLot([]);
@@ -422,8 +444,12 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
     // Décochées tout de suite : on ne peut pas relancer la même action sur les mêmes lignes
     setCochees(new Set());
     try {
-      const x = await api.post<{ faits: number; erreurs: { ligneId?: number; nom: string; message: string }[] }>(`${API}/${id}/lot`, { action, ids });
-      setSucces(`${nf.format(x.faits)} personne(s) traitée(s) sur ${nf.format(ids.length)}.`);
+      const x = await api.post<{ faits: number; proposees?: number; erreurs: { ligneId?: number; nom: string; message: string }[] }>(`${API}/${id}/lot`, { action, ids, ...options });
+      setSucces(
+        action === "PRENDRE_RAPPORT"
+          ? `${nf.format(x.faits)} personne(s) sur ${nf.format(ids.length)} : valeurs du rapport prises dans la liste Banque mondiale.${options?.proposer ? ` ${nf.format(x.proposees ?? 0)} proposition(s) envoyée(s) au contrôle des modifications (la fiche ne change que s’il valide).` : ""}`
+          : `${nf.format(x.faits)} personne(s) traitée(s) sur ${nf.format(ids.length)}.`,
+      );
       setErreursLot(x.erreurs);
       const refusees = new Set(x.erreurs.map((e) => e.ligneId).filter((v): v is number => !!v));
       const faites = ids.filter((i) => !refusees.has(i));
@@ -445,7 +471,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
   };
   // Une ligne : proposer ses corrections au contrôle des modifications
   const proposer = async (l: Ligne) => {
-    const quoi = proposables(l).map((k) => LIBELLES_RUBRIQUES[k].toLowerCase());
+    const quoi = [...proposables(l).map((k) => LIBELLES_RUBRIQUES[k]), ...l.infosNouvelles.map((k) => LIBELLES_INFOS[k] ?? k)].map((x) => x.toLowerCase());
     if (
       !(await demander(
         `Proposer à la base du personnel la correction de « ${l.base?.nom ?? l.nomComplet} » (${quoi.join(", ")}) ? La fiche ne change pas tout de suite : le contrôle des modifications valide ou rejette.`,
@@ -498,6 +524,17 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
           </>
         }
       />
+      {prendre && (
+        <ModalePrendre
+          n={choisies.filter(ACTIONS.PRENDRE_RAPPORT[1]).length}
+          annee={r?.anneeScolaire ?? ""}
+          fermer={() => setPrendre(false)}
+          lancer={(o) => {
+            setPrendre(false);
+            void enLot("PRENDRE_RAPPORT", o);
+          }}
+        />
+      )}
       {exporter && <ModaleExport id={id} nom={`Rapprochement ${r?.departement ?? ""} ${r?.anneeScolaire ?? ""}.xlsx`} fermer={() => setExporter(false)} />}
       {erreur && <Alerte>{erreur}</Alerte>}
       {succes && <Alerte ton="vert">{succes}</Alerte>}
@@ -578,7 +615,14 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
           {Object.entries(ACTIONS).map(([a, [libelle, possible]]) => {
             const n = choisies.filter(possible).length;
             return (
-              <Bouton key={a} variante={a === "CONFIRMER" ? "principal" : undefined} disabled={!n || !!lotEnCours} chargement={lotEnCours === a} onClick={() => void enLot(a)}>
+              <Bouton
+                key={a}
+                variante={a === "CONFIRMER" ? "principal" : undefined}
+                disabled={!n || !!lotEnCours}
+                chargement={lotEnCours === a}
+                onClick={() => (a === "PRENDRE_RAPPORT" ? setPrendre(true) : void enLot(a))}
+                title={a === "PRENDRE_RAPPORT" ? "Mettre dans la liste Banque mondiale les valeurs du rapport (plus récent que nos bases), et, si vous le cochez, les proposer à nos bases" : undefined}
+              >
                 {libelle} {n ? `(${nf.format(n)})` : ""}
               </Bouton>
             );
@@ -652,11 +696,25 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
           ligne={appliquer}
           departementId={r?.departementId ?? null}
           fermer={() => setAppliquer(null)}
-          fait={(n) => {
+          fait={(n, propose) => {
             setAppliquer(null);
-            setSucces(`${n} rubrique(s) corrigée(s) dans la liste Banque mondiale pour « ${appliquer.nomComplet} » (la fiche de nos bases ne change pas).`);
+            setSucces(
+              [
+                n ? `${n} rubrique(s) corrigée(s) dans la liste Banque mondiale pour « ${appliquer.nomComplet} ».` : "",
+                propose
+                  ? "Proposition envoyée au contrôle des modifications : la fiche du personnel ne change que s’il valide."
+                  : n
+                    ? "La fiche de nos bases ne change pas."
+                    : "",
+              ]
+                .filter(Boolean)
+                .join(" "),
+            );
             // Corriger, c'est reconnaître la personne : la ligne quitte « à traiter » tout de suite
-            appliquerLocal([appliquer.id], (x) => ({ decision: x.decision ?? (x.base ? "CONFIRME" : null) }));
+            appliquerLocal([appliquer.id], (x) => ({
+              decision: x.decision ?? (x.base && n ? "CONFIRME" : null),
+              ...(propose ? { proposition: { id: x.proposition?.id ?? 0, etat: "A_CONTROLER" as const, controlePar: null, note: null } } : {}),
+            }));
           }}
         />
       )}
@@ -749,6 +807,15 @@ function CarteLigne({
             departement,
             statut: l.statut ? STATUTS[l.statut] : null,
           })}
+          {Object.keys(l.infos ?? {}).length > 0 && (
+            <div className="mt-1.5 border-t border-zinc-200 pt-1.5 text-[11px] leading-relaxed text-zinc-500">
+              {Object.entries(l.infos).map(([k, v]) => (
+                <span key={k} className="mr-2 inline-block">
+                  <span className="text-zinc-400">{LIBELLES_INFOS[k] ?? k} :</span> {v}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <div className={`rounded-2xl p-3 ${f ? "bg-marque-50/50" : "bg-rouge-50"}`}>
           <div className="mb-1 text-[11px] font-semibold text-zinc-400 uppercase">{f?.type === "REGISTRE" ? "Registre des volontaires et des communautaires" : "Base du personnel"}</div>
@@ -811,6 +878,21 @@ function CarteLigne({
                   : `Proposée à la base du personnel : rejetée${l.proposition.controlePar ? ` par ${l.proposition.controlePar}` : ""}${l.proposition.note ? ` (« ${l.proposition.note} »)` : ""}.`}
             </div>
           )}
+        </div>
+      )}
+      {f?.type === "PERSONNEL" && l.infosNouvelles.length > 0 && l.proposition?.etat !== "A_CONTROLER" && (
+        <div className="mt-3 rounded-2xl bg-sky-50 px-4 py-2 text-[12px] text-sky-800 ring-1 ring-sky-100">
+          Le rapport apporte à notre fiche : {l.infosNouvelles.map((k) => (LIBELLES_INFOS[k] ?? k).toLowerCase()).join(", ")}.
+          {probableNonConfirmee(l) ? " Confirmez d’abord que c’est la bonne personne, puis « Proposer à la base »." : " « Proposer à la base » les envoie au contrôle des modifications."}
+        </div>
+      )}
+      {l.proposition && !l.applique && (
+        <div className={`mt-3 rounded-2xl px-4 py-2.5 text-[12px] ring-1 ${l.proposition.etat === "REJETEE" ? "bg-rouge-50 text-rouge-800 ring-rouge-100" : "bg-marque-50 text-marque-800 ring-marque-200"}`}>
+          {l.proposition.etat === "A_CONTROLER"
+            ? "Proposée à la base du personnel : en attente du contrôle des modifications."
+            : l.proposition.etat === "VALIDEE"
+              ? `Proposée à la base du personnel : validée${l.proposition.controlePar ? ` par ${l.proposition.controlePar}` : ""}, la fiche est à jour.`
+              : `Proposée à la base du personnel : rejetée${l.proposition.controlePar ? ` par ${l.proposition.controlePar}` : ""}${l.proposition.note ? ` (« ${l.proposition.note} »)` : ""}.`}
         </div>
       )}
       {l.propositionAjout && (
@@ -954,7 +1036,7 @@ function dateSaisie(v: string): string | null {
   return `${a}-${String(m).padStart(2, "0")}-${String(j).padStart(2, "0")}`;
 }
 
-function ModaleAppliquer({ ligne, departementId, fermer, fait }: { ligne: Ligne; departementId: number | null; fermer: () => void; fait: (n: number) => void }) {
+function ModaleAppliquer({ ligne, departementId, fermer, fait }: { ligne: Ligne; departementId: number | null; fermer: () => void; fait: (n: number, propose: boolean) => void }) {
   const { refs } = useSession();
   const f = ligne.base!;
   const depRapport = departementId ? (refs.departements.find((d) => String(d.id) === String(departementId))?.nom ?? null) : null;
@@ -971,11 +1053,30 @@ function ModaleAppliquer({ ligne, departementId, fermer, fait }: { ligne: Ligne;
   ).filter(([, r, b]) => r || b);
   const plat = (v: string | null) => (v ?? "").trim().toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ");
   const pareil = (r: string | null, b: string | null) => !!r && plat(r) === plat(b);
-  // Par défaut : la valeur de nos bases ; le rapport quand nos bases n'ont rien
-  const [choix, setChoix] = useState<Record<string, Choix>>(() => Object.fromEntries(rubriques.map(([k, r, b]) => [k, !b && r ? "RAPPORT" : "BASE"])));
+  // Par défaut (DG, 18/11/2026 : le rapport 2025-2026 est plus récent que nos bases de 2022-2024, il
+  // ne perd pas d'office) : la valeur du rapport quand il en donne une autre. Sauf le nom (souvent
+  // abrégé dans le rapport) et une date réduite à l'année quand nos bases ont la date complète.
+  const [choix, setChoix] = useState<Record<string, Choix>>(() =>
+    Object.fromEntries(
+      rubriques.map(([k, r, b, type]) => {
+        if (!r || pareil(r, b)) return [k, "BASE"];
+        if (!b) return [k, "RAPPORT"];
+        if (k === "NOMS_PRENOMS") return [k, "BASE"];
+        if (type === "date" && /^\d{4}$/.test(r.trim())) return [k, "BASE"];
+        return [k, "RAPPORT"];
+      }),
+    ),
+  );
   const [autres, setAutres] = useState<Record<string, string>>({});
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  // Proposer aussi à la base du personnel (contrôle des modifications) : la case, et les autres
+  // informations du bottin à envoyer (cochées d'avance : celles qui manquent ou diffèrent)
+  const personnel = f.type === "PERSONNEL" && !!ligne.agentId;
+  const infos = Object.keys(ligne.infos ?? {});
+  const [proposer, setProposer] = useState(false);
+  const [infosChoisies, setInfosChoisies] = useState<Set<string>>(() => new Set([...ligne.infosNouvelles, ...ligne.infosDifferentes]));
+  const enAttente = ligne.proposition?.etat === "A_CONTROLER";
 
   // La valeur envoyée pour une rubrique (ou une erreur à montrer)
   const valeur = (k: string, r: string | null, type: string): { v?: string; probleme?: string } => {
@@ -997,11 +1098,20 @@ function ModaleAppliquer({ ligne, departementId, fermer, fait }: { ligne: Ligne;
   const envoyer = async () => {
     setErreur(null);
     setEnvoi(true);
+    let n = 0;
     try {
-      const champs = Object.fromEntries(aCorriger.map(([k, r, , type]) => [k, valeur(k, r, type).v]));
-      const x = await api.post<{ rubriques: string[] }>(`${API}/lignes/${ligne.id}/appliquer`, { champs });
-      fait(x.rubriques.length);
+      if (aCorriger.length) {
+        const champs = Object.fromEntries(aCorriger.map(([k, r, , type]) => [k, valeur(k, r, type).v]));
+        n = (await api.post<{ rubriques: string[] }>(`${API}/lignes/${ligne.id}/appliquer`, { champs })).rubriques.length;
+      }
+      if (proposer) await api.post(`${API}/lignes/${ligne.id}/proposer`, { infos: [...infosChoisies], remplacer: true });
+      fait(n, proposer);
     } catch (e) {
+      // La liste a pu être corrigée avant que la proposition soit refusée : on le dit
+      if (n) {
+        setErreur(`${n} rubrique(s) corrigée(s) dans la liste, mais la proposition à la base n’est pas partie : ${(e as Error).message}`);
+        return;
+      }
       setErreur((e as Error).message);
     } finally {
       setEnvoi(false);
@@ -1026,7 +1136,8 @@ function ModaleAppliquer({ ligne, departementId, fermer, fait }: { ligne: Ligne;
       <div className="space-y-4">
         <p className="text-[13px] text-zinc-600">
           Pour chaque rubrique, <strong>cliquez la bonne valeur</strong> : celle du rapport de la DDEPPSA ou celle de nos bases (ou « Autre » pour l’écrire). C’est elle qui ira dans la liste et l’export Excel
-          de la Banque mondiale. <strong>Nos bases ne sont pas modifiées.</strong>
+          de la Banque mondiale. Le rapport de fin d’année est plus récent que nos bases (enrôlement 2022-2024) : <strong>sa valeur est choisie d’avance quand elle diffère</strong>, sauf le
+          nom (souvent abrégé dans le rapport). <strong>Nos bases ne sont pas modifiées</strong>, sauf si vous cochez « Proposer aussi à la base du personnel ».
         </p>
         <div className="hidden grid-cols-[10rem_1fr_1fr_6rem] gap-2 px-1 text-[11px] font-semibold text-zinc-400 uppercase sm:grid">
           <span>Rubrique</span>
@@ -1068,16 +1179,154 @@ function ModaleAppliquer({ ligne, departementId, fermer, fait }: { ligne: Ligne;
             );
           })}
         </div>
+        {personnel && (
+          <div className="rounded-2xl bg-sky-50/70 p-3 ring-1 ring-sky-100">
+            <label className="flex items-start gap-2 text-[13px]">
+              <input type="checkbox" className="mt-0.5 size-4 accent-marque-600" checked={proposer} disabled={enAttente} onChange={(e) => setProposer(e.target.checked)} />
+              <span>
+                <strong>Proposer aussi à la base du personnel</strong>
+                <span className="text-zinc-600">
+                  {" "}
+                  — les rubriques prises du rapport et les informations cochées ci-dessous partent au <strong>contrôle des modifications</strong> ; la fiche ne change que s’il valide.
+                  {enAttente && " Une proposition est déjà en attente du contrôle pour cette fiche."}
+                </span>
+              </span>
+            </label>
+            {proposer && infos.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="hidden grid-cols-[1.5rem_10rem_1fr_1fr] gap-2 px-1 text-[11px] font-semibold text-zinc-400 uppercase sm:grid">
+                  <span />
+                  <span>Autres informations</span>
+                  <span>Rapport de la DDEPPSA</span>
+                  <span>Nos bases</span>
+                </div>
+                {infos.map((k) => {
+                  const base = f.infos?.[k];
+                  const egal = !ligne.infosNouvelles.includes(k) && !ligne.infosDifferentes.includes(k);
+                  return (
+                    <label key={k} className={`grid grid-cols-[1.5rem_1fr] items-center gap-2 rounded-xl px-1 py-1 text-[12px] sm:grid-cols-[1.5rem_10rem_1fr_1fr] ${egal ? "text-zinc-400" : ""}`}>
+                      <input
+                        type="checkbox"
+                        className="size-4 accent-marque-600"
+                        disabled={egal}
+                        checked={!egal && infosChoisies.has(k)}
+                        onChange={(e) =>
+                          setInfosChoisies((s) => {
+                            const x = new Set(s);
+                            if (e.target.checked) x.add(k);
+                            else x.delete(k);
+                            return x;
+                          })
+                        }
+                      />
+                      <span className="font-medium">{LIBELLES_INFOS[k] ?? k}</span>
+                      <span className="col-start-2 sm:col-start-auto">{ligne.infos[k]}</span>
+                      <span className="col-start-2 text-zinc-500 sm:col-start-auto">{egal ? "pareil" : base || <span className="italic">vide dans nos bases</span>}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
         {erreur && <Alerte>{erreur}</Alerte>}
         <div className="flex flex-wrap items-center justify-end gap-2">
           <span className="mr-auto text-[12px] text-zinc-500">
             {aCorriger.length
               ? `${aCorriger.length} rubrique(s) prise(s) du rapport ou écrite(s) à la main.`
-              : "Tout est sur « Nos bases » : rien à corriger (utilisez plutôt « C’est bien cette personne »)."}
+              : proposer
+                ? "Rien à corriger dans la liste : seulement la proposition à la base."
+                : "Tout est sur « Nos bases » : rien à corriger (utilisez plutôt « C’est bien cette personne »)."}
           </span>
           <Bouton onClick={fermer}>Annuler</Bouton>
-          <Bouton variante="principal" disabled={!aCorriger.length || problemes.length > 0} chargement={envoi} onClick={envoyer}>
-            <PenLine /> Corriger {aCorriger.length ? `${aCorriger.length} rubrique(s)` : ""} dans la liste
+          <Bouton variante="principal" disabled={(!aCorriger.length && !proposer) || problemes.length > 0} chargement={envoi} onClick={envoyer}>
+            {aCorriger.length ? <PenLine /> : <Send />}
+            {aCorriger.length ? `Corriger ${aCorriger.length} rubrique(s) dans la liste${proposer ? " et proposer à la base" : ""}` : "Proposer à la base"}
+          </Bouton>
+        </div>
+      </div>
+    </Modale>
+  );
+}
+
+/**
+ * Prendre le rapport en série (DG, 18/11/2026) : le rapport de la DDEPPSA est plus récent que nos
+ * bases, ses valeurs vont dans la liste Banque mondiale pour les rubriques cochées — seulement là où
+ * nos bases sont vides, ou aussi là où elles diffèrent. Une case les propose en même temps à la base
+ * du personnel (contrôle des modifications), avec les autres informations du bottin.
+ */
+function ModalePrendre({ n, annee, fermer, lancer }: { n: number; annee: string; fermer: () => void; lancer: (o: { rubriques: string[]; remplacer: boolean; proposer: boolean; infos: string[] }) => void }) {
+  const [rubriques, setRubriques] = useState<Set<string>>(() => new Set(RUBRIQUES_PRENDRE));
+  const [remplacer, setRemplacer] = useState(true);
+  const [proposer, setProposer] = useState(false);
+  const [infos, setInfos] = useState<Set<string>>(() => new Set(Object.keys(LIBELLES_INFOS)));
+  const basculer = (set: (f: (s: Set<string>) => Set<string>) => void, k: string, oui: boolean) =>
+    set((s) => {
+      const x = new Set(s);
+      if (oui) x.add(k);
+      else x.delete(k);
+      return x;
+    });
+  const rien = !rubriques.size && !(proposer && infos.size);
+  return (
+    <Modale titre={`Prendre les valeurs du rapport de la DDEPPSA — ${nf.format(n)} personne(s)`} ouverte fermer={fermer} large>
+      <div className="space-y-4 text-[13px]">
+        <p className="text-zinc-600">
+          Le rapport de fin d’année {annee} est <strong>plus récent</strong> que nos bases (enrôlement 2022-2024). Ses valeurs vont dans la <strong>liste Banque mondiale</strong> (écran et export
+          Excel) pour les personnes cochées qui ont une fiche. Le nom n’est jamais remplacé en série (il est souvent abrégé dans le rapport) : corrigez-le personne par personne.
+        </p>
+        <div>
+          <div className="mb-1.5 text-[11px] font-semibold text-zinc-400 uppercase">Rubriques à prendre du rapport</div>
+          <div className="grid gap-1 sm:grid-cols-2">
+            {RUBRIQUES_PRENDRE.map((k) => (
+              <label key={k} className="flex items-center gap-2">
+                <input type="checkbox" className="size-4 accent-marque-600" checked={rubriques.has(k)} onChange={(e) => basculer(setRubriques, k, e.target.checked)} />
+                {LIBELLES_RUBRIQUES[k]}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-1.5 rounded-2xl bg-zinc-50 p-3">
+          <label className="flex items-start gap-2">
+            <input type="radio" name="remplacer" className="mt-0.5 size-4 accent-marque-600" checked={remplacer} onChange={() => setRemplacer(true)} />
+            <span>
+              <strong>Le rapport partout où il donne une valeur</strong> — aussi quand nos bases en ont une autre (le plus récent l’emporte). Une date réduite à l’année ne remplace pas une date complète.
+            </span>
+          </label>
+          <label className="flex items-start gap-2">
+            <input type="radio" name="remplacer" className="mt-0.5 size-4 accent-marque-600" checked={!remplacer} onChange={() => setRemplacer(false)} />
+            <span>
+              <strong>Seulement là où nos bases sont vides</strong> — ce que nos bases ont déjà est gardé.
+            </span>
+          </label>
+          <p className="pl-6 text-[12px] text-zinc-500">Une correction déjà faite à la main sur une personne est toujours gardée.</p>
+        </div>
+        <div className="rounded-2xl bg-sky-50/70 p-3 ring-1 ring-sky-100">
+          <label className="flex items-start gap-2">
+            <input type="checkbox" className="mt-0.5 size-4 accent-marque-600" checked={proposer} onChange={(e) => setProposer(e.target.checked)} />
+            <span>
+              <strong>Proposer aussi à la base du personnel</strong> — ces valeurs et les autres informations du bottin cochées ci-dessous partent au <strong>contrôle des modifications</strong> ; chaque
+              fiche ne change que s’il valide. Les fiches seulement « probables » non confirmées sont laissées de côté.
+            </span>
+          </label>
+          {proposer && (
+            <div className="mt-2 grid gap-1 pl-6 sm:grid-cols-2">
+              {Object.entries(LIBELLES_INFOS).map(([k, v]) => (
+                <label key={k} className="flex items-center gap-2 text-[12px]">
+                  <input type="checkbox" className="size-4 accent-marque-600" checked={infos.has(k)} onChange={(e) => basculer(setInfos, k, e.target.checked)} />
+                  {v}
+                </label>
+              ))}
+              <p className="text-[12px] text-zinc-500 sm:col-span-2">
+                {remplacer ? "Proposées quand la fiche ne les a pas ou les a autrement." : "Proposées seulement quand la fiche ne les a pas."} Le diplôme académique seulement si la fiche n’en a aucun.
+              </p>
+            </div>
+          )}
+        </div>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Bouton onClick={fermer}>Annuler</Bouton>
+          <Bouton variante="principal" disabled={rien || !n} onClick={() => lancer({ rubriques: [...rubriques], remplacer, proposer, infos: proposer ? [...infos] : [] })}>
+            <Check /> Prendre le rapport{proposer ? " et proposer à la base" : ""} ({nf.format(n)})
           </Bouton>
         </div>
       </div>

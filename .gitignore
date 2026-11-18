@@ -41,6 +41,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 /.next-essai
+/.next-essai-moi
 /essai.mjs
 
 # Fichier d’essai du stockage R2 (à supprimer)
