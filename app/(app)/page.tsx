@@ -6,7 +6,8 @@ import { useState } from "react";
 import { RechercheGlobale } from "@/components/recherche-globale";
 import { TableauDeBordCircuit } from "@/components/tableau-circuit";
 import { useSession } from "@/components/session";
-import { Alerte, Bouton, Carte, Chargement, Chiffre, Pastille, Progression } from "@/components/ui";
+import { SqueletteAccueil, SqueletteFiabiliser } from "@/components/squelette";
+import { Alerte, Bouton, Carte, Chiffre, Pastille, Progression } from "@/components/ui";
 import { useApi } from "@/lib/api";
 import { ESPACES, rubriquesVisibles } from "@/lib/espaces";
 import { dateCourte, peut, romain } from "@/lib/libelles";
@@ -65,7 +66,23 @@ function TableauDeBordDgrhas() {
   // Alertes de dépassement d'enveloppe : visibles du DG seulement
   const alertes = useApi<{ niveau: "rouge" | "jaune"; texte: string }[]>(peut.parametrer(profil.role) ? "/pilotage/alertes" : null);
   if (erreur) return <Alerte>{erreur}</Alerte>;
-  if (!t) return <Chargement />;
+  // Pendant le calcul (18/11/2026) : la recherche et le bonjour tout de suite, le reste en squelette
+  if (!t)
+    return (
+      <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="min-w-0 space-y-6">
+          {peut.traiter(profil.role) && <RechercheGlobale />}
+          <div>
+            <h1 className="text-[28px] font-semibold tracking-tight">Bonjour, {profil.nom.split(" ")[0]}</h1>
+            <p className="mt-0.5 text-sm text-zinc-400 first-letter:uppercase">
+              {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+            </p>
+          </div>
+          <SqueletteAccueil />
+        </div>
+        <SqueletteFiabiliser />
+      </div>
+    );
 
   const aff = (s: string) => t.affectations.find((x) => x.statut === s)?.n ?? 0;
   const notes = (m: string, s: StatutNote) => t.notes.find((x) => x.module === m && x.statut === s)?.n ?? 0;

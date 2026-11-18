@@ -1,6 +1,7 @@
 "use client";
 
 import { SaisieMotDePasse } from "./mot-de-passe";
+import { SqueletteApplication } from "./squelette";
 import { Bell, Inbox, KeyRound, LayoutDashboard, Lock, LogOut, UserRound, type LucideIcon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -210,7 +211,7 @@ export function Coquille({ children }: { children: ReactNode }) {
   }, [session, chemin, router]);
 
   if (erreur) return <div className="p-8"><Alerte>{erreur}</Alerte></div>;
-  if (!session) return <Chargement texte="Ouverture de la session…" />;
+  if (!session) return <SqueletteApplication />;
 
   const deconnexion = () => {
     fermerSession();

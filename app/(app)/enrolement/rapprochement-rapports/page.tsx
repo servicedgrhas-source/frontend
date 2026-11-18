@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Check, Download, FileSpreadsheet, PenLine, RefreshCw, Search, Send, Trash2, Upload, UserPlus, UserX } from "lucide-react";
+import { ArrowLeft, Check, Download, FileSpreadsheet, Loader2, PenLine, RefreshCw, Search, Send, Trash2, Upload, UserPlus, UserX } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { FicheVolontaire } from "@/components/enrolement/volontaires";
@@ -317,7 +317,19 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
   const [calcul, setCalcul] = useState(false);
   const [choisir, setChoisir] = useState<Ligne | null>(null);
   const [volontaire, setVolontaire] = useState<string | null>(null);
-  const [enCours, setEnCours] = useState<number | null>(null);
+  // Les lignes en cours de traitement (une action, ou une action en série) : marquées « Traitement… »,
+  // leurs boutons inactifs, le reste de la page reste utilisable (18/11/2026)
+  const [enTraitement, setEnTraitement] = useState<Set<number>>(new Set());
+  const traiter = (ids: number[], oui: boolean) =>
+    setEnTraitement((s) => {
+      const n = new Set(s);
+      for (const i of ids) {
+        if (oui) n.add(i);
+        else n.delete(i);
+      }
+      return n;
+    });
+  const [exporter, setExporter] = useState(false);
   const [appliquer, setAppliquer] = useState<Ligne | null>(null);
   const [succes, setSucces] = useState<string | null>(null);
   // Les lignes cochées (d'un filtre à l'autre), et l'action en série en cours
@@ -328,16 +340,26 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
   const [proposerAjout, setProposerAjout] = useState<Ligne | null>(null);
   const [confirmation, demander] = useConfirmation();
 
+  /** Met à jour tout de suite les lignes touchées (la liste suit l'action), puis relit en silence. */
+  const appliquerLocal = (ids: number[], patch: (l: Ligne) => Partial<Ligne>) => {
+    const courant = d.donnees;
+    if (courant) {
+      const touchees = new Set(ids);
+      d.setDonnees({ ...courant, lignes: courant.lignes.map((l) => (touchees.has(l.id) ? { ...l, ...patch(l) } : l)) });
+    }
+    d.recharger();
+  };
   const decider = async (l: Ligne, corps: { decision: string | null; agentId?: number; volontaireId?: string }) => {
+    if (enTraitement.has(l.id)) return;
     setErreur(null);
-    setEnCours(l.id);
+    traiter([l.id], true);
     try {
       await api.post(`${API}/lignes/${l.id}/decision`, corps);
-      d.recharger();
+      appliquerLocal([l.id], () => ({ decision: (corps.decision as Ligne["decision"]) ?? null }));
     } catch (x) {
       setErreur((x as Error).message);
     } finally {
-      setEnCours(null);
+      traiter([l.id], false);
     }
   };
   const recalculer = async () => {
@@ -395,15 +417,28 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
     setSucces(null);
     setErreursLot([]);
     setLotEnCours(action);
+    traiter(ids, true);
+    // Décochées tout de suite : on ne peut pas relancer la même action sur les mêmes lignes
+    setCochees(new Set());
     try {
-      const x = await api.post<{ faits: number; erreurs: { nom: string; message: string }[] }>(`${API}/${id}/lot`, { action, ids });
+      const x = await api.post<{ faits: number; erreurs: { ligneId?: number; nom: string; message: string }[] }>(`${API}/${id}/lot`, { action, ids });
       setSucces(`${nf.format(x.faits)} personne(s) traitée(s) sur ${nf.format(ids.length)}.`);
       setErreursLot(x.erreurs);
-      setCochees(new Set());
-      d.recharger();
+      const refusees = new Set(x.erreurs.map((e) => e.ligneId).filter((v): v is number => !!v));
+      const faites = ids.filter((i) => !refusees.has(i));
+      const PATCH: Record<string, (l: Ligne) => Partial<Ligne>> = {
+        CONFIRMER: () => ({ decision: "CONFIRME" }),
+        AJOUTER: () => ({ decision: "AJOUTE" }),
+        ABSENT: () => ({ decision: "ABSENT", agentId: null, volontaireId: null, base: null, resultat: "ABSENT" }),
+        ANNULER: () => ({ decision: null }),
+        PROPOSER: (l) => ({ proposition: { id: l.proposition?.id ?? 0, etat: "A_CONTROLER", controlePar: null, note: null } }),
+        PROPOSER_AJOUT: (l) => ({ propositionAjout: { id: l.propositionAjout?.id ?? 0, etat: "A_CONTROLER", controlePar: null, note: null } }),
+      };
+      appliquerLocal(faites, PATCH[action] ?? (() => ({})));
     } catch (e) {
       setErreur((e as Error).message);
     } finally {
+      traiter(ids, false);
       setLotEnCours(null);
     }
   };
@@ -419,12 +454,15 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
       return;
     setErreur(null);
     setSucces(null);
+    traiter([l.id], true);
     try {
       await api.post(`${API}/lignes/${l.id}/proposer`, {});
       setSucces(`Proposition envoyée au contrôle des modifications pour « ${l.base?.nom ?? l.nomComplet} ».`);
-      d.recharger();
+      appliquerLocal([l.id], () => ({ proposition: { id: l.proposition?.id ?? 0, etat: "A_CONTROLER", controlePar: null, note: null } }));
     } catch (e) {
       setErreur((e as Error).message);
+    } finally {
+      traiter([l.id], false);
     }
   };
   // La même personne sur plusieurs listes (directeur et enseignant…) : les lignes d'une même fiche
@@ -453,15 +491,13 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
             <Bouton onClick={recalculer} chargement={calcul} title="Après des corrections dans la base ; les décisions sont gardées">
               <RefreshCw /> Recalculer
             </Bouton>
-            <Bouton
-              variante="principal"
-              onClick={() => api.telecharger(`${API}/${id}/excel`, `Rapprochement ${r?.departement ?? ""} ${r?.anneeScolaire ?? ""}.xlsx`).catch((x: Error) => setErreur(x.message))}
-            >
+            <Bouton variante="principal" onClick={() => setExporter(true)}>
               <FileSpreadsheet /> Exporter en Excel
             </Bouton>
           </>
         }
       />
+      {exporter && <ModaleExport id={id} nom={`Rapprochement ${r?.departement ?? ""} ${r?.anneeScolaire ?? ""}.xlsx`} fermer={() => setExporter(false)} />}
       {erreur && <Alerte>{erreur}</Alerte>}
       {succes && <Alerte ton="vert">{succes}</Alerte>}
       {erreursLot.length > 0 && (
@@ -532,11 +568,16 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
           <span className="text-[12px] text-zinc-600">
             <strong className="text-zinc-900">{nf.format(choisies.length)}</strong> cochée(s)
           </span>
+          {enTraitement.size > 0 && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-marque-50 px-3 py-1 text-[12px] font-medium text-marque-700 ring-1 ring-marque-100" role="status">
+              <Loader2 className="size-3.5 animate-spin" /> Traitement de {nf.format(enTraitement.size)} personne(s)… vous pouvez continuer
+            </span>
+          )}
           <span className="flex-1" />
           {Object.entries(ACTIONS).map(([a, [libelle, possible]]) => {
             const n = choisies.filter(possible).length;
             return (
-              <Bouton key={a} variante={a === "CONFIRMER" ? "principal" : undefined} disabled={!n || !!lotEnCours} chargement={lotEnCours === a} onClick={() => enLot(a)}>
+              <Bouton key={a} variante={a === "CONFIRMER" ? "principal" : undefined} disabled={!n || !!lotEnCours} chargement={lotEnCours === a} onClick={() => void enLot(a)}>
                 {libelle} {n ? `(${nf.format(n)})` : ""}
               </Bouton>
             );
@@ -564,7 +605,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
               ajouter={() => setAjouter(l)}
               proposerAjout={() => setProposerAjout(l)}
               departement={r?.departement ?? null}
-              enCours={enCours === l.id}
+              enCours={enTraitement.has(l.id)}
               decider={(c) => decider(l, c)}
               choisir={() => setChoisir(l)}
               appliquer={() => setAppliquer(l)}
@@ -594,7 +635,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
           fait={() => {
             setProposerAjout(null);
             setSucces(`L’ajout de « ${proposerAjout.nomComplet} » est proposé au contrôle des modifications : la fiche ne sera créée que s’il valide.`);
-            d.recharger();
+            appliquerLocal([proposerAjout.id], () => ({ propositionAjout: { id: 0, etat: "A_CONTROLER", controlePar: null, note: null } }));
           }}
         />
       )}
@@ -605,7 +646,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
           fait={() => {
             setAjouter(null);
             setSucces(`« ${ajouter.nomComplet} » est gardé(e) dans la liste Banque mondiale (nos bases ne changent pas).`);
-            d.recharger();
+            appliquerLocal([ajouter.id], () => ({ decision: "AJOUTE" }));
           }}
         />
       )}
@@ -617,7 +658,8 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
           fait={(n) => {
             setAppliquer(null);
             setSucces(`${n} rubrique(s) corrigée(s) dans la liste Banque mondiale pour « ${appliquer.nomComplet} » (la fiche de nos bases ne change pas).`);
-            d.recharger();
+            // Corriger, c'est reconnaître la personne : la ligne quitte « à traiter » tout de suite
+            appliquerLocal([appliquer.id], (x) => ({ decision: x.decision ?? (x.base ? "CONFIRME" : null) }));
           }}
         />
       )}
@@ -675,7 +717,15 @@ function CarteLigne({
     </dl>
   );
   return (
-    <div className={`rounded-3xl bg-white p-4 shadow-doux ring-1 ${l.decision ? "ring-marque-200" : "ring-transparent"}`}>
+    <div
+      aria-busy={enCours}
+      className={`relative rounded-3xl bg-white p-4 shadow-doux ring-1 transition-opacity ${enCours ? "pointer-events-none opacity-60 ring-marque-300" : l.decision ? "ring-marque-200" : "ring-transparent"}`}
+    >
+      {enCours && (
+        <span className="absolute top-3 right-4 inline-flex items-center gap-1.5 rounded-full bg-marque-600 px-2.5 py-1 text-[11px] font-medium text-white shadow">
+          <Loader2 className="size-3 animate-spin" /> Traitement…
+        </span>
+      )}
       <div className="mb-3 flex flex-wrap items-center gap-2 text-[12px] text-zinc-500">
         <input type="checkbox" className="size-4 accent-marque-600" checked={coche} onChange={(e) => cocher(e.target.checked)} aria-label="Cocher cette personne" />
         <span className="font-semibold text-zinc-800">N° {l.numero ?? l.ordre}</span>
@@ -1080,6 +1130,99 @@ function ModaleAjout({ ligne, fermer, fait, proposer = false }: { ligne: Ligne; 
           <Bouton onClick={fermer}>Annuler</Bouton>
           <Bouton variante="principal" disabled={!statut} chargement={envoi} onClick={envoyer}>
             <UserPlus /> {proposer ? "Proposer l’ajout" : "Garder dans la liste"}
+          </Bouton>
+        </div>
+      </div>
+    </Modale>
+  );
+}
+
+/** Les colonnes que l'on peut mettre dans l'Excel (18/11/2026) : les 9 habituelles d'abord. */
+const COLONNES_EXPORT: [string, string, boolean][] = [
+  ["NUMERO", "N°", true],
+  ["NOM", "Noms et prénoms", true],
+  ["LIEU", "Lieu de service", true],
+  ["NAISSANCE", "Date de naissance", true],
+  ["MATRICULE", "Matricule", true],
+  ["PRISE_SERVICE", "Date de prise de service", true],
+  ["DEPARTEMENT", "Département", true],
+  ["STATUT", "Statut", true],
+  ["SECTEUR", "Secteur", true],
+  ["GENRE", "Genre", false],
+  ["FONCTION", "Fonction", false],
+  ["GRADE", "Grade / échelon", false],
+  ["DIPLOME_ACAD", "Diplôme académique", false],
+  ["DIPLOME_PROF", "Diplôme professionnel", false],
+  ["RECRUTEMENT", "Année de recrutement", false],
+  ["INSPECTION", "Inspection", false],
+  ["CYCLE", "Cycle", false],
+  ["RUBRIQUE", "Personnel administratif / enseignant", false],
+  ["NUMERO_RAPPORT", "N° dans le rapport", false],
+  ["RESULTAT", "Résultat du rapprochement", false],
+  ["DECISION", "Décision prise", false],
+];
+const CLE_COLONNES = "dgrhas.rapprochement.colonnes";
+
+/** Exporter en Excel en choisissant les colonnes ; le dernier choix est retenu sur ce poste. */
+function ModaleExport({ id, nom, fermer }: { id: number; nom: string; fermer: () => void }) {
+  const [choix, setChoix] = useState<string[]>(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(CLE_COLONNES) ?? "null") as string[] | null;
+      if (Array.isArray(v) && v.length) return v.filter((k) => COLONNES_EXPORT.some(([c]) => c === k));
+    } catch {
+      /* stockage indisponible */
+    }
+    return COLONNES_EXPORT.filter(([, , d]) => d).map(([k]) => k);
+  });
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const basculer = (k: string) => setChoix((c) => (c.includes(k) ? c.filter((x) => x !== k) : COLONNES_EXPORT.map(([x]) => x).filter((x) => x === k || c.includes(x))));
+  const exporter = async () => {
+    setErreur(null);
+    setEnvoi(true);
+    try {
+      try {
+        localStorage.setItem(CLE_COLONNES, JSON.stringify(choix));
+      } catch {
+        /* stockage indisponible */
+      }
+      await api.telecharger(`${API}/${id}/excel${qs({ colonnes: choix.join(",") })}`, nom);
+      fermer();
+    } catch (x) {
+      setErreur((x as Error).message);
+    } finally {
+      setEnvoi(false);
+    }
+  };
+  return (
+    <Modale titre="Exporter en Excel : choisir les colonnes" ouverte fermer={fermer} large>
+      <div className="space-y-4">
+        <p className="text-[13px] text-zinc-600">
+          Cochez les colonnes à mettre dans le fichier, dans l’ordre de la liste. Une ligne par personne ; pour chaque colonne, la valeur corrigée dans la liste, sinon celle de nos bases, sinon celle du rapport.
+          Votre choix est retenu pour la prochaine fois.
+        </p>
+        <div className="flex flex-wrap gap-2 text-[12px]">
+          <Bouton variante="discret" onClick={() => setChoix(COLONNES_EXPORT.filter(([, , d]) => d).map(([k]) => k))}>
+            Les 9 colonnes habituelles
+          </Bouton>
+          <Bouton variante="discret" onClick={() => setChoix(COLONNES_EXPORT.map(([k]) => k))}>
+            Tout
+          </Bouton>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {COLONNES_EXPORT.map(([k, libelle]) => (
+            <label key={k} className={`flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-[13px] ring-1 ${choix.includes(k) ? "bg-marque-50 ring-marque-200" : "ring-zinc-200"}`}>
+              <input type="checkbox" className="size-4 accent-marque-600" checked={choix.includes(k)} onChange={() => basculer(k)} />
+              {libelle}
+            </label>
+          ))}
+        </div>
+        {erreur && <Alerte>{erreur}</Alerte>}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span className="mr-auto text-[12px] text-zinc-500">{nf.format(choix.length)} colonne(s)</span>
+          <Bouton onClick={fermer}>Annuler</Bouton>
+          <Bouton variante="principal" disabled={!choix.length} chargement={envoi} onClick={exporter}>
+            <FileSpreadsheet /> Exporter
           </Bouton>
         </div>
       </div>

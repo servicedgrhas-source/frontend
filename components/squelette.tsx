@@ -4,8 +4,8 @@
  */
 
 /** Un bloc du squelette ; « sombre » sur un fond foncé. */
-export function Os({ className = "", sombre }: { className?: string; sombre?: boolean }) {
-  return <div className={`os ${sombre ? "os-sombre" : ""} ${className}`} aria-hidden />;
+export function Os({ className = "", sombre, style }: { className?: string; sombre?: boolean; style?: React.CSSProperties }) {
+  return <div className={`os ${sombre ? "os-sombre" : ""} ${className}`} style={style} aria-hidden />;
 }
 
 /** Le centre de contrôle des effectifs, pendant son calcul. */
@@ -79,6 +79,108 @@ export function SqueletteTableauPersonnel() {
           <Os className="h-4 w-80" />
         </div>
         <SqueletteCentreControle />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * La page d'accueil pendant son calcul (18/11/2026) : les six chiffres, les lots, et la colonne
+ * « Bases à fiabiliser », à leur place.
+ */
+export function SqueletteAccueil() {
+  return (
+    <div className="space-y-6" aria-busy="true" aria-label="Chargement du tableau de bord">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+        {Array.from({ length: 6 }, (_, i) => (
+          <div key={i} className="flex gap-4 rounded-3xl bg-white p-6 shadow-doux">
+            <Os className="size-14 shrink-0 rounded-full" />
+            <div className="flex-1 space-y-3">
+              <Os className="h-4 w-3/4" />
+              <Os className="h-8 w-28" />
+              <Os className="h-3 w-full" />
+              <Os className="h-3 w-2/3" />
+            </div>
+          </div>
+        ))}
+      </div>
+      {Array.from({ length: 2 }, (_, c) => (
+        <div key={c} className="space-y-4 rounded-3xl bg-white p-6 shadow-doux">
+          <div className="flex justify-between">
+            <Os className="h-5 w-56" />
+            <Os className="h-4 w-28" />
+          </div>
+          {c === 0 ? (
+            <div className="flex h-40 items-end gap-2">
+              {[40, 70, 55, 90, 30, 65, 80, 45, 60, 75].map((h, i) => (
+                <Os key={i} className="flex-1 rounded-t-lg" style={{ height: `${h}%` }} />
+              ))}
+            </div>
+          ) : (
+            Array.from({ length: 4 }, (_, i) => (
+              <div key={i} className="flex items-center gap-4">
+                <Os className="size-10 rounded-2xl" />
+                <div className="flex-1 space-y-2">
+                  <Os className="h-4 w-1/2" />
+                  <Os className="h-2 w-full rounded-full" />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** La colonne « Bases à fiabiliser » pendant le calcul. */
+export function SqueletteFiabiliser() {
+  return (
+    <div className="space-y-5 rounded-3xl bg-white p-6 shadow-doux" aria-hidden>
+      <Os className="h-5 w-48" />
+      <Os className="h-3 w-full" />
+      {Array.from({ length: 6 }, (_, i) => (
+        <div key={i} className="flex gap-3">
+          <Os className="h-6 w-12" />
+          <div className="flex-1 space-y-2">
+            <Os className="h-3 w-full" />
+            <Os className="h-3 w-2/3" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * L'application pendant l'ouverture de la session (18/11/2026) : le menu à gauche et la page, en
+ * squelette, au lieu d'un « Ouverture de la session… » sur fond vide.
+ */
+export function SqueletteApplication() {
+  return (
+    <div className="flex min-h-screen gap-6 p-4" aria-busy="true" aria-label="Ouverture de la session">
+      <div className="hidden w-[300px] shrink-0 space-y-6 rounded-3xl bg-nuit p-6 lg:block">
+        <div className="flex items-center gap-3">
+          <Os sombre className="size-16 rounded-2xl" />
+          <div className="flex-1 space-y-2">
+            <Os sombre className="h-3 w-full" />
+            <Os sombre className="h-3 w-2/3" />
+          </div>
+        </div>
+        {Array.from({ length: 9 }, (_, i) => (
+          <div key={i} className="flex items-center gap-3">
+            <Os sombre className="size-6 rounded-lg" />
+            <Os sombre className="h-4 flex-1" />
+          </div>
+        ))}
+      </div>
+      <div className="min-w-0 flex-1 space-y-6 py-2">
+        <Os className="h-20 w-full rounded-3xl" />
+        <div className="space-y-2">
+          <Os className="h-8 w-64" />
+          <Os className="h-4 w-48" />
+        </div>
+        <SqueletteAccueil />
       </div>
     </div>
   );
