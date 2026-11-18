@@ -13,8 +13,9 @@ import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 interface Effectifs {
-  totaux: Nombres & { ecoles: number; sousSeuil: number };
-  parDeppsa: (Nombres & { departement: string; ecoles: number; sousSeuil: number })[];
+  /** toutesEcoles : toutes les écoles (case « seulement… » cochée ou non), pour « 10 sur 31 ». */
+  totaux: Nombres & { ecoles: number; sousSeuil: number; toutesEcoles: number };
+  parDeppsa: (Nombres & { departement: string; ecoles: number; sousSeuil: number; toutesEcoles: number })[];
   sansEcole: { effectif: string; libelle: string; sans: number; administration: number; ecartees: number }[];
   reclassees: number;
   aHarmoniser: number;
@@ -156,7 +157,12 @@ export default function EffectifsEcoles() {
           <FraicheurCalcul calculeLe={d.donnees.calculeLe} aJour={d.donnees.aJour} recharger={d.recharger} />
           <div className="grid gap-3 sm:grid-cols-3 2xl:grid-cols-6">
             <Chiffre libelle="Écoles" valeur={nf.format(t.ecoles)} ton="gris" detail={cycle === "TOUS" ? "tous les cycles" : (CYCLES[cycle] ?? "cycle non reconnu")} />
-            <Chiffre libelle={`${s} fonctionnaires ou moins`} valeur={nf.format(t.sousSeuil)} ton="rouge" detail={t.ecoles ? `${Math.round((t.sousSeuil * 100) / t.ecoles)} % des écoles` : ""} />
+            <Chiffre
+              libelle={`${s} fonctionnaires ou moins`}
+              valeur={nf.format(t.sousSeuil)}
+              ton="rouge"
+              detail={t.toutesEcoles ? `sur ${nf.format(t.toutesEcoles)} écoles en tout (${Math.round((t.sousSeuil * 100) / t.toutesEcoles)} %)` : ""}
+            />
             {EFFECTIFS.map(([k, libelle]) => (
               <Chiffre key={k} libelle={libelle} valeur={nf.format(t[k])} ton={k === "fonctionnaires" ? "vert" : k === "contractuels" ? "bleu" : "gris"} detail={t.total ? `${Math.round((t[k] * 100) / t.total)} % du personnel compté` : ""} />
             ))}
@@ -181,7 +187,10 @@ export default function EffectifsEcoles() {
                     <tr>
                       <th>DEPPSA</th>
                       <th className="text-right">Écoles</th>
-                      <th className="text-right">{s} fonct. ou moins</th>
+                      <th className="text-right" title={`Écoles de ${s} fonctionnaires ou moins (contractuels compris), sur toutes les écoles de la DEPPSA`}>
+                        {s} fonct. ou moins
+                        <span className="block text-[10px] font-normal normal-case">sur toutes les écoles</span>
+                      </th>
                       {EFFECTIFS.map(([k, l]) => (
                         <th key={k} className="text-right">
                           {l}
@@ -207,6 +216,7 @@ export default function EffectifsEcoles() {
                           ) : (
                             0
                           )}
+                          <span className="text-zinc-400"> sur {nf.format(x.toutesEcoles)}</span>
                         </td>
                         {EFFECTIFS.map(([k]) => (
                           <td key={k} className="text-right tabular-nums">
@@ -219,7 +229,10 @@ export default function EffectifsEcoles() {
                     <tr className="font-semibold">
                       <td>Total</td>
                       <td className="text-right tabular-nums">{nf.format(t.ecoles)}</td>
-                      <td className="text-right tabular-nums">{nf.format(t.sousSeuil)}</td>
+                      <td className="text-right tabular-nums">
+                        {nf.format(t.sousSeuil)}
+                        <span className="font-normal text-zinc-400"> sur {nf.format(t.toutesEcoles)}</span>
+                      </td>
                       {EFFECTIFS.map(([k]) => (
                         <td key={k} className="text-right tabular-nums">
                           {nf.format(t[k])}

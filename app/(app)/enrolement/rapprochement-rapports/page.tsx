@@ -109,8 +109,10 @@ const METHODES: Record<string, string> = {
 };
 /** Les corrections qu'on peut proposer à la base du personnel (pas le nom ni la naissance). */
 const PROPOSABLES = ["LIEU_SERVICE", "DATE_PRISE_SERVICE", "DEPARTEMENT", "MATRICULE_SOLDE"];
+/** Ce qu'une ligne peut proposer : la date de naissance seulement si la fiche n'en a pas (DG, 18/11/2026). */
+const proposables = (l: Ligne) => [...PROPOSABLES, ...(l.base && !l.base.dateNaissance ? ["DATE_NAISSANCE"] : [])].filter((k) => l.applique?.[k]);
 const aProposer = (l: Ligne) =>
-  l.base?.type === "PERSONNEL" && !!l.agentId && PROPOSABLES.some((k) => l.applique?.[k]) && l.proposition?.etat !== "A_CONTROLER" && l.proposition?.etat !== "VALIDEE";
+  l.base?.type === "PERSONNEL" && !!l.agentId && proposables(l).length > 0 && l.proposition?.etat !== "A_CONTROLER" && l.proposition?.etat !== "VALIDEE";
 
 const STATUTS: Record<string, string> = { FONCTIONNAIRE: "Fonctionnaire", CONTRACTUEL: "Contractuel", VOLONTAIRE: "Volontaire", COMMUNAUTAIRE: "Communautaire" };
 const SECTEURS: Record<string, string> = { PUBLIC: "Public", CONVENTIONNE: "Conventionné", PRIVE: "Privé" };
@@ -380,7 +382,7 @@ function DetailRapport({ id, retour }: { id: number; retour: () => void }) {
   };
   // Une ligne : proposer ses corrections au contrôle des modifications
   const proposer = async (l: Ligne) => {
-    const quoi = PROPOSABLES.filter((k) => l.applique?.[k]).map((k) => LIBELLES_RUBRIQUES[k].toLowerCase());
+    const quoi = proposables(l).map((k) => LIBELLES_RUBRIQUES[k].toLowerCase());
     if (
       !(await demander(
         `Proposer à la base du personnel la correction de « ${l.base?.nom ?? l.nomComplet} » (${quoi.join(", ")}) ? La fiche ne change pas tout de suite : le contrôle des modifications valide ou rejette.`,
