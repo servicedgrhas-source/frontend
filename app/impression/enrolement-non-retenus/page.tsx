@@ -12,6 +12,7 @@ interface NonRetenu {
   diplome: string;
   cycle: string | null;
   motif: string;
+  observation?: string | null;
   decision: string | null;
   /** Origine regroupée : donnée à la DGRHAS seulement. */
   origine?: string | null;
@@ -24,7 +25,8 @@ const COLONNES: ColonneImprimee<NonRetenu>[] = [
   { titre: "Âge", largeur: 5, valeur: (l) => (l.age === null ? "—" : <span className={l.horsLimite ? "font-bold text-red-700" : ""}>{l.age}</span>), droite: true },
   { titre: "Diplôme", largeur: 11, valeur: (l) => l.diplome },
   { titre: "Cycle · spécialité", largeur: 12, valeur: (l) => l.cycle ?? "—" },
-  { titre: "Motif", largeur: 20, valeur: (l) => l.motif },
+  { titre: "Motif (où il est déjà connu)", largeur: 26, valeur: (l) => l.motif },
+  { titre: "Observation saisie", largeur: 10, valeur: (l) => l.observation ?? "—" },
   { titre: "Décidé par", largeur: 10, valeur: (l) => l.decision ?? "—" },
   { titre: "Origine", largeur: 8, valeur: (l) => l.origine ?? "" },
 ];

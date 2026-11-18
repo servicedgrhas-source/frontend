@@ -1156,6 +1156,7 @@ const COLONNES_EXPORT: [string, string, boolean][] = [
   ["RUBRIQUE", "Personnel administratif / enseignant", false],
   ["NUMERO_RAPPORT", "N° dans le rapport", false],
   ["RESULTAT", "Résultat du rapprochement", false],
+  ["TELEPHONE", "Téléphone", false],
   ["DECISION", "Décision prise", false],
 ];
 const CLE_COLONNES = "dgrhas.rapprochement.colonnes";
