@@ -112,7 +112,11 @@ const METHODES: Record<string, string> = {
 /** Les corrections qu'on peut proposer à la base du personnel (pas le nom ni la naissance). */
 const PROPOSABLES = ["LIEU_SERVICE", "DATE_PRISE_SERVICE", "DEPARTEMENT", "MATRICULE_SOLDE"];
 /** Ce qu'une ligne peut proposer : la date de naissance seulement si la fiche n'en a pas (DG, 18/11/2026). */
-const proposables = (l: Ligne) => [...PROPOSABLES, ...(l.base && !l.base.dateNaissance ? ["DATE_NAISSANCE"] : [])].filter((k) => l.applique?.[k]);
+const proposables = (l: Ligne) => [...PROPOSABLES, ...(l.base && !l.base.dateNaissance ? ["DATE_NAISSANCE"] : [])].filter((k) => {
+  const v = l.applique?.[k]?.apres;
+  // Une date réduite à l’année reste dans la liste : une fiche exige la date complète
+  return !!v && !(k.startsWith("DATE") && /^\d{4}$/.test(String(v as string)));
+});
 const aProposer = (l: Ligne) =>
   l.base?.type === "PERSONNEL" && !!l.agentId && proposables(l).length > 0 && l.proposition?.etat !== "A_CONTROLER" && l.proposition?.etat !== "VALIDEE";
 
@@ -866,110 +870,151 @@ const LIBELLES_RUBRIQUES: Record<string, string> = {
 };
 
 /**
- * Corriger la liste Banque mondiale : pour chaque rubrique, la valeur de nos bases, celle du rapport
- * (modifiable), et une case à cocher. Les rubriques cochées sont gardées sur la ligne et reprises
- * dans l'export ; nos bases (fiche du personnel, registre) ne sont jamais modifiées.
+ * Corriger la liste Banque mondiale (refaite le 18/11/2026) : pour chaque rubrique, la valeur du
+ * rapport de la DDEPPSA et celle de nos bases sont montrées côte à côte ; on choisit d'un clic celle
+ * qui va dans la liste Banque mondiale (ou on en écrit une autre). Rien à retenir de tête. Nos bases
+ * (fiche du personnel, registre) ne sont jamais modifiées.
  */
+type Choix = "BASE" | "RAPPORT" | "AUTRE";
+
+/** « 21/09/1979 » ou « 1979-09-21 » → « 1979-09-21 » ; « 2014 » reste « 2014 » ; sinon null. */
+function dateSaisie(v: string): string | null {
+  const t = v.trim();
+  if (/^\d{4}$/.test(t)) return t;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+  const fr = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(t);
+  const amj = iso ? [+iso[1], +iso[2], +iso[3]] : fr ? [+fr[3], +fr[2], +fr[1]] : null;
+  if (!amj) return null;
+  const [a, m, j] = amj;
+  const d = new Date(Date.UTC(a, m - 1, j));
+  if (d.getUTCFullYear() !== a || d.getUTCMonth() !== m - 1 || d.getUTCDate() !== j) return null;
+  return `${a}-${String(m).padStart(2, "0")}-${String(j).padStart(2, "0")}`;
+}
+
 function ModaleAppliquer({ ligne, departementId, fermer, fait }: { ligne: Ligne; departementId: number | null; fermer: () => void; fait: (n: number) => void }) {
   const { refs } = useSession();
   const f = ligne.base!;
-  const iso = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : "");
-  const anneeSeule = ligne.priseService && /^\d{4}$/.test(ligne.priseService.trim()) ? ligne.priseService.trim() : null;
-  const depBase = refs.departements.find((d) => d.nom === f.departement)?.id ?? null;
-  // Les rubriques que le rapport renseigne : [code, base, valeur proposée, type]
-  const lignes = (
+  const depRapport = departementId ? (refs.departements.find((d) => String(d.id) === String(departementId))?.nom ?? null) : null;
+  // [code, rapport (affiché), nos bases (affiché), type]
+  const rubriques = (
     [
-      ["NOMS_PRENOMS", f.nom, ligne.nomComplet, "texte"],
-      ["MATRICULE_SOLDE", f.matricule, ligne.matricule ?? "", "texte"],
-      ["LIEU_SERVICE", f.lieu, ligne.ecole ?? "", "texte"],
-      ["DATE_NAISSANCE", dateFr(f.dateNaissance), iso(ligne.dateNaissance), "date"],
-      ["DATE_PRISE_SERVICE", dateFr(f.priseService), iso(ligne.priseService), "date"],
-      ["DEPARTEMENT", f.departement, departementId ? String(departementId) : "", "departement"],
-    ] as [string, string | null, string, "texte" | "date" | "departement"][]
-  ).filter(([k, , v]) => v || (k === "DATE_PRISE_SERVICE" && anneeSeule));
-  const differe = (k: string, base: string | null, v: string) =>
-    k === "DEPARTEMENT" ? String(depBase ?? "") !== v : k.startsWith("DATE") ? (base ?? "") !== dateFr(v) : (base ?? "").trim().toUpperCase() !== v.trim().toUpperCase();
-  const [valeurs, setValeurs] = useState<Record<string, string>>(() => Object.fromEntries(lignes.map(([k, , v]) => [k, v])));
-  // Cochées d'avance : ce qui manque dans la base, et le matricule s'il diffère
-  const [coches, setCoches] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(lignes.map(([k, base, v]) => [k, !!v && (!base || (k === "MATRICULE_SOLDE" && differe(k, base, v)))])),
-  );
+      ["NOMS_PRENOMS", ligne.nomComplet, f.nom, "texte"],
+      ["MATRICULE_SOLDE", ligne.matricule, f.matricule, "texte"],
+      ["LIEU_SERVICE", ligne.ecole, f.lieu, "texte"],
+      ["DATE_NAISSANCE", ligne.dateNaissance ? dateFr(ligne.dateNaissance) : ligne.anneeNaissance ? String(ligne.anneeNaissance) : null, dateFr(f.dateNaissance) || null, "date"],
+      ["DATE_PRISE_SERVICE", ligne.priseService ? dateFr(ligne.priseService) : null, dateFr(f.priseService) || null, "date"],
+      ["DEPARTEMENT", depRapport, f.departement, "departement"],
+    ] as [string, string | null, string | null, "texte" | "date" | "departement"][]
+  ).filter(([, r, b]) => r || b);
+  const plat = (v: string | null) => (v ?? "").trim().toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ");
+  const pareil = (r: string | null, b: string | null) => !!r && plat(r) === plat(b);
+  // Par défaut : la valeur de nos bases ; le rapport quand nos bases n'ont rien
+  const [choix, setChoix] = useState<Record<string, Choix>>(() => Object.fromEntries(rubriques.map(([k, r, b]) => [k, !b && r ? "RAPPORT" : "BASE"])));
+  const [autres, setAutres] = useState<Record<string, string>>({});
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
-  const choisies = Object.keys(coches).filter((k) => coches[k] && valeurs[k]?.trim());
+
+  // La valeur envoyée pour une rubrique (ou une erreur à montrer)
+  const valeur = (k: string, r: string | null, type: string): { v?: string; probleme?: string } => {
+    const brut = choix[k] === "AUTRE" ? (autres[k] ?? "") : (r ?? "");
+    if (!brut.trim()) return { probleme: "Écrivez la valeur." };
+    if (type === "departement") {
+      const d = refs.departements.find((x) => x.nom === brut || String(x.id) === brut);
+      return d ? { v: String(d.id) } : { probleme: "Choisissez le département." };
+    }
+    if (type === "date") {
+      const d = dateSaisie(brut);
+      return d ? { v: d } : { probleme: "Date à écrire jj/mm/aaaa (ou l’année seule)." };
+    }
+    return { v: brut.trim() };
+  };
+  const aCorriger = rubriques.filter(([k]) => choix[k] !== "BASE");
+  const problemes = aCorriger.map(([k, r, , type]) => ({ k, ...valeur(k, r, type) })).filter((x) => x.probleme);
 
   const envoyer = async () => {
     setErreur(null);
     setEnvoi(true);
     try {
-      const r = await api.post<{ rubriques: string[] }>(`${API}/lignes/${ligne.id}/appliquer`, {
-        champs: Object.fromEntries(choisies.map((k) => [k, valeurs[k]])),
-      });
-      fait(r.rubriques.length);
-    } catch (x) {
-      setErreur((x as Error).message);
+      const champs = Object.fromEntries(aCorriger.map(([k, r, , type]) => [k, valeur(k, r, type).v]));
+      const x = await api.post<{ rubriques: string[] }>(`${API}/lignes/${ligne.id}/appliquer`, { champs });
+      fait(x.rubriques.length);
+    } catch (e) {
+      setErreur((e as Error).message);
     } finally {
       setEnvoi(false);
     }
   };
 
+  const bouton = (k: string, c: Choix, libelle: React.ReactNode, actif = true) => (
+    <button
+      type="button"
+      disabled={!actif}
+      onClick={() => setChoix((x) => ({ ...x, [k]: c }))}
+      className={`w-full rounded-xl px-3 py-2 text-left text-[13px] ring-1 transition ${
+        choix[k] === c ? "bg-marque-600 font-medium text-white ring-marque-600" : actif ? "bg-white text-zinc-700 ring-zinc-200 hover:ring-marque-300" : "cursor-default bg-zinc-50 text-zinc-400 ring-zinc-100"
+      }`}
+    >
+      {libelle}
+    </button>
+  );
+
   return (
     <Modale titre={`Corriger la liste Banque mondiale pour « ${ligne.nomComplet} »`} ouverte fermer={fermer} large>
       <div className="space-y-4">
         <p className="text-[13px] text-zinc-600">
-          Cochez les rubriques dont la bonne valeur est celle du rapport (vous pouvez la corriger avant). Elles sont gardées <strong>dans la liste Banque mondiale</strong> et reprises
-          dans l’export Excel. <strong>Nos bases ne sont pas modifiées</strong> : la fiche de « {f.nom} » reste telle quelle.
+          Pour chaque rubrique, <strong>cliquez la bonne valeur</strong> : celle du rapport de la DDEPPSA ou celle de nos bases (ou « Autre » pour l’écrire). C’est elle qui ira dans la liste et l’export Excel
+          de la Banque mondiale. <strong>Nos bases ne sont pas modifiées.</strong>
         </p>
-        {!lignes.length ? (
-          <Vide>Le rapport ne donne rien à corriger pour cette personne.</Vide>
-        ) : (
-          <Tableau>
-            <thead>
-              <tr>
-                <th />
-                <th>Rubrique</th>
-                <th>Dans nos bases</th>
-                <th>Pour la liste Banque mondiale (d’après le rapport)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lignes.map(([k, base, , type]) => {
-                const v = valeurs[k] ?? "";
-                const pareil = !!v && !differe(k, base, v);
-                return (
-                  <tr key={k} className={coches[k] ? "bg-marque-50/50" : ""}>
-                    <td>
-                      <input type="checkbox" className="size-4 accent-marque-600" checked={!!coches[k]} onChange={(e) => setCoches((c) => ({ ...c, [k]: e.target.checked }))} aria-label={`Corriger ${LIBELLES_RUBRIQUES[k]}`} />
-                    </td>
-                    <td className="font-medium whitespace-nowrap">{LIBELLES_RUBRIQUES[k]}</td>
-                    <td className="text-zinc-500">{base || <span className="text-rouge-600">vide</span>}</td>
-                    <td className="min-w-64">
-                      {type === "departement" ? (
-                        <Liste value={v} onChange={(e) => setValeurs((x) => ({ ...x, [k]: e.target.value }))} vide="—" options={refs.departements.map((d) => ({ valeur: d.id, libelle: d.nom }))} />
-                      ) : (
-                        <Saisie
-                          type={type === "date" ? "date" : "text"}
-                          value={v}
-                          onChange={(e) => {
-                            setValeurs((x) => ({ ...x, [k]: e.target.value }));
-                            setCoches((c) => ({ ...c, [k]: true }));
-                          }}
-                        />
-                      )}
-                      {k === "DATE_PRISE_SERVICE" && anneeSeule && !v && <div className="mt-1 text-[11px] text-zinc-400">Le rapport donne seulement l’année {anneeSeule} : écrivez la date complète.</div>}
-                      {pareil && <div className="mt-1 text-[11px] text-zinc-400">Déjà pareil dans nos bases.</div>}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Tableau>
-        )}
+        <div className="hidden grid-cols-[10rem_1fr_1fr_6rem] gap-2 px-1 text-[11px] font-semibold text-zinc-400 uppercase sm:grid">
+          <span>Rubrique</span>
+          <span>Rapport de la DDEPPSA</span>
+          <span>Nos bases</span>
+          <span />
+        </div>
+        <div className="space-y-2">
+          {rubriques.map(([k, r, b, type]) => {
+            const egal = pareil(r, b);
+            const pb = choix[k] !== "BASE" ? valeur(k, r, type).probleme : undefined;
+            return (
+              <div key={k} className={`rounded-2xl p-2 ${choix[k] !== "BASE" ? "bg-marque-50/60 ring-1 ring-marque-100" : "bg-zinc-50"}`}>
+                <div className="grid gap-2 sm:grid-cols-[10rem_1fr_1fr_6rem] sm:items-center">
+                  <div className="px-1 text-[13px] font-medium">
+                    {LIBELLES_RUBRIQUES[k]}
+                    {egal && <div className="text-[11px] font-normal text-zinc-400">pareil des deux côtés</div>}
+                  </div>
+                  {bouton(k, "RAPPORT", r ? <>{r}</> : <span className="italic">rien dans le rapport</span>, !!r && !egal)}
+                  {bouton(k, "BASE", b ? <>{b}</> : <span className="italic">vide dans nos bases</span>)}
+                  {bouton(k, "AUTRE", "Autre…")}
+                </div>
+                {choix[k] === "AUTRE" && (
+                  <div className="mt-2 sm:ml-[10.5rem]">
+                    {type === "departement" ? (
+                      <Liste value={autres[k] ?? ""} onChange={(e) => setAutres((x) => ({ ...x, [k]: e.target.value }))} vide="Choisir…" options={refs.departements.map((d) => ({ valeur: d.id, libelle: d.nom }))} />
+                    ) : (
+                      <Saisie
+                        value={autres[k] ?? ""}
+                        onChange={(e) => setAutres((x) => ({ ...x, [k]: e.target.value }))}
+                        placeholder={type === "date" ? "jj/mm/aaaa (ou l’année seule : 2014)" : "La bonne valeur"}
+                        autoFocus
+                      />
+                    )}
+                  </div>
+                )}
+                {pb && <div className="mt-1 text-[12px] text-rouge-600 sm:ml-[10.5rem]">{pb}</div>}
+              </div>
+            );
+          })}
+        </div>
         {erreur && <Alerte>{erreur}</Alerte>}
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span className="mr-auto text-[12px] text-zinc-500">
+            {aCorriger.length
+              ? `${aCorriger.length} rubrique(s) prise(s) du rapport ou écrite(s) à la main.`
+              : "Tout est sur « Nos bases » : rien à corriger (utilisez plutôt « C’est bien cette personne »)."}
+          </span>
           <Bouton onClick={fermer}>Annuler</Bouton>
-          <Bouton variante="principal" disabled={!choisies.length} chargement={envoi} onClick={envoyer}>
-            <PenLine /> Corriger {choisies.length ? `${choisies.length} rubrique(s)` : ""} dans la liste
+          <Bouton variante="principal" disabled={!aCorriger.length || problemes.length > 0} chargement={envoi} onClick={envoyer}>
+            <PenLine /> Corriger {aCorriger.length ? `${aCorriger.length} rubrique(s)` : ""} dans la liste
           </Bouton>
         </div>
       </div>
