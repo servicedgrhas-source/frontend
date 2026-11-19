@@ -205,13 +205,13 @@ export function ListeDecisions({ decisions, annuler, controle }: { decisions: De
 }
 
 // « Noms à harmoniser » n'est plus à l'écran (18/11/2026) : rien à décider, la liste reste dans l'Excel
-type Onglet = "ressemblances" | "hors-organigramme" | "harmoniser" | "decisions";
+type Onglet = "ressemblances" | "rattacher" | "hors-organigramme" | "harmoniser" | "decisions";
 
 /** Les écoles à contrôler : ressemblances, hors organigramme, noms à harmoniser, décisions. */
 export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
   const { profil, refs } = useSession();
   const [onglet, setOnglet] = useState<Onglet>(
-    ["ressemblances", "hors-organigramme", "decisions"].includes(ongletInitial ?? "") ? (ongletInitial as Onglet) : "ressemblances",
+    ["ressemblances", "rattacher", "hors-organigramme", "decisions"].includes(ongletInitial ?? "") ? (ongletInitial as Onglet) : "ressemblances",
   );
   const [departementId, setDepartementId] = useState("");
   const [cycle, setCycle] = useState("TOUS");
@@ -272,7 +272,7 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
       resume.recharger();
       r.recharger();
       dec.recharger();
-    }, 1500);
+    }, 4000);
   };
   const marquer = <T,>(set: (f: (x: T) => T) => void, f: (x: T) => T) => set(f);
   /** Trancher une paire de la liste : la carte se verrouille, puis disparaît dès que c'est enregistré. */
@@ -417,7 +417,8 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
         changer={(o) => { setOnglet(o); setPage(1); }}
         options={[
           { valeur: "ressemblances", libelle: `Écoles qui se ressemblent${n ? ` (${nf.format(n.ressemblances)})` : ""}` },
-          { valeur: "hors-organigramme", libelle: `Hors organigramme${n ? ` (${nf.format(n.horsOrganigramme)})` : ""}` },
+          { valeur: "rattacher", libelle: `Rattacher à l’organigramme${n ? ` (${nf.format(n.horsOrganigramme)})` : ""}` },
+          { valeur: "hors-organigramme", libelle: "Hors organigramme (détail)" },
           { valeur: "decisions", libelle: `Décisions${n ? ` (${nf.format(n.decisions)})` : ""}` },
         ]}
       />
@@ -565,6 +566,10 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
           )}
           <Pages page={page} pages={r.donnees ? Math.max(1, Math.ceil(Math.max(0, r.donnees.total - retirees.length) / 20)) : 1} changer={setPage} />
         </Carte>
+      )}
+
+      {onglet === "rattacher" && (
+        <OngletRattacher filtres={filtres} controle={controle} ouvrir={setOuverte} proposer={setAProposer} relu={() => resume.recharger()} />
       )}
 
       {(onglet === "hors-organigramme" || onglet === "harmoniser") && (
@@ -872,3 +877,283 @@ function ModaleEcole({
   );
 }
 
+
+interface Candidat {
+  id: string;
+  nom: string;
+  cycle: string | null;
+  total: number;
+  score: number;
+}
+type EcoleARattacher = Ecole & { candidats: Candidat[] };
+interface Rattachement {
+  total: number;
+  nombres: { tresProches: number; proches: number; lointaines: number; sansCandidat: number };
+  ecoles: EcoleARattacher[];
+}
+
+/**
+ * Rattacher à l'organigramme (19/11/2026 : le but est que chaque école écrite dans les fichiers
+ * finisse dans une école de l'organigramme). Pour chaque école hors organigramme : les écoles de
+ * l'organigramme les plus proches, la meilleure choisie d'avance ; on rattache d'un clic, ou en série.
+ * La carte disparaît dès que c'est enregistré.
+ */
+function OngletRattacher({
+  filtres,
+  controle,
+  ouvrir,
+  proposer,
+  relu,
+}: {
+  filtres: Record<string, string | undefined>;
+  controle: boolean;
+  ouvrir: (id: string) => void;
+  proposer: (e: EcoleDetaillee) => void;
+  relu: () => void;
+}) {
+  const [page, setPage] = useState(1);
+  const d = useApi<Rattachement>(`${API}/rattachement${qs({ ...filtres, page, taille: 20 })}`);
+  // L'école de l'organigramme choisie pour chaque école (par défaut : la plus proche)
+  const [choix, setChoix] = useState<Map<string, string>>(new Map());
+  const [cochees, setCochees] = useState<Set<string>>(new Set());
+  const [faites, setFaites] = useState<Set<string>>(new Set());
+  const [envoi, setEnvoi] = useState<Set<string>>(new Set());
+  const [lot, setLot] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [succes, setSucces] = useState<string | null>(null);
+  const minuterie = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const relire = () => {
+    if (minuterie.current) clearTimeout(minuterie.current);
+    minuterie.current = setTimeout(() => {
+      d.recharger();
+      relu();
+    }, 4000);
+  };
+  const cible = (e: EcoleARattacher) => choix.get(e.id) ?? e.candidats[0]?.id;
+  const ecoles = (d.donnees?.ecoles ?? []).filter((e) => !faites.has(e.id));
+  const basculer = (ids: string[], oui: boolean) =>
+    setCochees((c) => {
+      const n = new Set(c);
+      for (const i of ids) {
+        if (oui) n.add(i);
+        else n.delete(i);
+      }
+      return n;
+    });
+  /** Envoyer des rattachements : école hors organigramme → école de l'organigramme. */
+  const envoyer = async (paires: { a: string; b: string }[]) => {
+    const r = await api.post<{ fusionnees: number; refuses: { raison: string; ids?: string[] }[] }>(`${API}/decisions/fusion`, { paires });
+    const refusees = new Set(r.refuses.flatMap((g) => g.ids ?? []));
+    const ok = paires.filter((q) => !refusees.has(q.a)).map((q) => q.a);
+    setFaites((f) => new Set([...f, ...ok]));
+    basculer(ok, false);
+    relire();
+    return { ok: ok.length, refus: r.refuses };
+  };
+  const rattacherUne = async (e: EcoleARattacher) => {
+    const b = cible(e);
+    if (!b || envoi.has(e.id) || lot) return;
+    setErreur(null);
+    setSucces(null);
+    setEnvoi((x) => new Set(x).add(e.id));
+    try {
+      // Une seule école : la décision simple (instantanée), pas la fusion en série (qui refait tout le calcul)
+      await api.post(`${API}/decisions`, { type: "JUMELEE", cle: e.id, autreCle: b });
+      setFaites((f) => new Set(f).add(e.id));
+      basculer([e.id], false);
+      relire();
+    } catch (x) {
+      setErreur((x as Error).message);
+    } finally {
+      setEnvoi((x) => {
+        const n = new Set(x);
+        n.delete(e.id);
+        return n;
+      });
+    }
+  };
+  // Les écoles cochées sur d'autres pages : leur école choisie vient du serveur (la plus proche)
+  const [choixServeur, setChoixServeur] = useState<Map<string, string>>(new Map());
+  const cocherAuDessus = async (seuil: number) => {
+    setErreur(null);
+    try {
+      const r = await api.get<Rattachement & { choix: { a: string; b: string }[] }>(`${API}/rattachement${qs({ ...filtres, seuil, taille: 1 })}`);
+      const libres = r.choix.filter((q) => !faites.has(q.a));
+      setChoixServeur((m) => new Map([...m, ...libres.map((q) => [q.a, q.b] as [string, string])]));
+      basculer(libres.map((q) => q.a), true);
+    } catch (x) {
+      setErreur((x as Error).message);
+    }
+  };
+  const rattacherLot = async () => {
+    const paires = [...cochees]
+      .map((a) => {
+        const e = d.donnees?.ecoles.find((x) => x.id === a);
+        return { a, b: (e ? cible(e) : undefined) ?? choixServeur.get(a) };
+      })
+      .filter((q): q is { a: string; b: string } => !!q.b);
+    if (!paires.length) return;
+    setErreur(null);
+    setSucces(null);
+    setLot(true);
+    try {
+      const r = await envoyer(paires);
+      setSucces(
+        `${nf.format(r.ok)} école(s) rattachée(s) à l’organigramme.` +
+          (r.refus.length ? ` ${nf.format(paires.length - r.ok)} laissée(s) : ${[...new Set(r.refus.map((g) => g.raison))].join(" ; ")}.` : ""),
+      );
+    } catch (x) {
+      setErreur((x as Error).message);
+    } finally {
+      setLot(false);
+    }
+  };
+  const nb = d.donnees?.nombres;
+  const niveau = (score: number): [string, Ton] => (score >= 0.85 ? ["très proche", "vert"] : score >= 0.7 ? ["proche", "bleu"] : ["lointaine", "jaune"]);
+
+  return (
+    <Carte titre="Rattacher à l’organigramme">
+      <p className="mb-3 text-[12px] text-zinc-500">
+        Chaque école écrite dans les fichiers mais absente de l’organigramme, avec les écoles de l’organigramme de la même DDEPPSA dont le nom ressemble le plus (la meilleure est choisie d’avance ; cliquez
+        une autre pour changer). « Rattacher » compte ses personnes dans l’école de l’organigramme ; la décision s’annule dans « Décisions ». Sans école proche : ouvrez-la (autre école, pas une école) ou
+        proposez-la au DG.
+      </p>
+      {nb && (
+        <div className="mb-3 flex flex-wrap gap-2 text-[12px]">
+          <Badge ton="vert">très proches : {nf.format(nb.tresProches)}</Badge>
+          <Badge ton="bleu">proches : {nf.format(nb.proches)}</Badge>
+          <Badge ton="jaune">lointaines : {nf.format(nb.lointaines)}</Badge>
+          <Badge ton="gris">sans école proche : {nf.format(nb.sansCandidat)}</Badge>
+        </div>
+      )}
+      {controle && (
+        <div className="sticky top-2 z-10 mb-3 flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-200 bg-white/95 p-2 shadow-sm backdrop-blur">
+          <span className="px-1 text-[12px] text-zinc-600">
+            <strong className="text-zinc-900">{nf.format(cochees.size)}</strong> école(s) cochée(s)
+          </span>
+          <Bouton variante="discret" disabled={!ecoles.length} onClick={() => basculer(ecoles.filter((e) => e.candidats.length).map((e) => e.id), true)}>
+            Cocher cette page
+          </Bouton>
+          {!!nb?.tresProches && (
+            <Bouton variante="discret" onClick={() => void cocherAuDessus(0.85)}>
+              Cocher toutes les très proches ({nf.format(nb.tresProches)})
+            </Bouton>
+          )}
+          {!!nb?.proches && (
+            <Bouton variante="discret" onClick={() => void cocherAuDessus(0.7)}>
+              … et les proches ({nf.format(nb.proches)})
+            </Bouton>
+          )}
+          {cochees.size > 0 && (
+            <Bouton variante="discret" onClick={() => setCochees(new Set())}>
+              Tout décocher
+            </Bouton>
+          )}
+          <span className="flex-1" />
+          <Bouton variante="principal" disabled={!cochees.size} chargement={lot} onClick={() => void rattacherLot()}>
+            <GitMerge /> Rattacher la sélection
+          </Bouton>
+        </div>
+      )}
+      {erreur && <Alerte>{erreur}</Alerte>}
+      {succes && <Alerte ton="vert">{succes}</Alerte>}
+      {d.erreur && <Alerte>{d.erreur}</Alerte>}
+      {!d.donnees || d.chargement ? (
+        <Squelette n={4} h="h-32" />
+      ) : !ecoles.length ? (
+        faites.size ? <Squelette n={2} h="h-32" /> : <Vide>Toutes les écoles de ces filtres sont dans l’organigramme.</Vide>
+      ) : (
+        <div className="space-y-3">
+          {ecoles.map((e) => {
+            const verrou = envoi.has(e.id) || (lot && cochees.has(e.id));
+            const choisie = cible(e);
+            const coche = cochees.has(e.id);
+            return (
+              <div
+                key={e.id}
+                aria-busy={verrou}
+                className={`relative rounded-2xl border p-3 transition ${verrou ? "pointer-events-none opacity-60" : ""} ${coche ? "border-marque-400 bg-marque-50/40" : "border-zinc-200 bg-zinc-50/60"}`}
+              >
+                {verrou && (
+                  <span className="absolute top-3 right-4 z-[2] inline-flex items-center gap-1.5 rounded-full bg-marque-600 px-2.5 py-1 text-[11px] font-medium text-white shadow">
+                    <Loader2 className="size-3 animate-spin" /> Enregistrement…
+                  </span>
+                )}
+                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+                  <div className="flex items-start gap-2">
+                    {controle && e.candidats.length > 0 && (
+                      <input type="checkbox" className="mt-1 size-4 accent-marque-600" checked={coche} disabled={verrou} onChange={(x) => basculer([e.id], x.target.checked)} aria-label={`Cocher ${e.nom}`} />
+                    )}
+                    <div className="min-w-0">
+                      <button type="button" className="text-left font-semibold text-encre hover:underline" onClick={() => ouvrir(e.id)} title="Ouvrir cette école">
+                        {e.nom}
+                      </button>
+                      <div className="text-[12px] text-zinc-500">
+                        {e.departement} · {e.cycle ? CYCLES_ECOLES[e.cycle] : "cycle non reconnu"} · <Badge ton="gris">hors organigramme</Badge>
+                      </div>
+                      <div className="mt-1">
+                        <EnBref e={e} />
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    {e.candidats.length ? (
+                      <>
+                        <div className="mb-1 text-[11px] font-semibold text-zinc-400 uppercase">Écoles de l’organigramme proches</div>
+                        <div className="space-y-1">
+                          {e.candidats.map((x) => {
+                            const [lib, ton] = niveau(x.score);
+                            return (
+                              <button
+                                key={x.id}
+                                type="button"
+                                disabled={verrou}
+                                onClick={() => setChoix((m) => new Map(m).set(e.id, x.id))}
+                                className={`flex w-full items-center justify-between gap-2 rounded-xl px-3 py-1.5 text-left text-[13px] ring-1 transition ${choisie === x.id ? "bg-marque-600 text-white ring-marque-600" : "bg-white text-zinc-700 ring-zinc-200 hover:ring-marque-300"}`}
+                              >
+                                <span className="min-w-0 truncate font-medium">{x.nom}</span>
+                                <span className="flex shrink-0 items-center gap-2 text-[11px]">
+                                  {choisie !== x.id && <Badge ton={ton}>{lib}</Badge>}
+                                  <span className="tabular-nums">{pourcent(x.score)}</span>
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {controle && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Bouton variante="principal" disabled={verrou} chargement={envoi.has(e.id)} onClick={() => void rattacherUne(e)}>
+                              <GitMerge /> Rattacher à « {e.candidats.find((x) => x.id === choisie)?.nom} »
+                            </Bouton>
+                            <Bouton variante="discret" disabled={verrou} onClick={() => ouvrir(e.id)}>
+                              <Pencil /> Autre choix
+                            </Bouton>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="rounded-xl bg-white p-3 text-[12px] text-zinc-600 ring-1 ring-zinc-200">
+                        Aucune école de l’organigramme au nom proche dans cette DDEPPSA.
+                        {controle && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Bouton variante="discret" onClick={() => ouvrir(e.id)}>
+                              <Pencil /> Chercher une autre école / pas une école
+                            </Bouton>
+                            <Bouton variante="discret" onClick={() => proposer({ ...e, variantes: [] })}>
+                              <Building2 /> Proposer à l’organigramme
+                            </Bouton>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <Pages page={page} pages={d.donnees ? Math.max(1, Math.ceil(Math.max(0, d.donnees.total - faites.size) / 20)) : 1} changer={setPage} />
+    </Carte>
+  );
+}
