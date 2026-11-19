@@ -12,7 +12,9 @@ interface NonRetenu {
   diplome: string;
   cycle: string | null;
   specialite?: string | null;
-  departementsChoisis?: string | null;
+  souhaite1?: string | null;
+  souhaite2?: string | null;
+  souhaite3?: string | null;
   motif: string;
   observation?: string | null;
   decision: string | null;
@@ -28,8 +30,10 @@ const COLONNES: ColonneImprimee<NonRetenu>[] = [
   { titre: "Diplôme", largeur: 11, valeur: (l) => l.diplome },
   { titre: "Cycle", largeur: 8, valeur: (l) => l.cycle ?? "—" },
   { titre: "Spécialité", largeur: 9, valeur: (l) => l.specialite ?? "—" },
-  { titre: "Départements souhaités", largeur: 12, valeur: (l) => l.departementsChoisis ?? "—" },
-  { titre: "Motif (où il est déjà connu)", largeur: 22, valeur: (l) => l.motif },
+  { titre: "Département souhaité 1", largeur: 7, valeur: (l) => l.souhaite1 ?? "—" },
+  { titre: "Département souhaité 2", largeur: 7, valeur: (l) => l.souhaite2 ?? "—" },
+  { titre: "Département souhaité 3", largeur: 7, valeur: (l) => l.souhaite3 ?? "—" },
+  { titre: "Motif (où il est déjà connu)", largeur: 18, valeur: (l) => l.motif },
   { titre: "Observation saisie", largeur: 9, valeur: (l) => l.observation ?? "—" },
   { titre: "Décidé par", largeur: 9, valeur: (l) => l.decision ?? "—" },
   { titre: "Origine", largeur: 8, valeur: (l) => l.origine ?? "" },
