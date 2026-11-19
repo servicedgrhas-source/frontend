@@ -884,6 +884,9 @@ interface Candidat {
   cycle: string | null;
   total: number;
   score: number;
+  /** La DDEPPSA de l'école de l'organigramme (montrée quand ce n'est pas celle du fichier). */
+  departement?: string;
+  memeDdeppsa?: boolean;
 }
 type EcoleARattacher = Ecole & { candidats: Candidat[] };
 interface Rattachement {
@@ -1014,7 +1017,7 @@ function OngletRattacher({
   return (
     <Carte titre="Rattacher à l’organigramme">
       <p className="mb-3 text-[12px] text-zinc-500">
-        Chaque école écrite dans les fichiers mais absente de l’organigramme, avec les écoles de l’organigramme de la même DDEPPSA dont le nom ressemble le plus (la meilleure est choisie d’avance ; cliquez
+        Chaque école écrite dans les fichiers mais absente de l’organigramme, avec les écoles de l’organigramme dont le nom ressemble le plus, cherchées dans toutes les DDEPPSA (une école des Plateaux peut être aujourd’hui dans Nkéni-Alima ou Djoué-Léfini : sa DDEPPSA est alors écrite en bleu) (la meilleure est choisie d’avance ; cliquez
         une autre pour changer). « Rattacher » compte ses personnes dans l’école de l’organigramme ; la décision s’annule dans « Décisions ». Sans école proche : ouvrez-la (autre école, pas une école) ou
         proposez-la au DG.
       </p>
@@ -1111,7 +1114,10 @@ function OngletRattacher({
                                 onClick={() => setChoix((m) => new Map(m).set(e.id, x.id))}
                                 className={`flex w-full items-center justify-between gap-2 rounded-xl px-3 py-1.5 text-left text-[13px] ring-1 transition ${choisie === x.id ? "bg-marque-600 text-white ring-marque-600" : "bg-white text-zinc-700 ring-zinc-200 hover:ring-marque-300"}`}
                               >
-                                <span className="min-w-0 truncate font-medium">{x.nom}</span>
+                                <span className="min-w-0 truncate font-medium">
+                                  {x.nom}
+                                  {x.memeDdeppsa === false && <span className={`ml-2 text-[11px] font-normal ${choisie === x.id ? "text-white/85" : "text-sky-700"}`}>DDEPPSA {x.departement}</span>}
+                                </span>
                                 <span className="flex shrink-0 items-center gap-2 text-[11px]">
                                   {choisie !== x.id && <Badge ton={ton}>{lib}</Badge>}
                                   <span className="tabular-nums">{pourcent(x.score)}</span>
