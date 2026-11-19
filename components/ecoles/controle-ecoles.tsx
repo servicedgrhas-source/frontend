@@ -516,7 +516,7 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
                     )}
                     {refus && (
                       <div className="mb-2 rounded-xl bg-or-100 px-3 py-1.5 text-[12px] text-or-800">
-                        Pas fusionnée en série : {refus}. Tranchez cette paire ici.
+                        Pas fusionnée : {refus}.
                       </div>
                     )}
                     <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px] text-zinc-500">
