@@ -207,15 +207,15 @@ export default function EffectifsEcoles() {
                       <th rowSpan={2} className="align-bottom">
                         DDEPPSA
                       </th>
-                      <th colSpan={3} className="border-b border-l border-zinc-200 text-center">
+                      <th colSpan={3} className="border-b-2 border-l-2 !border-b-zinc-400 !border-l-zinc-400 text-center">
                         Écoles
                       </th>
-                      <th colSpan={6} className="border-b border-l border-zinc-200 text-center">
+                      <th colSpan={6} className="border-b-2 border-l-2 !border-b-zinc-400 !border-l-zinc-400 text-center">
                         Personnel compté (personnes)
                       </th>
                     </tr>
                     <tr>
-                      <th className="border-l border-zinc-200 text-right">Toutes</th>
+                      <th className="border-l-2 !border-l-zinc-400 text-right">Toutes</th>
                       <th className="text-right" title={`Écoles qui ont au moins ${s} fonctionnaires ou contractuels (${s} et plus)`}>
                         dont au moins {s} F/C
                       </th>
@@ -223,7 +223,7 @@ export default function EffectifsEcoles() {
                         dont moins de {s} F/C
                       </th>
                       {EFFECTIFS.map(([k, l], i) => (
-                        <th key={k} className={`text-right ${i === 0 ? "border-l border-zinc-200" : ""}`}>
+                        <th key={k} className={`text-right ${i === 0 ? "border-l-2 !border-l-zinc-400" : ""}`}>
                           {l}
                         </th>
                       ))}
@@ -253,7 +253,7 @@ export default function EffectifsEcoles() {
                                 {x.departement}
                               </button>
                             </td>
-                            <td className="border-l border-zinc-200 text-right tabular-nums">{nombre(x.ecoles, "", "text-encre")}</td>
+                            <td className="border-l-2 !border-l-zinc-400 text-right tabular-nums">{nombre(x.ecoles, "", "text-encre")}</td>
                             <td className="text-right tabular-nums">
                               {nombre(x.auMoins, "AU_MOINS", "text-marque-700")}
                               <span className="block text-[11px] text-zinc-500">{pc(x.partAuMoins)}</span>
@@ -263,7 +263,7 @@ export default function EffectifsEcoles() {
                               <span className="block text-[11px] text-zinc-500">{pc(x.partMoins)}</span>
                             </td>
                             {EFFECTIFS.map(([k], i) => (
-                              <td key={k} className={`text-right tabular-nums ${i === 0 ? "border-l border-zinc-200" : ""}`}>
+                              <td key={k} className={`text-right tabular-nums ${i === 0 ? "border-l-2 !border-l-zinc-400" : ""}`}>
                                 {nf.format(x[k])}
                               </td>
                             ))}
@@ -294,7 +294,7 @@ export default function EffectifsEcoles() {
                     })}
                     <tr className="font-semibold">
                       <td>{departementId ? "Total" : "Total (tout le territoire)"}</td>
-                      <td className="border-l border-zinc-200 text-right tabular-nums">{nf.format(t.ecoles)}</td>
+                      <td className="border-l-2 !border-l-zinc-400 text-right tabular-nums">{nf.format(t.ecoles)}</td>
                       <td className="text-right tabular-nums">
                         {nf.format(t.auMoins)}
                         <span className="block text-[11px] font-normal text-zinc-500">{pc(t.partAuMoins)}</span>
@@ -304,7 +304,7 @@ export default function EffectifsEcoles() {
                         <span className="block text-[11px] font-normal text-zinc-500">{pc(t.partMoins)}</span>
                       </td>
                       {EFFECTIFS.map(([k], i) => (
-                        <td key={k} className={`text-right tabular-nums ${i === 0 ? "border-l border-zinc-200" : ""}`}>
+                        <td key={k} className={`text-right tabular-nums ${i === 0 ? "border-l-2 !border-l-zinc-400" : ""}`}>
                           {nf.format(t[k])}
                         </td>
                       ))}
