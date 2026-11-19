@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { peutControlerAjout } from "@/components/recensement/commun";
 import { useSession } from "@/components/session";
-import { Alerte, Annonce, Bouton, Carte, Champ, Chargement, Modale, Vide, Zone } from "@/components/ui";
+import { Alerte, Annonce, Bouton, Carte, Champ, Chargement, Modale, Progression, Vide, Zone } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 
 interface Modification {
@@ -38,33 +38,56 @@ export function ControleModifications() {
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  /** Décision en cours : où on en est (envoyée par paquets, chaque fiche est longue à traiter). */
+  const [progres, setProgres] = useState<{ fait: number; total: number; decision: "VALIDER" | "REJETER" } | null>(null);
+  /** Décidées pendant cette visite : elles quittent la liste tout de suite, sans attendre la relecture. */
+  const [faites, setFaites] = useState<Set<number>>(new Set());
   const controleur = peutControlerAjout(profil.role) || profil.role === "DG";
-  const lignes = r.donnees?.lignes ?? [];
+  const lignes = (r.donnees?.lignes ?? []).filter((l) => !faites.has(l.id));
+  // Celles faites mais encore dans les données lues (la relecture ne les ramène plus : total déjà juste)
+  const restantes = Math.max(0, (r.donnees?.total ?? 0) - ((r.donnees?.lignes.length ?? 0) - lignes.length));
 
   const decider = async (ids: number[], decision: "VALIDER" | "REJETER", note?: string) => {
+    if (envoi) return;
     setErreur(null);
+    setMessage(null);
+    setRejet(null);
     setEnvoi(true);
-    try {
-      const x = await api.post<{ controlees: number; restaurees: number; gardees: number; appliquees: number; erreurs: { id: number; message: string }[] }>("/recensement/modifications/controle", {
-        ids,
-        decision,
-        note,
-      });
-      setMessage(
-        decision === "VALIDER"
-          ? `${x.controlees} modification(s) validée(s)${x.appliquees ? ` ; ${x.appliquees} rubrique(s) proposée(s) appliquée(s) aux fiches` : ""}${x.gardees ? ` ; ${x.gardees} laissée(s) car la fiche a changé depuis la proposition` : ""}.`
-          : `${x.controlees} modification(s) rejetée(s) : ${x.restaurees} rubrique(s) remise(s) à leur ancienne valeur${x.gardees ? `, ${x.gardees} laissée(s) car modifiée(s) de nouveau depuis` : ""}.`,
-      );
-      if (x.erreurs?.length) setErreur(`Non validée(s), à revoir : ${x.erreurs.map((e) => e.message).join(" ; ")}`);
-      setChoisies(new Set());
-      setRejet(null);
-      setMotif("");
-      r.recharger();
-    } catch (e) {
-      setErreur((e as Error).message);
-    } finally {
-      setEnvoi(false);
+    setProgres({ fait: 0, total: ids.length, decision });
+    const s = { controlees: 0, restaurees: 0, gardees: 0, appliquees: 0 };
+    const erreurs: string[] = [];
+    // Par paquets de 25 : la progression se voit, et les fiches faites quittent la liste au fur et à mesure
+    for (let i = 0; i < ids.length; i += 25) {
+      const lot = ids.slice(i, i + 25);
+      try {
+        const x = await api.post<{ controlees: number; restaurees: number; gardees: number; appliquees: number; erreurs: { id: number; message: string }[] }>("/recensement/modifications/controle", {
+          ids: lot,
+          decision,
+          note,
+        });
+        s.controlees += x.controlees;
+        s.restaurees += x.restaurees;
+        s.gardees += x.gardees;
+        s.appliquees += x.appliquees;
+        const refusees = new Set((x.erreurs ?? []).map((e) => e.id));
+        erreurs.push(...(x.erreurs ?? []).map((e) => e.message));
+        setFaites((f) => new Set([...f, ...lot.filter((id) => !refusees.has(id))]));
+      } catch (e) {
+        erreurs.push((e as Error).message);
+      }
+      setProgres({ fait: Math.min(i + 25, ids.length), total: ids.length, decision });
     }
+    setMessage(
+      decision === "VALIDER"
+        ? `${s.controlees} modification(s) validée(s)${s.appliquees ? ` ; ${s.appliquees} rubrique(s) proposée(s) appliquée(s) aux fiches` : ""}${s.gardees ? ` ; ${s.gardees} laissée(s) car la fiche a changé depuis la proposition` : ""}.`
+        : `${s.controlees} modification(s) rejetée(s) : ${s.restaurees} rubrique(s) remise(s) à leur ancienne valeur${s.gardees ? `, ${s.gardees} laissée(s) car modifiée(s) de nouveau depuis` : ""}.`,
+    );
+    if (erreurs.length) setErreur(`${erreurs.length} non ${decision === "VALIDER" ? "validée(s)" : "rejetée(s)"}, à revoir (elles restent dans la liste) : ${erreurs.join(" ; ")}`);
+    setChoisies(new Set());
+    setMotif("");
+    setProgres(null);
+    setEnvoi(false);
+    r.recharger();
   };
 
   const basculer = (id: number) =>
@@ -76,7 +99,7 @@ export function ControleModifications() {
     });
 
   return (
-    <Carte titre={`4. Fiches modifiées au recensement : contrôle${r.donnees ? ` (${r.donnees.total})` : ""}`}>
+    <Carte titre={`4. Fiches modifiées au recensement : contrôle${r.donnees ? ` (${restantes})` : ""}`}>
       <p className="-mt-2 mb-4 text-[13px] leading-relaxed text-zinc-600">
         Une fiche complétée ou corrigée depuis cette page passe au contrôle, comme un agent ajouté. Pour chaque rubrique changée : l’ancienne valeur (barrée) et la nouvelle. Les{" "}
         <strong>propositions</strong> (venues des rapports de fin d’année des DDEPPSA) ne sont pas encore dans la fiche : « Valider » les applique, « Rejeter » ne change rien.{" "}
@@ -95,29 +118,43 @@ export function ControleModifications() {
       ) : (
         <>
           {controleur && (
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-2 text-[13px]">
-                <input
-                  type="checkbox"
-                  className="size-4 accent-marque-600"
-                  checked={choisies.size === lignes.length}
-                  onChange={(e) => setChoisies(e.target.checked ? new Set(lignes.map((l) => l.id)) : new Set())}
-                />
-                Tout cocher
-              </label>
-              <span className="text-[12px] text-zinc-500">{choisies.size} cochée(s)</span>
-              <Bouton variante="principal" disabled={!choisies.size || envoi} onClick={() => void decider([...choisies], "VALIDER")}>
-                <Check /> Valider la sélection
-              </Bouton>
-              <Bouton variante="danger" disabled={!choisies.size || envoi} onClick={() => setRejet([...choisies])}>
-                <X /> Rejeter la sélection
-              </Bouton>
+            // Collée en haut de l'écran : on voit l'avancement même en bas de la liste
+            <div className="sticky top-0 z-10 -mx-2 mb-3 rounded-2xl bg-white/95 px-2 py-2 backdrop-blur">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-2 text-[13px]">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-marque-600"
+                    disabled={envoi}
+                    checked={lignes.length > 0 && choisies.size === lignes.length}
+                    onChange={(e) => setChoisies(e.target.checked ? new Set(lignes.map((l) => l.id)) : new Set())}
+                  />
+                  Tout cocher
+                </label>
+                <span className="text-[12px] text-zinc-500">
+                  {choisies.size} cochée(s){restantes > lignes.length ? ` · ${lignes.length} affichées sur ${restantes} (les suivantes viennent quand celles-ci sont décidées)` : ""}
+                </span>
+                <Bouton variante="principal" chargement={progres?.decision === "VALIDER"} disabled={!choisies.size || envoi} onClick={() => void decider([...choisies], "VALIDER")}>
+                  <Check /> {progres?.decision === "VALIDER" ? "Validation…" : "Valider la sélection"}
+                </Bouton>
+                <Bouton variante="danger" chargement={progres?.decision === "REJETER"} disabled={!choisies.size || envoi} onClick={() => setRejet([...choisies])}>
+                  <X /> {progres?.decision === "REJETER" ? "Rejet…" : "Rejeter la sélection"}
+                </Bouton>
+              </div>
+              {progres && (
+                <div className="mt-2 space-y-1">
+                  <p className="text-[13px] font-medium text-marque-700">
+                    {progres.decision === "VALIDER" ? "Validation" : "Rejet"} en cours : {progres.fait} / {progres.total} — chaque fiche est mise à jour une à une, cela peut prendre quelques minutes. Restez sur la page.
+                  </p>
+                  <Progression valeur={(progres.fait / progres.total) * 100} />
+                </div>
+              )}
             </div>
           )}
           <ul className="space-y-2">
             {lignes.map((m) => (
-              <li key={m.id} className={`flex flex-wrap items-start gap-3 rounded-2xl px-4 py-3 ${choisies.has(m.id) ? "bg-marque-50 ring-1 ring-marque-200" : "bg-zinc-50"}`}>
-                {controleur && <input type="checkbox" aria-label={`Choisir la modification de ${m.nomComplet}`} className="mt-1 size-4 accent-marque-600" checked={choisies.has(m.id)} onChange={() => basculer(m.id)} />}
+              <li key={m.id} className={`flex flex-wrap items-start gap-3 rounded-2xl px-4 py-3 transition-opacity ${choisies.has(m.id) ? "bg-marque-50 ring-1 ring-marque-200" : "bg-zinc-50"} ${envoi && choisies.has(m.id) ? "opacity-60" : ""}`}>
+                {controleur && <input type="checkbox" aria-label={`Choisir la modification de ${m.nomComplet}`} className="mt-1 size-4 accent-marque-600" disabled={envoi} checked={choisies.has(m.id)} onChange={() => basculer(m.id)} />}
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-baseline gap-x-2">
                     <Link href={`/personnel/agents/${m.agentId}`} className="text-[14px] font-semibold text-marque-700 hover:underline">
