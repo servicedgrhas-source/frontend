@@ -11,7 +11,7 @@ import { peut } from "@/lib/libelles";
 /*
  * Écoles à contrôler, dans Structures scolaires (DG, 18/11/2026 : à sa place, près des écoles) :
  * écoles qui se ressemblent, écoles hors organigramme (à proposer au DG), décisions. Des décisions de
- * comptage : les fiches et l'organigramme ne sont pas modifiés ici.
+ * comptage, et une école rattachée à l'organigramme met à jour les fiches (19/11/2026).
  */
 export default function Page() {
   return (
@@ -29,7 +29,7 @@ function EcolesAControler() {
     <div className="space-y-4">
       <EnTete
         titre="Écoles à contrôler"
-        sousTitre="Les écoles qui se ressemblent et celles qui ne sont pas dans l’organigramme. On tranche ici pour compter juste les effectifs par école ; une vraie école absente de l’organigramme est proposée au DG. Les fiches et l’organigramme ne sont pas modifiés ici."
+        sousTitre="Les écoles qui se ressemblent et celles qui ne sont pas dans l’organigramme. On tranche ici, et nos bases suivent : une école rattachée à une école de l’organigramme met à jour les fiches de ses personnes (lieu de service, DDEPPSA). Une vraie école absente de l’organigramme est proposée au DG."
       />
       <ControleEcoles key={onglet} ongletInitial={onglet} />
     </div>

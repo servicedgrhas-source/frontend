@@ -235,6 +235,7 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
   const [refusParPaire, setRefusParPaire] = useState<Map<string, string>>(new Map());
   const minuterie = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [confirmation, demander] = useConfirmation();
+  const [appliquePassees, setAppliquePassees] = useState(false);
   const filtres = { cycle, departementId: departementId || undefined, recherche: recherche.trim() || undefined };
   const resume = useApi<{ ressemblances: number; aHarmoniser: number; horsOrganigramme: number; decisions: number; reclassees: number; calculeLe: string; aJour: boolean }>(`${API}${qs(filtres)}`);
   const r = useApi<{ total: number; niveaux: Record<Niveau, number>; paires: PaireEcoles[] }>(
@@ -283,8 +284,9 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
     setSucces(null);
     marquer(setEnvoi, (m) => new Map(m).set(k, bouton));
     try {
-      await api.post(`${API}/decisions`, corps);
-      marquer(setFaites, (x) => new Set(x).add(k));
+      const x = await api.post<{ fiches?: number }>(`${API}/decisions`, corps);
+      if (x.fiches) setSucces(`${nf.format(x.fiches)} fiche(s) mise(s) à jour dans nos bases (lieu de service, DDEPPSA).`);
+      marquer(setFaites, (y) => new Set(y).add(k));
       // « Même école » : l'école absorbée n'existe plus seule ; ses autres paires se refont au recalcul
       if (corps.type === "JUMELEE") marquer(setAbsorbees, (x) => new Set(x).add(String(corps.cle)));
       cocher([{ a: p.a.id, b: p.b.id }], false);
@@ -302,7 +304,8 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
   const annuler = async (id: number) => {
     setErreur(null);
     try {
-      await api.delete(`${API}/decisions/${id}`);
+      const x = await api.delete<{ fichesRemises?: number }>(`${API}/decisions/${id}`);
+      if (x?.fichesRemises) setSucces(`Décision annulée : ${nf.format(x.fichesRemises)} fiche(s) remise(s) comme avant.`);
       // Une décision annulée peut faire revenir des paires : on oublie ce qu'on cachait
       setFaites(new Set());
       setAbsorbees(new Set());
@@ -350,7 +353,7 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
     setRefuses([]);
     setFusionEnCours(true);
     try {
-      const x = await api.post<{ fusionnees: number; groupes: number; refuses: { ecoles: string; raison: string; ids?: string[] }[]; ignorees: number }>(`${API}/decisions/fusion`, { paires: liste });
+      const x = await api.post<{ fusionnees: number; groupes: number; fiches?: number; refuses: { ecoles: string; raison: string; ids?: string[] }[]; ignorees: number }>(`${API}/decisions/fusion`, { paires: liste });
       // Une paire est refusée si ses deux écoles sont dans un groupe refusé
       const raisonDe = (q: { a: string; b: string }) => x.refuses.find((g) => g.ids?.includes(q.a) && g.ids?.includes(q.b))?.raison;
       const refusees = new Map<string, string>();
@@ -365,7 +368,8 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
       setSucces(
         `${nf.format(faitesIci.length)} paire(s) fusionnée(s) (${nf.format(x.fusionnees)} école(s) comptée(s) sous un autre nom).` +
           (refusees.size ? ` ${nf.format(refusees.size)} paire(s) laissée(s) dans la liste, avec la raison sur la carte : à trancher une par une.` : "") +
-          (x.ignorees ? ` ${nf.format(x.ignorees)} paire(s) déjà traitée(s) ignorée(s).` : ""),
+          (x.ignorees ? ` ${nf.format(x.ignorees)} paire(s) déjà traitée(s) ignorée(s).` : "") +
+          (x.fiches ? ` ${nf.format(x.fiches)} fiche(s) mise(s) à jour dans nos bases.` : ""),
       );
       setRefuses([]);
       setCochees(new Map());
@@ -389,7 +393,7 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <p className="max-w-3xl text-[13px] text-zinc-600">
             Les noms d’écoles écrits dans les fichiers (registre de la bourse, base du personnel) ne sont pas toujours ceux de l’organigramme. Ici, on tranche : <strong>même école</strong> ou <strong>deux écoles</strong>, nom
-            corrigé ou pas une école. Ce sont des décisions de <strong>comptage</strong>, pour compter juste les effectifs par école : les fiches et l’organigramme ne sont pas modifiés ici ; chaque décision s’annule.
+            corrigé ou pas une école. <strong>Nos bases sont mises à jour</strong> : quand l’école gardée est dans l’organigramme, les fiches du personnel et du registre comptées dans l’autre école prennent cette école (lieu de service, DDEPPSA). Chaque décision s’annule, et les fiches reprennent alors leur valeur d’avant.
           </p>
           <div className="flex flex-col items-end gap-2">
             {n && <FraicheurCalcul calculeLe={n.calculeLe} aJour={n.aJour} recharger={resume.recharger} />}
@@ -653,7 +657,33 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
       )}
 
       {onglet === "decisions" && (
-        <Carte titre="Décisions prises sur les écoles">
+        <Carte
+          titre="Décisions prises sur les écoles"
+          actions={
+            controle && (
+              <Bouton
+                chargement={appliquePassees}
+                onClick={async () => {
+                  if (!(await demander("Mettre à jour les fiches du personnel et du registre d’après les décisions « même école » déjà prises (celles vers une école de l’organigramme) ? Chaque fiche garde sa valeur d’avant : annuler la décision la remet.", "Oui, mettre à jour"))) return;
+                  setErreur(null);
+                  setAppliquePassees(true);
+                  try {
+                    const x = await api.post<{ decisions: number; fiches: number }>(`${API}/decisions/appliquer-passees`, {});
+                    setSucces(`${nf.format(x.fiches)} fiche(s) mise(s) à jour d’après ${nf.format(x.decisions)} décision(s) déjà prise(s).`);
+                    toutRelire();
+                  } catch (e) {
+                    setErreur((e as Error).message);
+                  } finally {
+                    setAppliquePassees(false);
+                  }
+                }}
+                title="Pour les décisions prises avant que le contrôle des écoles mette nos bases à jour"
+              >
+                Mettre à jour les fiches (décisions déjà prises)
+              </Bouton>
+            )
+          }
+        >
           {dec.erreur && <Alerte>{dec.erreur}</Alerte>}
           {!dec.donnees || dec.chargement ? <Squelette n={5} h="h-10" /> : !dec.donnees.length ? <Vide>Aucune décision pour le moment.</Vide> : <ListeDecisions decisions={dec.donnees} annuler={annuler} controle={controle} />}
         </Carte>
@@ -945,13 +975,13 @@ function OngletRattacher({
     });
   /** Envoyer des rattachements : école hors organigramme → école de l'organigramme. */
   const envoyer = async (paires: { a: string; b: string }[]) => {
-    const r = await api.post<{ fusionnees: number; refuses: { raison: string; ids?: string[] }[] }>(`${API}/decisions/fusion`, { paires });
+    const r = await api.post<{ fusionnees: number; fiches?: number; refuses: { raison: string; ids?: string[] }[] }>(`${API}/decisions/fusion`, { paires });
     const refusees = new Set(r.refuses.flatMap((g) => g.ids ?? []));
     const ok = paires.filter((q) => !refusees.has(q.a)).map((q) => q.a);
     setFaites((f) => new Set([...f, ...ok]));
     basculer(ok, false);
     relire();
-    return { ok: ok.length, refus: r.refuses };
+    return { ok: ok.length, refus: r.refuses, fiches: r.fiches ?? 0 };
   };
   const rattacherUne = async (e: EcoleARattacher) => {
     const b = cible(e);
@@ -961,7 +991,8 @@ function OngletRattacher({
     setEnvoi((x) => new Set(x).add(e.id));
     try {
       // Une seule école : la décision simple (instantanée), pas la fusion en série (qui refait tout le calcul)
-      await api.post(`${API}/decisions`, { type: "JUMELEE", cle: e.id, autreCle: b });
+      const x = await api.post<{ fiches?: number }>(`${API}/decisions`, { type: "JUMELEE", cle: e.id, autreCle: b });
+      setSucces(`« ${e.nom} » rattachée${x.fiches ? ` : ${nf.format(x.fiches)} fiche(s) mise(s) à jour dans nos bases` : ""}.`);
       setFaites((f) => new Set(f).add(e.id));
       basculer([e.id], false);
       relire();
@@ -1002,7 +1033,7 @@ function OngletRattacher({
     try {
       const r = await envoyer(paires);
       setSucces(
-        `${nf.format(r.ok)} école(s) rattachée(s) à l’organigramme.` +
+        `${nf.format(r.ok)} école(s) rattachée(s) à l’organigramme${r.fiches ? ` : ${nf.format(r.fiches)} fiche(s) mise(s) à jour dans nos bases` : ""}.` +
           (r.refus.length ? ` ${nf.format(paires.length - r.ok)} laissée(s) : ${[...new Set(r.refus.map((g) => g.raison))].join(" ; ")}.` : ""),
       );
     } catch (x) {
@@ -1018,7 +1049,7 @@ function OngletRattacher({
     <Carte titre="Rattacher à l’organigramme">
       <p className="mb-3 text-[12px] text-zinc-500">
         Chaque école écrite dans les fichiers mais absente de l’organigramme, avec les écoles de l’organigramme dont le nom ressemble le plus, cherchées dans toutes les DDEPPSA (une école des Plateaux peut être aujourd’hui dans Nkéni-Alima ou Djoué-Léfini : sa DDEPPSA est alors écrite en bleu) (la meilleure est choisie d’avance ; cliquez
-        une autre pour changer). « Rattacher » compte ses personnes dans l’école de l’organigramme ; la décision s’annule dans « Décisions ». Sans école proche : ouvrez-la (autre école, pas une école) ou
+        une autre pour changer). « Rattacher » met à jour les fiches de ses personnes (lieu de service, DDEPPSA) avec l’école de l’organigramme ; la décision s’annule dans « Décisions » et les fiches reprennent alors leur valeur d’avant. Sans école proche : ouvrez-la (autre école, pas une école) ou
         proposez-la au DG.
       </p>
       {nb && (
