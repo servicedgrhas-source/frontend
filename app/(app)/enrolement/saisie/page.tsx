@@ -307,6 +307,11 @@ export default function SaisieEnrolement() {
   // La recherche ne regarde que l'étape ouverte : on dit aussi combien sont trouvés dans les autres étapes
   const rechercheAilleurs = recherche.trim().length >= 2;
   const ailleurs = useApi<Enrole[]>(campagne && rechercheAilleurs ? `/enrolement/dossiers${qs({ campagne: campagne.id, recherche })}` : null);
+  // Non retenus : le motif détaillé, comme dans l'Excel (où chacun est déjà connu, observation corrigée)
+  const situations = useApi<{ lignes: { id: string; motif: string; observation: string | null }[] }>(
+    campagne && etat === "NON_RETENU" ? `/enrolement/listes/non-retenus/json${qs({ campagne: campagne.id })}` : null,
+  );
+  const situationDe = new Map((situations.donnees?.lignes ?? []).map((x) => [x.id, x]));
   const autresEtapes = (Object.keys(ETAPES) as Etat[])
     .filter((x) => x !== etat)
     .map((x) => ({ etat: x, n: (ailleurs.donnees ?? []).filter((d) => d.etat === x).length }))
@@ -536,7 +541,17 @@ export default function SaisieEnrolement() {
                           {e.dateNaissance ? e.dateNaissance.split("-").reverse().join("/") : "date ?"} {e.lieuNaissance ? `· ${e.lieuNaissance}` : ""}
                         </div>
                         {e.remarqueControle && <div className="text-[11px] font-medium text-rouge-600">À corriger : {e.remarqueControle}</div>}
-                        {e.motifDecision && <div className="text-[11px] text-zinc-500">Motif : {e.motifDecision}</div>}
+                        {e.etat === "NON_RETENU" && situationDe.get(e.id) ? (
+                          <div className="mt-0.5 text-[11px] leading-snug">
+                            <span className="text-zinc-500">Motif : </span>
+                            <span className="font-medium text-zinc-700">{situationDe.get(e.id)!.motif}</span>
+                            {situationDe.get(e.id)!.observation && <span className="text-zinc-500"> · observation : {situationDe.get(e.id)!.observation}</span>}
+                          </div>
+                        ) : e.etat === "NON_RETENU" && situations.chargement ? (
+                          <div className="mt-1 h-3 w-48 animate-pulse rounded bg-zinc-200" aria-label="Chargement du motif" />
+                        ) : (
+                          e.motifDecision && <div className="text-[11px] text-zinc-500">Motif : {e.motifDecision}</div>
+                        )}
                         {e.recommandationEnAttente && <div className="mt-0.5 inline-flex rounded-full bg-or-100 px-2 py-0.5 text-[11px] font-medium text-or-700">Recommandation en attente</div>}
                       </td>
                       <td className="whitespace-nowrap text-[12px]">
