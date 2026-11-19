@@ -1,7 +1,7 @@
 "use client";
 
-import { Building2, Download, GitMerge, Pencil } from "lucide-react";
-import { useState } from "react";
+import { Building2, Download, GitMerge, Loader2, Pencil } from "lucide-react";
+import { useRef, useState } from "react";
 import { FraicheurCalcul } from "@/components/fraicheur-calcul";
 import { useSession } from "@/components/session";
 import { Alerte, Badge, Bouton, Carte, Champ, Liste, Modale, Saisie, Segments, Tableau, useConfirmation, Vide } from "@/components/ui";
@@ -180,7 +180,7 @@ export function ListeDecisions({ decisions, annuler, controle }: { decisions: De
             <td className="text-[12px] text-zinc-600">
               {x.type === "JUMELEE" && x.autre && <>comptée avec « {x.autre.nom} »</>}
               {x.type === "DIFFERENTES" && x.autre && <>pas la même que « {x.autre.nom} »</>}
-              {x.type === "MISE_A_JOUR" && [x.nom && `nom : « ${x.nom} »`, x.departement && `DEPPSA : ${x.departement}`, x.cycle && `cycle : ${CYCLES_ECOLES[x.cycle] ?? x.cycle}`].filter(Boolean).join(" · ")}
+              {x.type === "MISE_A_JOUR" && [x.nom && `nom : « ${x.nom} »`, x.departement && `DDEPPSA : ${x.departement}`, x.cycle && `cycle : ${CYCLES_ECOLES[x.cycle] ?? x.cycle}`].filter(Boolean).join(" · ")}
               {x.motif && <div className="text-zinc-500">Motif : {x.motif}</div>}
             </td>
             <td className="text-[12px] text-zinc-500">
@@ -219,7 +219,7 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
   const [page, setPage] = useState(1);
   const [ouverte, setOuverte] = useState<string | null>(null);
   const [aProposer, setAProposer] = useState<EcoleDetaillee | null>(null);
-  const [enCours, setEnCours] = useState<string | null>(null);
+  const [, setEnCours] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [succes, setSucces] = useState<string | null>(null);
   const [niveau, setNiveau] = useState<Niveau | "">("");
@@ -227,6 +227,13 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
   const [cochees, setCochees] = useState<Map<string, { a: string; b: string }>>(new Map());
   const [fusionEnCours, setFusionEnCours] = useState(false);
   const [refuses, setRefuses] = useState<{ ecoles: string; raison: string }[]>([]);
+  // Réactivité (19/11/2026) : une paire tranchée disparaît dès que le serveur a répondu, sans attendre
+  // le recalcul ; pendant l'envoi, sa carte est verrouillée (bouton qui tourne, autres boutons inactifs).
+  const [faites, setFaites] = useState<Set<string>>(new Set());
+  const [absorbees, setAbsorbees] = useState<Set<string>>(new Set());
+  const [envoi, setEnvoi] = useState<Map<string, string>>(new Map());
+  const [refusParPaire, setRefusParPaire] = useState<Map<string, string>>(new Map());
+  const minuterie = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [confirmation, demander] = useConfirmation();
   const filtres = { cycle, departementId: departementId || undefined, recherche: recherche.trim() || undefined };
   const resume = useApi<{ ressemblances: number; aHarmoniser: number; horsOrganigramme: number; decisions: number; reclassees: number; calculeLe: string; aJour: boolean }>(`${API}${qs(filtres)}`);
@@ -258,10 +265,47 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
       setEnCours(null);
     }
   };
+  /** Relire en silence un peu après la dernière décision (pas une relecture par clic). */
+  const relireBientot = () => {
+    if (minuterie.current) clearTimeout(minuterie.current);
+    minuterie.current = setTimeout(() => {
+      resume.recharger();
+      r.recharger();
+      dec.recharger();
+    }, 1500);
+  };
+  const marquer = <T,>(set: (f: (x: T) => T) => void, f: (x: T) => T) => set(f);
+  /** Trancher une paire de la liste : la carte se verrouille, puis disparaît dès que c'est enregistré. */
+  const trancher = async (p: PaireEcoles, bouton: "garder-a" | "garder-b" | "differentes", corps: Record<string, unknown>) => {
+    const k = clePaire({ a: p.a.id, b: p.b.id });
+    if (envoi.has(k) || fusionEnCours) return;
+    setErreur(null);
+    setSucces(null);
+    marquer(setEnvoi, (m) => new Map(m).set(k, bouton));
+    try {
+      await api.post(`${API}/decisions`, corps);
+      marquer(setFaites, (x) => new Set(x).add(k));
+      // « Même école » : l'école absorbée n'existe plus seule ; ses autres paires se refont au recalcul
+      if (corps.type === "JUMELEE") marquer(setAbsorbees, (x) => new Set(x).add(String(corps.cle)));
+      cocher([{ a: p.a.id, b: p.b.id }], false);
+      relireBientot();
+    } catch (x) {
+      setErreur((x as Error).message);
+    } finally {
+      marquer(setEnvoi, (m) => {
+        const n = new Map(m);
+        n.delete(k);
+        return n;
+      });
+    }
+  };
   const annuler = async (id: number) => {
     setErreur(null);
     try {
       await api.delete(`${API}/decisions/${id}`);
+      // Une décision annulée peut faire revenir des paires : on oublie ce qu'on cachait
+      setFaites(new Set());
+      setAbsorbees(new Set());
       toutRelire();
     } catch (x) {
       setErreur((x as Error).message);
@@ -271,6 +315,7 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
     f(v);
     setPage(1);
     setCochees(new Map());
+    setRefusParPaire(new Map());
   };
   const clePaire = (p: { a: string; b: string }) => `${p.a}§${p.b}`;
   const cocher = (liste: { a: string; b: string }[], oui: boolean) =>
@@ -294,8 +339,9 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
   const fusionner = async () => {
     const liste = [...cochees.values()];
     if (!liste.length) return;
+    const aVerifier = (r.donnees?.paires ?? []).filter((p) => cochees.has(clePaire({ a: p.a.id, b: p.b.id })) && (p.niveau === "A_VERIFIER" || p.niveau === "PEU_PROBABLE")).length;
     const ok = await demander(
-      `Fusionner ${nf.format(liste.length)} paire(s) d’écoles ? Pour chacune, les personnes sont comptées sous le nom gardé (celui de l’organigramme, sinon le plus complet). Les paires qui se touchent sont regroupées sous une seule école. Chaque fusion reste dans « Décisions » et s’annule.`,
+      `Fusionner ${nf.format(liste.length)} paire(s) d’écoles ? Pour chacune, les personnes sont comptées sous le nom gardé (celui de l’organigramme, sinon le plus complet).${aVerifier ? ` Attention : ${nf.format(aVerifier)} paire(s) cochée(s) sont « à vérifier » ou « peu probables » : ce sont peut-être deux écoles différentes.` : ""} Une école reliée à plusieurs autres (groupe de plus de deux) n’est fusionnée que si toutes se ressemblent assez entre elles : sinon ses paires restent, avec la raison, à trancher une par une. Chaque fusion reste dans « Décisions » et s’annule.`,
       "Oui, fusionner",
     );
     if (!ok) return;
@@ -304,22 +350,37 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
     setRefuses([]);
     setFusionEnCours(true);
     try {
-      const x = await api.post<{ fusionnees: number; groupes: number; refuses: { ecoles: string; raison: string }[]; ignorees: number }>(`${API}/decisions/fusion`, { paires: liste });
+      const x = await api.post<{ fusionnees: number; groupes: number; refuses: { ecoles: string; raison: string; ids?: string[] }[]; ignorees: number }>(`${API}/decisions/fusion`, { paires: liste });
+      // Une paire est refusée si ses deux écoles sont dans un groupe refusé
+      const raisonDe = (q: { a: string; b: string }) => x.refuses.find((g) => g.ids?.includes(q.a) && g.ids?.includes(q.b))?.raison;
+      const refusees = new Map<string, string>();
+      const faitesIci: string[] = [];
+      for (const q of liste) {
+        const raison = raisonDe(q);
+        if (raison) refusees.set(clePaire(q), raison);
+        else faitesIci.push(clePaire(q));
+      }
+      setFaites((f) => new Set([...f, ...faitesIci]));
+      setRefusParPaire(refusees);
       setSucces(
-        `${nf.format(x.fusionnees)} école(s) fusionnée(s) dans ${nf.format(x.groupes)} école(s).` +
+        `${nf.format(faitesIci.length)} paire(s) fusionnée(s) (${nf.format(x.fusionnees)} école(s) comptée(s) sous un autre nom).` +
+          (refusees.size ? ` ${nf.format(refusees.size)} paire(s) laissée(s) dans la liste, avec la raison sur la carte : à trancher une par une.` : "") +
           (x.ignorees ? ` ${nf.format(x.ignorees)} paire(s) déjà traitée(s) ignorée(s).` : ""),
       );
-      setRefuses(x.refuses);
+      setRefuses([]);
       setCochees(new Map());
-      setPage(1);
-      toutRelire();
+      relireBientot();
     } catch (x) {
       setErreur((x as Error).message);
     } finally {
       setFusionEnCours(false);
     }
   };
-  const n = resume.donnees;
+  const cachee = (p: PaireEcoles) => faites.has(clePaire({ a: p.a.id, b: p.b.id })) || absorbees.has(p.a.id) || absorbees.has(p.b.id);
+  const retirees = (r.donnees?.paires ?? []).filter(cachee);
+  const paires = (r.donnees?.paires ?? []).filter((p) => !cachee(p));
+  const resumeLu = resume.donnees;
+  const n = resumeLu ? { ...resumeLu, ressemblances: Math.max(0, resumeLu.ressemblances - retirees.length) } : resumeLu;
 
   return (
     <div className="space-y-4">
@@ -341,7 +402,7 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
           </div>
         </div>
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          <Liste value={departementId} onChange={(e) => changer(setDepartementId)(e.target.value)} vide="Toutes les DEPPSA" options={refs.departements.map((x) => ({ valeur: x.id, libelle: x.nom }))} />
+          <Liste value={departementId} onChange={(e) => changer(setDepartementId)(e.target.value)} vide="Toutes les DDEPPSA" options={refs.departements.map((x) => ({ valeur: x.id, libelle: x.nom }))} />
           <Liste
             value={cycle}
             onChange={(e) => changer(setCycle)(e.target.value)}
@@ -378,12 +439,13 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
       {onglet === "ressemblances" && (
         <Carte titre="Écoles qui se ressemblent">
           <p className="mb-3 text-[12px] text-zinc-500">
-            Deux écoles de la même DEPPSA dont les noms se ressemblent, de la plus probable à la moins probable. « Même école » les compte ensemble sous le nom gardé ; « Deux écoles différentes » ne les propose plus.
+            Deux écoles de la même DDEPPSA dont les noms se ressemblent, de la plus probable à la moins probable. « Même école » les compte ensemble sous le nom gardé ; « Deux écoles différentes » ne les propose plus.
             Pour aller vite : cochez les paires (ou toutes les « très probables » d’un coup), puis « Fusionner la sélection ».
           </p>
           <div className="mb-3 flex flex-wrap gap-2">
             {([["", "Toutes"], ...NIVEAUX] as [Niveau | "", string, Ton?][]).map(([v, libelle]) => {
-              const nb = !r.donnees ? null : v ? r.donnees.niveaux[v] : Object.values(r.donnees.niveaux).reduce((s, x) => s + x, 0);
+              const moins = (x: Niveau) => retirees.filter((q) => q.niveau === x).length;
+              const nb = !r.donnees ? null : v ? Math.max(0, r.donnees.niveaux[v] - moins(v)) : Math.max(0, Object.values(r.donnees.niveaux).reduce((s, x) => s + x, 0) - retirees.length);
               return (
                 <button
                   key={v || "toutes"}
@@ -401,17 +463,17 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
               <span className="px-1 text-[12px] text-zinc-600">
                 <strong className="text-zinc-900">{nf.format(cochees.size)}</strong> paire(s) cochée(s)
               </span>
-              <Bouton variante="discret" disabled={!r.donnees?.paires.length} onClick={() => cocher((r.donnees?.paires ?? []).map((p) => ({ a: p.a.id, b: p.b.id })), true)}>
+              <Bouton variante="discret" disabled={!paires.length} onClick={() => cocher(paires.map((p) => ({ a: p.a.id, b: p.b.id })), true)}>
                 Cocher cette page
               </Bouton>
               {!!r.donnees?.niveaux.TRES_PROBABLE && (
                 <Bouton variante="discret" onClick={() => cocherNiveau("TRES_PROBABLE")}>
-                  Cocher toutes les très probables ({nf.format(r.donnees.niveaux.TRES_PROBABLE)})
+                  Cocher toutes les très probables ({nf.format(Math.max(0, r.donnees.niveaux.TRES_PROBABLE - retirees.filter((q) => q.niveau === "TRES_PROBABLE").length))})
                 </Bouton>
               )}
               {!!r.donnees?.niveaux.PROBABLE && (
                 <Bouton variante="discret" onClick={() => cocherNiveau("PROBABLE")}>
-                  … et les probables ({nf.format(r.donnees.niveaux.PROBABLE)})
+                  … et les probables ({nf.format(Math.max(0, r.donnees.niveaux.PROBABLE - retirees.filter((q) => q.niveau === "PROBABLE").length))})
                 </Bouton>
               )}
               {cochees.size > 0 && (
@@ -428,23 +490,42 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
           {r.erreur && <Alerte>{r.erreur}</Alerte>}
           {!r.donnees || r.chargement ? (
             <Squelette n={3} h="h-40" />
-          ) : !r.donnees.paires.length ? (
-            <Vide>Aucune paire à trancher pour ces filtres.</Vide>
+          ) : !paires.length ? (
+            retirees.length ? <Squelette n={2} h="h-40" /> : <Vide>Aucune paire à trancher pour ces filtres.</Vide>
           ) : (
             <div className="space-y-4">
-              {r.donnees.paires.map((p) => {
+              {paires.map((p) => {
                 const garde = p.garder === "a" ? p.a : p.b;
                 const autre = p.garder === "a" ? p.b : p.a;
-                const coche = cochees.has(clePaire({ a: p.a.id, b: p.b.id }));
+                const k = clePaire({ a: p.a.id, b: p.b.id });
+                const coche = cochees.has(k);
+                const bouton = envoi.get(k);
+                const verrou = !!bouton || (fusionEnCours && coche);
+                const refus = refusParPaire.get(k);
                 const [, libelleNiveau, ton] = NIVEAUX.find(([v]) => v === p.niveau) ?? ["", p.niveau, "gris"];
                 return (
-                  <div key={`${p.a.id}§${p.b.id}`} className={`rounded-2xl border p-3 transition ${coche ? "border-marque-400 bg-marque-50/40" : "border-zinc-200 bg-zinc-50/60"}`}>
+                  <div
+                    key={k}
+                    aria-busy={verrou}
+                    className={`relative rounded-2xl border p-3 transition ${verrou ? "pointer-events-none opacity-60" : ""} ${coche ? "border-marque-400 bg-marque-50/40" : refus ? "border-or-300 bg-or-50/50" : "border-zinc-200 bg-zinc-50/60"}`}
+                  >
+                    {verrou && (
+                      <span className="absolute top-3 right-4 z-[2] inline-flex items-center gap-1.5 rounded-full bg-marque-600 px-2.5 py-1 text-[11px] font-medium text-white shadow">
+                        <Loader2 className="size-3 animate-spin" /> Enregistrement…
+                      </span>
+                    )}
+                    {refus && (
+                      <div className="mb-2 rounded-xl bg-or-100 px-3 py-1.5 text-[12px] text-or-800">
+                        Pas fusionnée en série : {refus}. Tranchez cette paire ici.
+                      </div>
+                    )}
                     <div className="mb-2 flex flex-wrap items-center gap-2 text-[12px] text-zinc-500">
                       {controle && (
                         <input
                           type="checkbox"
                           className="size-4 accent-marque-600"
                           checked={coche}
+                          disabled={verrou}
                           onChange={(e) => cocher([{ a: p.a.id, b: p.b.id }], e.target.checked)}
                           aria-label="Cocher cette paire pour la fusionner"
                         />
@@ -467,13 +548,13 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
                       ))}
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Bouton variante="principal" chargement={enCours === autre.id} onClick={() => decider(autre.id, { type: "JUMELEE", cle: autre.id, autreCle: garde.id })}>
+                      <Bouton variante="principal" disabled={verrou} chargement={bouton === "garder-a"} onClick={() => void trancher(p, "garder-a", { type: "JUMELEE", cle: autre.id, autreCle: garde.id })}>
                         <GitMerge /> Même école : garder « {garde.nom} »
                       </Bouton>
-                      <Bouton chargement={enCours === garde.id} onClick={() => decider(garde.id, { type: "JUMELEE", cle: garde.id, autreCle: autre.id })}>
+                      <Bouton disabled={verrou} chargement={bouton === "garder-b"} onClick={() => void trancher(p, "garder-b", { type: "JUMELEE", cle: garde.id, autreCle: autre.id })}>
                         <GitMerge /> Même école : garder « {autre.nom} »
                       </Bouton>
-                      <Bouton variante="discret" onClick={() => decider(p.a.id, { type: "DIFFERENTES", cle: p.a.id, autreCle: p.b.id })}>
+                      <Bouton variante="discret" disabled={verrou} chargement={bouton === "differentes"} onClick={() => void trancher(p, "differentes", { type: "DIFFERENTES", cle: p.a.id, autreCle: p.b.id })}>
                         Deux écoles différentes
                       </Bouton>
                     </div>
@@ -482,7 +563,7 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
               })}
             </div>
           )}
-          <Pages page={page} pages={r.donnees ? Math.max(1, Math.ceil(r.donnees.total / 20)) : 1} changer={setPage} />
+          <Pages page={page} pages={r.donnees ? Math.max(1, Math.ceil(Math.max(0, r.donnees.total - retirees.length) / 20)) : 1} changer={setPage} />
         </Carte>
       )}
 
@@ -504,7 +585,7 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
               <thead>
                 <tr>
                   <th>École</th>
-                  <th>DEPPSA · cycle</th>
+                  <th>DDEPPSA · cycle</th>
                   <th>Personnes</th>
                   <th>Écritures rencontrées</th>
                   <th></th>
@@ -634,7 +715,7 @@ function ModaleProposition({ ecole, fermer, fait }: { ecole: EcoleDetaillee; fer
         <Champ libelle="Cycle">
           <Liste value={cycle} onChange={(e) => setCycle(e.target.value)} vide="Choisir…" options={Object.entries(CYCLES_ECOLES).map(([valeur, libelle]) => ({ valeur, libelle }))} />
         </Champ>
-        <Champ libelle="DEPPSA">
+        <Champ libelle="DDEPPSA">
           <Liste
             value={dep}
             onChange={(e) => {
@@ -701,8 +782,8 @@ function ModaleEcole({
 
           <section className="space-y-2">
             <h3 className="font-semibold">Même école qu’une autre ?</h3>
-            <p className="text-[12px] text-zinc-500">Les écoles de la même DEPPSA dont le nom se rapproche le plus. « Même école » compte ses effectifs avec l’autre, sous le nom de l’autre.</p>
-            <Saisie value={cherche} onChange={(x) => setCherche(x.target.value)} placeholder="Chercher une autre école de la DEPPSA…" />
+            <p className="text-[12px] text-zinc-500">Les écoles de la même DDEPPSA dont le nom se rapproche le plus. « Même école » compte ses effectifs avec l’autre, sous le nom de l’autre.</p>
+            <Saisie value={cherche} onChange={(x) => setCherche(x.target.value)} placeholder="Chercher une autre école de la DDEPPSA…" />
             {!candidats.length ? (
               <Vide>Aucune école proche.</Vide>
             ) : (
@@ -735,7 +816,7 @@ function ModaleEcole({
               <Champ libelle="Nom de l’école">
                 <Saisie value={nom ?? e.nom} onChange={(x) => setNom(x.target.value)} />
               </Champ>
-              <Champ libelle="DEPPSA">
+              <Champ libelle="DDEPPSA">
                 <Liste value={dep ?? String(e.departementId ?? "")} onChange={(x) => setDep(x.target.value)} vide="—" options={departements.map((x) => ({ valeur: x.id, libelle: x.nom }))} />
               </Champ>
               <Champ libelle="Cycle">
@@ -743,7 +824,7 @@ function ModaleEcole({
               </Champ>
             </div>
             <Champ libelle="Motif (facultatif)">
-              <Saisie value={motif} onChange={(x) => setMotif(x.target.value)} placeholder="Ex. : nom officiel d’après la DEPPSA" />
+              <Saisie value={motif} onChange={(x) => setMotif(x.target.value)} placeholder="Ex. : nom officiel d’après la DDEPPSA" />
             </Champ>
             <Bouton
               disabled={(nom === null || nom.trim() === e.nom) && (dep === null || dep === String(e.departementId ?? "")) && (cyc === null || cyc === (e.cycle ?? ""))}
