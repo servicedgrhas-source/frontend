@@ -140,9 +140,9 @@ export default function EffectifsEcoles() {
     <div className="space-y-6">
       <EnTete
         titre="Effectifs par école (Banque mondiale)"
-        sousTitre={`Pour chaque école, rangée par DEPPSA : le nombre de volontaires, de communautaires, de contractuels et de fonctionnaires. Seuil de la Banque mondiale : les écoles qui ont au moins ${s} fonctionnaires ou contractuels (${s} et plus), combien elles sont, leur part, et la part du personnel qui y travaille. Une même école écrite de plusieurs façons est comptée une seule fois. Seulement des nombres, aucun nom de personne.`}
+        sousTitre={`Pour chaque école, rangée par DDEPPSA : le nombre de volontaires, de communautaires, de contractuels et de fonctionnaires. Seuil de la Banque mondiale : les écoles qui ont au moins ${s} fonctionnaires ou contractuels (${s} et plus), combien elles sont, leur part, et la part du personnel qui y travaille. Une même école écrite de plusieurs façons est comptée une seule fois. Seulement des nombres, aucun nom de personne.`}
         actions={
-          <Bouton onClick={telecharger} title="Par école, par DEPPSA, sans école, noms à harmoniser, écoles qui se ressemblent, DEPPSA reclassées (en-tête officiel)">
+          <Bouton onClick={telecharger} title="Par école, par DDEPPSA, sans école, noms à harmoniser, écoles qui se ressemblent, DDEPPSA reclassées (en-tête officiel)">
             <Download /> Excel
           </Bouton>
         }
@@ -156,7 +156,7 @@ export default function EffectifsEcoles() {
             onChange={(e) => changer(setCycle)(e.target.value)}
             options={[{ valeur: "TOUS", libelle: "Tous les cycles" }, ...Object.entries(CYCLES).map(([valeur, libelle]) => ({ valeur, libelle })), { valeur: "SANS", libelle: "Cycle non reconnu" }]}
           />
-          <Liste value={departementId} onChange={(e) => changer(setDepartementId)(e.target.value)} vide="Toutes les DEPPSA" options={refs.departements.map((x) => ({ valeur: x.id, libelle: x.nom }))} />
+          <Liste value={departementId} onChange={(e) => changer(setDepartementId)(e.target.value)} vide="Toutes les DDEPPSA" options={refs.departements.map((x) => ({ valeur: x.id, libelle: x.nom }))} />
           <label className="flex items-center gap-2 whitespace-nowrap text-[13px]">
             Seuil : au moins
             <Saisie type="number" min={1} max={50} className="w-16 shrink-0" value={seuil} onChange={(e) => changer(setSeuil)(e.target.value)} />
@@ -192,38 +192,38 @@ export default function EffectifsEcoles() {
             valeur={vue}
             changer={setVue}
             options={[
-              { valeur: "deppsa", libelle: "Par DEPPSA" },
+              { valeur: "deppsa", libelle: "Par DDEPPSA" },
               { valeur: "ecoles", libelle: `Par école (${nf.format(t.ecoles)})` },
             ]}
           />
 
           {vue === "deppsa" && (
             <div className="space-y-6">
-              <Carte titre="Par DEPPSA">
-                <p className="-mt-2 mb-3 text-[12px] text-zinc-500">Cliquez une DEPPSA (ou un nombre d’écoles) pour voir ses écoles ici même.</p>
+              <Carte titre="Par DDEPPSA">
+                <p className="-mt-2 mb-3 text-[12px] text-zinc-500">Cliquez une DDEPPSA (ou un nombre d’écoles) pour voir ses écoles ici même.</p>
                 <Tableau>
                   <thead>
                     <tr>
                       <th rowSpan={2} className="align-bottom">
-                        DEPPSA
+                        DDEPPSA
                       </th>
-                      <th colSpan={3} className="border-b border-zinc-200 text-center">
+                      <th colSpan={3} className="border-b border-l border-zinc-200 text-center">
                         Écoles
                       </th>
-                      <th colSpan={6} className="border-b border-zinc-200 text-center">
+                      <th colSpan={6} className="border-b border-l border-zinc-200 text-center">
                         Personnel compté (personnes)
                       </th>
                     </tr>
                     <tr>
-                      <th className="text-right">Toutes</th>
+                      <th className="border-l border-zinc-200 text-right">Toutes</th>
                       <th className="text-right" title={`Écoles qui ont au moins ${s} fonctionnaires ou contractuels (${s} et plus)`}>
                         dont au moins {s} F/C
                       </th>
                       <th className="text-right" title={`Écoles qui ont moins de ${s} fonctionnaires ou contractuels`}>
                         dont moins de {s} F/C
                       </th>
-                      {EFFECTIFS.map(([k, l]) => (
-                        <th key={k} className="text-right">
+                      {EFFECTIFS.map(([k, l], i) => (
+                        <th key={k} className={`text-right ${i === 0 ? "border-l border-zinc-200" : ""}`}>
                           {l}
                         </th>
                       ))}
@@ -253,7 +253,7 @@ export default function EffectifsEcoles() {
                                 {x.departement}
                               </button>
                             </td>
-                            <td className="text-right tabular-nums">{nombre(x.ecoles, "", "text-encre")}</td>
+                            <td className="border-l border-zinc-200 text-right tabular-nums">{nombre(x.ecoles, "", "text-encre")}</td>
                             <td className="text-right tabular-nums">
                               {nombre(x.auMoins, "AU_MOINS", "text-marque-700")}
                               <span className="block text-[11px] text-zinc-500">{pc(x.partAuMoins)}</span>
@@ -262,8 +262,8 @@ export default function EffectifsEcoles() {
                               {nombre(x.moins, "MOINS", "text-rouge-600")}
                               <span className="block text-[11px] text-zinc-500">{pc(x.partMoins)}</span>
                             </td>
-                            {EFFECTIFS.map(([k]) => (
-                              <td key={k} className="text-right tabular-nums">
+                            {EFFECTIFS.map(([k], i) => (
+                              <td key={k} className={`text-right tabular-nums ${i === 0 ? "border-l border-zinc-200" : ""}`}>
                                 {nf.format(x[k])}
                               </td>
                             ))}
@@ -294,7 +294,7 @@ export default function EffectifsEcoles() {
                     })}
                     <tr className="font-semibold">
                       <td>{departementId ? "Total" : "Total (tout le territoire)"}</td>
-                      <td className="text-right tabular-nums">{nf.format(t.ecoles)}</td>
+                      <td className="border-l border-zinc-200 text-right tabular-nums">{nf.format(t.ecoles)}</td>
                       <td className="text-right tabular-nums">
                         {nf.format(t.auMoins)}
                         <span className="block text-[11px] font-normal text-zinc-500">{pc(t.partAuMoins)}</span>
@@ -303,8 +303,8 @@ export default function EffectifsEcoles() {
                         {nf.format(t.moins)}
                         <span className="block text-[11px] font-normal text-zinc-500">{pc(t.partMoins)}</span>
                       </td>
-                      {EFFECTIFS.map(([k]) => (
-                        <td key={k} className="text-right tabular-nums">
+                      {EFFECTIFS.map(([k], i) => (
+                        <td key={k} className={`text-right tabular-nums ${i === 0 ? "border-l border-zinc-200" : ""}`}>
                           {nf.format(t[k])}
                         </td>
                       ))}
@@ -352,10 +352,10 @@ export default function EffectifsEcoles() {
                       {peut.traiter(profil.role) && <VersStructures onglet="ressemblances">Structures scolaires › Écoles à contrôler</VersStructures>}
                     </li>
                     <li>
-                      <strong className="tabular-nums">{nf.format(d.donnees.reclassees)}</strong> fonctionnaire(s) ou contractuel(s) comptés dans une nouvelle DEPPSA (Congo-Oubangui, Djoué-Léfini, Nkéni-Alima).
+                      <strong className="tabular-nums">{nf.format(d.donnees.reclassees)}</strong> fonctionnaire(s) ou contractuel(s) comptés dans une nouvelle DDEPPSA (Congo-Oubangui, Djoué-Léfini, Nkéni-Alima).
                       <span className="mt-0.5 block text-[12px] text-zinc-500">
-                        Leur fiche du personnel porte encore l’ancien département (par exemple Plateaux), mais leur école n’existe que dans la nouvelle DEPPSA (d’après l’organigramme et le registre) : ce tableau les compte donc là où
-                        est leur école. Leur fiche n’est pas modifiée ; la liste est dans la feuille « DEPPSA reclassées » de l’Excel.
+                        Leur fiche du personnel porte encore l’ancien département (par exemple Plateaux), mais leur école n’existe que dans la nouvelle DDEPPSA (d’après l’organigramme et le registre) : ce tableau les compte donc là où
+                        est leur école. Leur fiche n’est pas modifiée ; la liste est dans la feuille « DDEPPSA reclassées » de l’Excel.
                       </span>
                     </li>
                   </ul>
@@ -437,7 +437,7 @@ function TableEcoles({ ecoles, seuil, tousCycles, sansDeppsa = false }: { ecoles
     <Tableau>
       <thead>
         <tr>
-          {!sansDeppsa && <th>DEPPSA</th>}
+          {!sansDeppsa && <th>DDEPPSA</th>}
           <th>École</th>
           {EFFECTIFS.map(([k, l]) => (
             <th key={k} className="text-right">
@@ -537,7 +537,7 @@ function EcolesDeppsa({
         </Bouton>
       </div>
       {!departementId ? (
-        <Vide>DEPPSA non renseignée : ces écoles sont dans l’onglet « Par école ».</Vide>
+        <Vide>DDEPPSA non renseignée : ces écoles sont dans l’onglet « Par école ».</Vide>
       ) : e.erreur ? (
         <Alerte>{e.erreur}</Alerte>
       ) : !e.donnees || e.chargement ? (
