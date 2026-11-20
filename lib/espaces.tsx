@@ -4,6 +4,7 @@ import {
   Award,
   Briefcase,
   BookOpen,
+  BookCheck,
   Folder,
   Landmark,
   Repeat,
@@ -537,6 +538,13 @@ export const ESPACES: Espace[] = [
         icone: Building2,
         visible: traiter,
         explication: "Les écoles qui se ressemblent (même école ou deux écoles) et celles absentes de l’organigramme (à proposer au DG) : pour compter juste les effectifs par école.",
+      },
+      {
+        href: "/ecoles/repertoire",
+        libelle: "Répertoire officiel des écoles",
+        icone: BookCheck,
+        visible: traiter,
+        explication: "Le répertoire des établissements publics du ministère (Excel) : les écoles prennent son écriture, celles qui manquent sont ajoutées dans leur inspection. Essai d’abord, enregistrement par le DG.",
       },
       {
         groupe: "Besoins en personnel",
