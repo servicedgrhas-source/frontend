@@ -151,6 +151,12 @@ export default function Nominations() {
     if (!o) return n.observation;
     return n.statut === "PROPOSEE" ? o.proposer : n.genre === "F" ? o.feminin : o.libelle;
   };
+  /** Sous le nom (DG, 20/11/2026) : « PCL 8/Reconduit (e) » — le grade et l'échelon, puis l'observation. */
+  const sousLeNom = (n: Nomination) => {
+    const o = d?.observations.find((x) => x.code === n.observation);
+    const obs = !o ? n.observation : n.statut === "PROPOSEE" ? o.proposer : n.genre === "F" ? o.feminin : n.genre === "M" ? o.libelle : `${o.libelle} (e)`;
+    return [[n.grade, n.echelon].filter(Boolean).join(" "), obs].filter(Boolean).join("/");
+  };
   const visibles = d?.lignes.slice((page - 1) * PAGE, page * PAGE) ?? [];
   // Lignes en attente parmi celles affichées (sans doublon à trancher) : « Cocher toutes les proposées »
   const aDecider = d?.lignes.filter((n) => n.statut === "PROPOSEE" && !n.doublon && !n.noteId) ?? [];
@@ -283,7 +289,7 @@ export default function Nominations() {
             <Chiffre libelle="Validées" valeur={d.compteurs.validees} ton="vert" detail={`${d.compteurs.enNote} déjà dans une note`} />
             <Chiffre libelle="Modifiées (en jaune)" valeur={d.compteurs.modifiees} ton={d.compteurs.modifiees ? "jaune" : "gris"} detail="changées par la DDEPPSA" />
             <Chiffre libelle="Relevés" valeur={d.compteurs.relevees} ton="gris" detail="ne paraissent pas dans la note" />
-            <Chiffre libelle="Doublons" valeur={d.compteurs.doublons} ton={d.compteurs.doublons ? "rouge" : "gris"} detail={d.compteurs.doublons ? "même personne proposée deux fois : à trancher" : "aucun"} />
+            <Chiffre libelle="Doublons" valeur={d.compteurs.doublons} ton={d.compteurs.doublons ? "rouge" : "gris"} detail={d.compteurs.doublons ? "même personne nommée deux fois cette année : à trancher" : "aucun"} />
           </div>
 
           <Carte>
@@ -447,7 +453,8 @@ export default function Nominations() {
                           ) : (
                             <span className="font-medium">{n.nomComplet}</span>
                           )}
-                          {n.doublon && <div className="text-[11px] font-medium text-rouge-700">Doublon : {n.doublon.replace(/^Proposé\(e\)/, "proposé(e)")}</div>}
+                          <div className="text-[11px] italic text-zinc-500">{sousLeNom(n)}</div>
+                          {n.doublon && <div className="text-[11px] font-medium text-rouge-700">Doublon : {n.doublon.replace(/^(Proposé|Nommé)\(e\)/, (x) => x.toLowerCase())}</div>}
                         </td>
                         <td className="text-[12px] whitespace-nowrap">{[n.grade, n.echelon].filter(Boolean).join(" ") || "—"}</td>
                         <td className="text-[12px]">{n.ancienPoste ?? "—"}</td>
