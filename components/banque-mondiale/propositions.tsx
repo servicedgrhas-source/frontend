@@ -1,7 +1,7 @@
 "use client";
 
 import { Building2, Check, UserPlus, X } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { peutControlerAjout } from "@/components/recensement/commun";
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, Modale, Vide, Zone } from "@/components/ui";
@@ -79,10 +79,10 @@ function useDecision(chemin: string, recharger: () => void) {
   return { envoi, erreur, doublon, message, setMessage, valider, rejeter };
 }
 
-function ModaleRejet({ fermer, rejeter }: { fermer: () => void; rejeter: (note: string) => Promise<boolean> }) {
+function ModaleRejet({ fermer, rejeter, n = 1 }: { fermer: () => void; rejeter: (note: string) => Promise<boolean>; n?: number }) {
   const [motif, setMotif] = useState("");
   return (
-    <Modale titre="Rejeter la proposition" ouverte fermer={fermer}>
+    <Modale titre={n > 1 ? `Rejeter ${nf.format(n)} propositions` : "Rejeter la proposition"} ouverte fermer={fermer}>
       <div className="space-y-3">
         <p className="text-[13px] text-zinc-600">Rien n’est créé. Dites pourquoi : la personne qui a proposé le lira dans le volet Banque mondiale.</p>
         <Champ libelle="Motif du rejet *">
@@ -106,7 +106,52 @@ export function PropositionsAgents() {
   const d = useDecision("/propositions-ajout", r.recharger);
   const [rejet, setRejet] = useState<number | null>(null);
   const controleur = peutControlerAjout(profil.role) || profil.role === "DG";
-  if (!r.donnees?.total && !r.erreur) return null;
+  // Validation en série (20/11/2026) : cocher, puis valider ou rejeter, par paquets de 25
+  const [coches, setCoches] = useState<Set<number>>(new Set());
+  const [enSerie, setEnSerie] = useState<{ fait: number; total: number } | null>(null);
+  const [rejetSerie, setRejetSerie] = useState(false);
+  const [confirmer, setConfirmer] = useState(false);
+  const [bilan, setBilan] = useState<{ action: "VALIDER" | "REJETER"; faits: number; erreurs: { id: number; nom: string; message: string; doublon: boolean }[] } | null>(null);
+  const lignes = useMemo(() => r.donnees?.lignes ?? [], [r.donnees]);
+  const sansHomonyme = lignes.filter((p) => !p.memeNom).map((p) => p.id);
+  const choisis = lignes.filter((p) => coches.has(p.id)).map((p) => p.id);
+  const basculer = (id: number) => {
+    const s = new Set(coches);
+    if (s.has(id)) s.delete(id);
+    else s.add(id);
+    setCoches(s);
+  };
+  const serie = async (action: "VALIDER" | "REJETER", note = "") => {
+    setBilan(null);
+    d.setMessage(null);
+    setConfirmer(false);
+    const total = choisis.length;
+    let faits = 0;
+    const erreurs: { id: number; nom: string; message: string; doublon: boolean }[] = [];
+    setEnSerie({ fait: 0, total });
+    try {
+      for (let i = 0; i < total; i += 25) {
+        const paquet = choisis.slice(i, i + 25);
+        try {
+          const x = await api.post<{ faits: number; erreurs: { id: number; nom: string; message: string; doublon: boolean }[] }>("/propositions-ajout/lot", { action, ids: paquet, note });
+          faits += x.faits;
+          erreurs.push(...x.erreurs);
+        } catch (e) {
+          // Un paquet refusé en entier (droits, coupure) : on s'arrête, ce qui est fait reste fait
+          erreurs.push({ id: 0, nom: "", message: (e as Error).message, doublon: false });
+          break;
+        }
+        setEnSerie({ fait: Math.min(total, i + paquet.length), total });
+      }
+    } finally {
+      setEnSerie(null);
+      setCoches(new Set());
+      setBilan({ action, faits, erreurs });
+      r.recharger();
+    }
+    return true;
+  };
+  if (!r.donnees?.total && !r.erreur && !bilan) return null;
   return (
     <Carte titre={`Personnes proposées à l’ajout (Banque mondiale)${r.donnees ? ` (${nf.format(r.donnees.total)})` : ""}`}>
       <p className="-mt-2 mb-4 text-[13px] leading-relaxed text-zinc-600">
@@ -115,17 +160,90 @@ export function PropositionsAgents() {
         des fiches au même nom.
       </p>
       <Annonce fermer={() => d.setMessage(null)}>{d.message}</Annonce>
+      {bilan && (
+        <div className="mb-3 space-y-2">
+          <Alerte ton={bilan.erreurs.length ? "jaune" : "vert"}>
+            {bilan.action === "VALIDER" ? `${nf.format(bilan.faits)} fiche(s) créée(s).` : `${nf.format(bilan.faits)} proposition(s) rejetée(s) : rien n’a été créé.`}
+            {bilan.erreurs.length > 0 && ` ${nf.format(bilan.erreurs.length)} non traitée(s), restées dans la liste :`}
+          </Alerte>
+          {bilan.erreurs.length > 0 && (
+            <ul className="max-h-48 space-y-1 overflow-y-auto rounded-2xl bg-or-100/50 px-4 py-2 text-[12px] text-zinc-700">
+              {bilan.erreurs.map((e, i) => (
+                <li key={`${e.id}-${i}`}>
+                  {e.nom && <strong>{e.nom} : </strong>}
+                  {e.doublon ? "une fiche au même nom existe déjà — à décider une par une (« C’est une autre personne : créer quand même »)." : e.message}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {(r.erreur || d.erreur) && <Alerte>{r.erreur ?? d.erreur}</Alerte>}
       {!r.donnees ? (
         <Chargement />
       ) : !r.donnees.lignes.length ? (
         <Vide>Aucune proposition en attente.</Vide>
       ) : (
+        <>
+        {controleur && (
+          <div className="sticky top-0 z-10 -mx-1 mb-3 flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-200 bg-white/95 px-3 py-2 backdrop-blur">
+            <label className="flex items-center gap-2 text-[13px] font-medium">
+              <input
+                type="checkbox"
+                className="size-4 accent-marque-600"
+                checked={choisis.length === lignes.length && lignes.length > 0}
+                disabled={!!enSerie}
+                onChange={(e) => setCoches(e.target.checked ? new Set(lignes.map((p) => p.id)) : new Set())}
+              />
+              Tout cocher ({nf.format(lignes.length)})
+            </label>
+            {sansHomonyme.length > 0 && sansHomonyme.length < lignes.length && (
+              <Bouton variante="discret" disabled={!!enSerie} onClick={() => setCoches(new Set(sansHomonyme))} title="Celles qui n’ont aucune fiche au même nom dans la base">
+                Cocher celles sans fiche au même nom ({nf.format(sansHomonyme.length)})
+              </Bouton>
+            )}
+            <span className="ml-auto text-[12px] text-zinc-500">{enSerie ? `Traitement : ${nf.format(enSerie.fait)} / ${nf.format(enSerie.total)}…` : `${nf.format(choisis.length)} cochée(s)`}</span>
+            {!confirmer ? (
+              <>
+                <Bouton variante="principal" disabled={!choisis.length || !!enSerie} chargement={!!enSerie} onClick={() => setConfirmer(true)}>
+                  <UserPlus /> Valider la sélection
+                </Bouton>
+                <Bouton variante="danger" disabled={!choisis.length || !!enSerie} onClick={() => setRejetSerie(true)}>
+                  <X /> Rejeter la sélection
+                </Bouton>
+              </>
+            ) : (
+              <>
+                <span className="text-[13px] text-zinc-700">Créer {nf.format(choisis.length)} fiche(s) ?</span>
+                <Bouton onClick={() => setConfirmer(false)}>Non</Bouton>
+                <Bouton variante="principal" onClick={() => void serie("VALIDER")}>
+                  Oui, créer les fiches
+                </Bouton>
+              </>
+            )}
+          </div>
+        )}
+        {controleur && choisis.some((id) => lignes.find((p) => p.id === id)?.memeNom) && (
+          <p className="mb-3 text-[12px] text-or-700">
+            Parmi les cochées, {nf.format(choisis.filter((id) => lignes.find((p) => p.id === id)?.memeNom).length)} ont déjà une fiche au même nom : si le système la reconnaît (même nom, même naissance), elle ne sera pas créée et restera
+            à décider une par une.
+          </p>
+        )}
         <ul className="space-y-2">
           {r.donnees.lignes.map((p) => {
             const x = (p.donnees.donnees ?? {}) as Record<string, string>;
             return (
-              <li key={p.id} className="flex flex-wrap items-start gap-3 rounded-2xl bg-zinc-50 px-4 py-3">
+              <li key={p.id} className={`flex flex-wrap items-start gap-3 rounded-2xl px-4 py-3 ${coches.has(p.id) ? "bg-marque-50 ring-1 ring-marque-200" : "bg-zinc-50"}`}>
+                {controleur && (
+                  <input
+                    type="checkbox"
+                    className="mt-1 size-4 shrink-0 accent-marque-600"
+                    checked={coches.has(p.id)}
+                    disabled={!!enSerie}
+                    onChange={() => basculer(p.id)}
+                    aria-label={`Cocher ${x.NOMS_PRENOMS}`}
+                  />
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-baseline gap-2">
                     <span className="text-[14px] font-semibold">{x.NOMS_PRENOMS}</span>
@@ -162,8 +280,10 @@ export function PropositionsAgents() {
             );
           })}
         </ul>
+        </>
       )}
       {rejet !== null && <ModaleRejet fermer={() => setRejet(null)} rejeter={(note) => d.rejeter(rejet, note)} />}
+      {rejetSerie && <ModaleRejet n={choisis.length} fermer={() => setRejetSerie(false)} rejeter={(note) => serie("REJETER", note)} />}
     </Carte>
   );
 }
