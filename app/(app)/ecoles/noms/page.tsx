@@ -65,6 +65,39 @@ function NomsEcoles({ peutEnregistrer }: { peutEnregistrer: boolean }) {
   const p0 = Math.min(page, pages);
   const tranche = <T,>(l: T[]) => l.slice((p0 - 1) * TAILLE, p0 * TAILLE);
 
+  // Fusionner : on garde l'école choisie, les autres du groupe y passent (agents, classes, présence…)
+  const fusionner = async (d: Analyse["doublons"][number], garder: Analyse["doublons"][number]["ecoles"][number]) => {
+    const autres = d.ecoles.filter((e) => e.id !== garder.id);
+    const agents = autres.reduce((n, e) => n + e.agents, 0);
+    if (
+      !confirm(
+        `Garder « ${garder.nom} » (${garder.localite ?? "—"}) et y fusionner ${autres.length > 1 ? `les ${autres.length} autres` : "l’autre"} ?\n\n` +
+          `${nf.format(agents)} agent(s), les classes, salles, présence et emplois du temps passeront à l’école gardée ; l’autre sera fermée (son nom reste reconnu).`,
+      )
+    )
+      return;
+    setEnvoi(true);
+    setMessage(null);
+    try {
+      let deplaces = 0;
+      let restes = 0;
+      for (const e of autres) {
+        const x = await api.post<{ agents: number; restes: number }>("/ecoles-noms/fusionner", { garder: garder.id, fermer: e.id });
+        deplaces += x.agents;
+        restes += x.restes;
+      }
+      setMessage({
+        ton: "vert",
+        texte: `« ${garder.nom} » gardée : ${nf.format(deplaces)} agent(s) y sont passés, l’autre école est fermée.${restes ? ` ${restes} élément(s) déjà présents des deux côtés (semaine de présence, emploi du temps, poste du cadre organique) sont restés à l’école fermée.` : ""}`,
+      });
+      a.recharger();
+    } catch (e) {
+      setMessage({ ton: "rouge", texte: (e as Error).message });
+    } finally {
+      setEnvoi(false);
+    }
+  };
+
   const enregistrer = async () => {
     if (!confirm(`Donner le nom normé à ${nf.format(r.changements.length)} école(s) ? L’ancien nom de chacune reste reconnu (fiches, notes, fichiers Excel).`)) return;
     setEnvoi(true);
@@ -124,7 +157,7 @@ function NomsEcoles({ peutEnregistrer }: { peutEnregistrer: boolean }) {
             {onglet === "CHANGEMENTS"
               ? "Le nom actuel et le nom qu’il prendra. Rien ne change avant « Enregistrer »."
               : onglet === "DOUBLONS"
-                ? "Une fois le type retiré, ces écoles ont le même nom, le même cycle et le même département : sans doute la même école enregistrée deux fois. Gardez-en une (rattachez-y ses agents), fermez l’autre dans l’organigramme ; ou, si ce sont deux écoles, distinguez leurs noms (A, B…)."
+                ? "Même nom, même cycle, au même endroit : sans doute la même école enregistrée deux fois. « Garder celle-ci » : l’autre y est fusionnée (ses agents, classes, salles, présence passent à celle-ci) puis fermée ; son nom reste reconnu. Gardez en général celle qui a le plus d’agents. Si ce sont deux écoles, distinguez plutôt leurs noms (A, B…) dans l’organigramme."
                 : "Ces écoles n’ont pas de cycle dans l’organigramme : le système ne peut pas leur donner de préfixe. Renseignez leur cycle (Structures › l’école), le préfixe suivra."}
           </p>
           <div className="flex flex-wrap items-center gap-2">
@@ -173,14 +206,24 @@ function NomsEcoles({ peutEnregistrer }: { peutEnregistrer: boolean }) {
                     <td className="font-medium">{d.nom}</td>
                     <td>
                       {d.ecoles.map((e) => (
-                        <div key={e.id}>
+                        <div key={e.id} className="flex flex-wrap items-center gap-x-2 py-0.5">
                           <Link className="text-marque-700 hover:underline" href={`/ecoles/${e.id}`}>
                             {e.nom}
                           </Link>
                           <span className="text-[11px] text-zinc-500">
-                            {" "}
                             · {nf.format(e.agents)} agent(s){e.localite ? ` · ${e.localite}` : ""}
                           </span>
+                          {peutEnregistrer && (
+                            <button
+                              type="button"
+                              disabled={envoi}
+                              onClick={() => fusionner(d, e)}
+                              className="cursor-pointer rounded-full border border-marque-200 px-2.5 py-0.5 text-[11px] font-medium text-marque-700 hover:bg-marque-50 disabled:opacity-50"
+                              title="Garder cette école et y fusionner l’autre"
+                            >
+                              Garder celle-ci
+                            </button>
+                          )}
                         </div>
                       ))}
                     </td>
