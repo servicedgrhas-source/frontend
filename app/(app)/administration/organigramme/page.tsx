@@ -746,7 +746,8 @@ function EditionStructure({ s, liste, fermer, apres }: { s: Edition; liste: Stru
             <Liste value={f.cycle} onChange={(e) => setF({ ...f, cycle: e.target.value })} vide="—" options={Object.entries(CYCLES).map(([k, v]) => ({ valeur: k, libelle: v }))} />
           </Champ>
         )}
-        {f.type === "ETABLISSEMENT" && (
+        {/* Une inspection a aussi sa localité (son district) : le répertoire des écoles s'en sert */}
+        {["ETABLISSEMENT", "INSPECTION"].includes(f.type) && (
           <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
             <Champ libelle="Localisation">
               <Liste value={f.typeLocalite} onChange={(e) => setF({ ...f, typeLocalite: e.target.value })} vide="—" options={Object.entries(LOCALITES).map(([k, v]) => ({ valeur: k, libelle: v }))} />
