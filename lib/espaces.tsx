@@ -561,6 +561,13 @@ export const ESPACES: Espace[] = [
         explication: "Le répertoire des établissements publics du ministère (Excel) : les écoles prennent son écriture, celles qui manquent sont ajoutées dans leur inspection. Essai d’abord, enregistrement par le DG.",
       },
       {
+        href: "/ecoles/noms",
+        libelle: "Noms des écoles",
+        icone: School,
+        visible: traiter,
+        explication: "Le type d’une école vient de son cycle : CEP, EP, CEG, LEG, CA, puis son nom propre (« EP MINANGOU LAURENT »). Mettre toutes les écoles à la règle, voir les doublons et les écoles sans cycle.",
+      },
+      {
         groupe: "Besoins en personnel",
         href: "/ecoles/besoins",
         libelle: "Besoins en enseignants",
