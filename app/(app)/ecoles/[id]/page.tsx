@@ -43,7 +43,7 @@ interface Fiche {
     localite: string | null;
     inspection: { id: number; nom: string } | null;
     posteResponsable: string;
-    responsable: { id: number; nom: string } | null;
+    responsable: { id: number; nom: string; grade?: string | null } | null;
     responsableInterim: boolean;
   };
   annee: string;
@@ -135,9 +135,13 @@ function FicheEcole() {
             <span className="text-zinc-400">·</span>
             {s.posteResponsable} :{" "}
             {s.responsable ? (
-              <Link href={`/personnel/agents/${s.responsable.id}`} className="font-medium text-marque-700 hover:underline">
-                {s.responsable.nom}
-              </Link>
+              <span className="inline-flex flex-col leading-tight">
+                <Link href={`/personnel/agents/${s.responsable.id}`} className="font-medium text-marque-700 hover:underline">
+                  {s.responsable.nom}
+                </Link>
+                {/* Grade et échelon, comme dans les nominations (« Inst. A. 1/Promu (e) ») */}
+                {s.responsable.grade && <span className="text-[12px] text-zinc-500">{s.responsable.grade}</span>}
+              </span>
             ) : (
               <span className="text-or-700">poste vacant</span>
             )}
