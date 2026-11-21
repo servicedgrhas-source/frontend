@@ -382,6 +382,13 @@ export const ESPACES: Espace[] = [
         explication: "Une fiche par personne : la créer, la corriger, déposer ses pièces scannées. Les volontaires du registre y sont déjà.",
       },
       {
+        href: "/personnel/sans-ecole",
+        libelle: "Agents sans école",
+        icone: MapPinned,
+        visible: traiter,
+        explication: "Les agents dont la fiche dit où ils travaillent mais qu’aucune école ne compte : les rattacher à leur école, d’un coup par lieu écrit. Et les fiches dont le lieu écrit contredit l’école.",
+      },
+      {
         groupe: "Suivi des agents",
         href: "/personnel/presence",
         libelle: "Présence",

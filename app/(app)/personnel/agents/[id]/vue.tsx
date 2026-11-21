@@ -344,6 +344,12 @@ function Formulaire({
               desactive={profil.role === "STRUCTURE" && structuresProposees.length <= 1}
               vide={profil.role === "STRUCTURE" ? null : "Aucune"}
             />
+            {a && !structureId && String(d.LIEU_SERVICE ?? "").trim() && (
+              <p className="mt-1.5 rounded-lg bg-or-100 px-2.5 py-1.5 text-[12px] text-or-700">
+                Lieu de service écrit : « {String(d.LIEU_SERVICE)} », mais l’agent n’est rattaché à aucune école : la page de l’école ne le compte pas. Choisissez son
+                établissement ci-dessus (ou voir Personnel › Agents sans école).
+              </p>
+            )}
             <p className="mt-1 text-[11px] text-zinc-400">
               {profil.role === "STRUCTURE"
                 ? "Les agents que vous recensez sont rattachés à votre établissement."
