@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Check, CheckSquare, FileSpreadsheet, FileText, Lock, Pencil, Plus, RotateCcw, Trash2, Upload, X } from "lucide-react";
+import { BookOpen, Check, CheckSquare, FileSpreadsheet, FileText, Lock, Pencil, Plus, RotateCcw, Trash2, Upload, UserCheck, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
@@ -195,6 +195,13 @@ export default function Nominations() {
         }
         actions={
           <div className="flex flex-wrap gap-2">
+            {!d?.departement && peut.traiter(profil.role) && (
+              <Link href="/nominations/placer" title="Les nominations validées prennent effet : responsables des structures et fiches du personnel">
+                <Bouton>
+                  <UserCheck /> Placer les nommés
+                </Bouton>
+              </Link>
+            )}
             <Bouton
               onClick={() => api.telecharger(`/nominations/excel${filtre}`, `Nominations ${d?.annee ?? ""}.xlsx`).catch((e: Error) => setErreur(e.message))}
               title="La liste affichée (avec vos filtres), au format de la fiche de validation de la DGRHAS"

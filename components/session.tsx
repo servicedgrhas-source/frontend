@@ -159,7 +159,7 @@ export function Coquille({ children }: { children: ReactNode }) {
         .then(setCompteurs)
         .catch(() => undefined);
     // Dossiers du circuit + notes à lire, à imprimer ou à clôturer (pas pour un visiteur)
-    if (role === "VISITEUR") return;
+    if (role === "VISITEUR" || session?.profil.compteVide) return;
     Promise.all([
       api.get<{ aTraiter: number; alertes: number }>("/circuit/compteur"),
       role === "STRUCTURE" ? Promise.resolve({ total: 0 }) : api.get<{ total: number }>("/notes/a-faire").catch(() => ({ total: 0 })),
@@ -244,9 +244,9 @@ export function Coquille({ children }: { children: ReactNode }) {
           </div>
 
           <nav className="flex-1 overflow-y-auto px-3 pb-4">
-            {p.role !== "STRUCTURE" && <LienMenu href="/" libelle={p.role === "VISITEUR" && p.droits?.["/"] !== "LECTURE" ? "Accueil" : "Tableau de bord"} icone={LayoutDashboard} actif={chemin === "/"} principal />}
-            {p.role !== "VISITEUR" && <LienMenu href="/a-traiter" libelle="Dossiers à traiter" icone={Inbox} actif={chemin === "/a-traiter"} principal nombre={circuit?.aTraiter} titre="Demandes qui attendent votre visa et votre avis" />}
-            {p.role !== "VISITEUR" && <button
+            {p.role !== "STRUCTURE" && <LienMenu href="/" libelle={(p.role === "VISITEUR" || p.compteVide) && p.droits?.["/"] !== "LECTURE" && p.droits?.["/"] !== "MODIFICATION" ? "Accueil" : "Tableau de bord"} icone={LayoutDashboard} actif={chemin === "/"} principal />}
+            {p.role !== "VISITEUR" && !p.compteVide && <LienMenu href="/a-traiter" libelle="Dossiers à traiter" icone={Inbox} actif={chemin === "/a-traiter"} principal nombre={circuit?.aTraiter} titre="Demandes qui attendent votre visa et votre avis" />}
+            {p.role !== "VISITEUR" && !p.compteVide && <button
               type="button"
               onClick={() => setAlertesOuvertes(true)}
               className="group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-semibold text-white/80 transition-colors hover:bg-white/[0.05] hover:text-white"

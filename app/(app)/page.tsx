@@ -56,6 +56,8 @@ export default function TableauDeBord() {
   const { profil } = useSession();
   // Visiteur sans le tableau de bord : un accueil qui mène à ses rubriques
   if (profil.role === "VISITEUR" && profil.droits?.["/"] !== "LECTURE") return <AccueilVisiteur />;
+  // Compte vide : ses seules fonctions, sans le tableau de bord s'il ne lui est pas ouvert
+  if (profil.compteVide && profil.droits?.["/"] !== "LECTURE" && profil.droits?.["/"] !== "MODIFICATION") return <AccueilVisiteur />;
   return ROLES_CIRCUIT_SEUL.includes(profil.role) ? <TableauDeBordCircuit /> : <TableauDeBordDgrhas />;
 }
 
@@ -457,7 +459,7 @@ function AccueilVisiteur() {
     <div className="max-w-3xl space-y-6">
       <div>
         <h1 className="text-[28px] font-semibold tracking-tight">Bonjour, {profil.nom.split(" ")[0]}</h1>
-        <p className="mt-0.5 text-sm text-zinc-500">Voici les rubriques que la DGRHAS vous a ouvertes en consultation.</p>
+        <p className="mt-0.5 text-sm text-zinc-500">{profil.compteVide ? "Voici les fonctions qui vous sont ouvertes. Pour une autre fonction, adressez-vous à l’administrateur." : "Voici les rubriques que la DGRHAS vous a ouvertes en consultation."}</p>
       </div>
       {domaines.length ? (
         domaines.map(({ e, rubriques }) => (

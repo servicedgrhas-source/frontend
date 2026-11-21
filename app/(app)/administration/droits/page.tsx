@@ -14,7 +14,7 @@ interface ConfigDroits {
   roles: Record<string, Record<string, NiveauDroit>>;
   utilisateurs: Record<string, Record<string, NiveauDroit>>;
   /** Rôles créés par le DG : un nom et un rôle de départ (ses boutons, ses actions). */
-  rolesPerso: Record<string, { libelle: string; base: Role }>;
+  rolesPerso: Record<string, { libelle: string; base: Role; vide?: boolean }>;
   /** Rôle créé donné à chaque compte (id du compte → code du rôle). */
   attributions: Record<string, string>;
   rubriques: string[];
@@ -84,7 +84,7 @@ export default function Droits() {
   const [mode, setMode] = useState<"role" | "personne">(() => (personneDemandee() ? "personne" : "role"));
   // Rôle du système, ou code d'un rôle créé (« PERSO_… »)
   const [role, setRole] = useState<string>("AGENT");
-  const [nouveauRole, setNouveauRole] = useState<{ libelle: string; base: Role } | null>(null);
+  const [nouveauRole, setNouveauRole] = useState<{ libelle: string; base: Role; vide: boolean } | null>(null);
   const [personne, setPersonne] = useState(() => personneDemandee() ?? "");
   const [q, setQ] = useState("");
   // Changements pas encore enregistrés (vide : le réglage enregistré)
@@ -131,13 +131,15 @@ export default function Droits() {
   const roleCible: Role | null = mode === "role" ? (persos[role]?.base ?? (role as Role)) : compte ? (persoDuCompte ? persos[persoDuCompte]?.base : compte.role) ?? compte.role : null;
   const reglages = mode === "role" ? (brouillon.roles[role] ?? {}) : compte ? (brouillon.utilisateurs[compte.id] ?? {}) : {};
   // Ce qui vient du rôle : son rôle du système, puis son rôle créé par-dessus
+  // Compte vide : rien d'origine, rien de son rôle de départ ; seulement ce qu'on lui ouvre
+  const videCible = mode === "role" ? !!persos[role]?.vide : !!(persoDuCompte && persos[persoDuCompte]?.vide);
   const reglagesRole =
     mode === "role"
-      ? persos[role]
+      ? persos[role] && !videCible
         ? (brouillon.roles[persos[role].base] ?? {})
         : {}
       : roleCible
-        ? { ...(brouillon.roles[roleCible] ?? {}), ...(persoDuCompte ? (brouillon.roles[persoDuCompte] ?? {}) : {}) }
+        ? { ...(videCible ? {} : (brouillon.roles[roleCible] ?? {})), ...(persoDuCompte ? (brouillon.roles[persoDuCompte] ?? {}) : {}) }
         : {};
   const membres = (code: string) => tousComptes.filter((u) => brouillon.attributions[u.id] === code);
 
@@ -159,7 +161,7 @@ export default function Droits() {
   const origineVisible = (visible: ((p: Profil) => boolean) | undefined, origine: string) => {
     if (!roleCible) return false;
     // Un visiteur ne voit rien d'origine : seulement ce qu'on lui ouvre en lecture
-    if (roleCible === "VISITEUR") return false;
+    if (roleCible === "VISITEUR" || videCible) return false;
     if (roleCible === "STRUCTURE" && !ORIGINES_STRUCTURE.includes(origine)) return false;
     return !visible || visible({ ...profil, role: roleCible, droits: undefined });
   };
@@ -248,11 +250,16 @@ export default function Droits() {
     }
     const code = codeDe(libelle, Object.keys(persos));
     changer((n) => {
-      n.rolesPerso[code] = { libelle, base: nouveauRole.base };
+      n.rolesPerso[code] = { libelle, base: nouveauRole.base, ...(nouveauRole.vide ? { vide: true } : {}) };
     });
     setNouveauRole(null);
     setRole(code);
-    setMessage({ ton: "vert", texte: `Rôle « ${libelle} » créé : choisissez ses rubriques ci-dessous, ajoutez-y des personnes, puis enregistrez.` });
+    setMessage({
+      ton: "vert",
+      texte: nouveauRole.vide
+        ? `Compte vide « ${libelle} » créé : il ne voit rien pour l’instant. Ouvrez ci-dessous les seules rubriques qu’il doit avoir, ajoutez-y des personnes, puis enregistrez.`
+        : `Rôle « ${libelle} » créé : choisissez ses rubriques ci-dessous, ajoutez-y des personnes, puis enregistrez.`,
+    });
   };
   const supprimerRole = (code: string) => {
     changer((n) => {
@@ -321,7 +328,7 @@ export default function Droits() {
                   ]}
                 />
               </div>
-              <Bouton variante="secondaire" disabled={lecture} onClick={() => setNouveauRole({ libelle: "", base: "AGENT" })}>
+              <Bouton variante="secondaire" disabled={lecture} onClick={() => setNouveauRole({ libelle: "", base: "AGENT", vide: false })}>
                 <Plus className="size-4" /> Créer un rôle
               </Bouton>
             </div>
@@ -349,9 +356,20 @@ export default function Droits() {
                     />
                   </label>
                 </div>
+                <label className="mt-3 flex cursor-pointer items-start gap-2 text-[13px] text-encre">
+                  <input type="checkbox" className="mt-0.5" checked={nouveauRole.vide} onChange={(e) => setNouveauRole({ ...nouveauRole, vide: e.target.checked })} />
+                  <span>
+                    <b>Compte vide : partir de rien</b>
+                    <span className="block text-[12px] text-zinc-500">
+                      Le compte ne voit et ne fait que les rubriques que vous ouvrez ici (par exemple seulement « Saisie des dossiers » de l’enrôlement). Tout le
+                      reste lui est fermé, même en lecture.
+                    </span>
+                  </span>
+                </label>
                 <p className="mt-2 text-[12px] text-zinc-500">
-                  Le nouveau rôle a d’abord les mêmes rubriques et les mêmes boutons que le rôle de départ ; vous ouvrez, mettez en lecture seule ou masquez
-                  ensuite ses rubriques.
+                  {nouveauRole.vide
+                    ? "Le rôle de départ ne sert plus qu’à son niveau dans les circuits (un agent saisit, un chef de service contrôle) : aucune rubrique ne lui vient de lui."
+                    : "Le nouveau rôle a d’abord les mêmes rubriques et les mêmes boutons que le rôle de départ ; vous ouvrez, mettez en lecture seule ou masquez ensuite ses rubriques."}
                 </p>
                 <div className="mt-3 flex gap-2">
                   <Bouton disabled={!nouveauRole.libelle.trim()} onClick={creerRole}>
@@ -368,6 +386,11 @@ export default function Droits() {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-semibold text-encre">{persos[role].libelle}</span>
                   <span className="text-zinc-500">· rôle créé, à partir de « {ROLES[persos[role].base]} »</span>
+                  {persos[role].vide && (
+                    <span className="rounded-full bg-or-100 px-2.5 py-0.5 text-[11px] font-medium text-or-700" title="Ne voit que les rubriques ouvertes ci-dessous">
+                      compte vide
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => supprimerRole(role)}
@@ -376,6 +399,20 @@ export default function Droits() {
                     <Trash2 className="size-3.5" /> Supprimer ce rôle
                   </button>
                 </div>
+                <label className="mt-2 flex cursor-pointer items-center gap-2 text-[12px] text-zinc-600">
+                  <input
+                    type="checkbox"
+                    checked={!!persos[role].vide}
+                    disabled={lecture}
+                    onChange={(e) =>
+                      changer((n) => {
+                        if (e.target.checked) n.rolesPerso[role].vide = true;
+                        else delete n.rolesPerso[role].vide;
+                      })
+                    }
+                  />
+                  Compte vide : ne voit que les rubriques ouvertes ci-dessous, rien d’autre (même pas en lecture)
+                </label>
                 <p className="mt-3 mb-1.5 text-[12px] font-medium text-zinc-600">Personnes qui ont ce rôle ({membres(role).length})</p>
                 <div className="flex flex-wrap gap-1.5">
                   {membres(role).map((u) => (

@@ -477,6 +477,13 @@ export const ESPACES: Espace[] = [
         explication: "La base des nominations de l’année, par département : les propositions des DDEPPSA, les nouveaux, les décisions de la DGRHAS.",
       },
       {
+        href: "/nominations/placer",
+        libelle: "Placer les nommés",
+        icone: UserCheck,
+        visible: traiter,
+        explication: "Les nominations validées prennent effet : le chef devient le responsable de sa structure (fini le « poste vacant »), la fiche de chaque nommé est rattachée à sa structure avec sa fonction.",
+      },
+      {
         href: "/notes/nomination",
         libelle: "Notes de nomination",
         icone: FileText,
@@ -834,8 +841,8 @@ export const niveauRubrique = (href: string, p: Profil) => p.droits?.[href.split
  */
 export const rubriquesVisibles = (e: Espace, p: Profil) =>
   e.rubriques.filter((r) => {
-    // Un visiteur ne voit que ce que le DG lui ouvre
-    if (p.role === "VISITEUR") {
+    // Un visiteur, ou un compte vide, ne voit que ce que le DG lui ouvre
+    if (p.role === "VISITEUR" || p.compteVide) {
       const n = niveauRubrique(r.href, p);
       return (n === "LECTURE" || n === "MODIFICATION") && !NON_OUVRABLES.includes(r.href);
     }
@@ -865,6 +872,15 @@ export function niveauPage(chemin: string, p: Profil) {
     if (!h) return undefined;
     const n = p.droits?.[h];
     return (n === "LECTURE" || n === "MODIFICATION") && !NON_OUVRABLES.includes(h) ? "LECTURE" : "MASQUE";
+  }
+  // Compte vide : une rubrique qu'on ne lui a pas ouverte est fermée
+  if (p.compteVide) {
+    const h = rubriquePage(chemin);
+    if (!h) return undefined;
+    // Le recensement complète et ajoute des fiches : la fiche s'ouvre, pas la liste du personnel
+    if (h === "/personnel/agents" && chemin !== h && p.droits?.["/recensement"] === "MODIFICATION") return "MODIFICATION";
+    const n = p.droits?.[h];
+    return n === "LECTURE" || n === "MODIFICATION" ? n : "MASQUE";
   }
   const h = p.droits ? rubriquePage(chemin) : null;
   return h ? p.droits?.[h] : undefined;
