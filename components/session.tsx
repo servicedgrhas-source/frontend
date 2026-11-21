@@ -2,7 +2,7 @@
 
 import { SaisieMotDePasse } from "./mot-de-passe";
 import { SqueletteApplication } from "./squelette";
-import { Bell, Inbox, KeyRound, LayoutDashboard, Lock, LogOut, UserRound, type LucideIcon } from "lucide-react";
+import { Bell, Inbox, KeyRound, LayoutDashboard, Lock, LogOut, Menu as IconeMenu, UserRound, X, type LucideIcon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -38,6 +38,8 @@ export function Coquille({ children }: { children: ReactNode }) {
   // Circuit des demandes : dossiers à traiter et alertes non lues
   const [circuit, setCircuit] = useState<{ aTraiter: number; alertes: number } | null>(null);
   const [alertesOuvertes, setAlertesOuvertes] = useState(false);
+  // Téléphone et petite tablette (DG, 21/11/2026 : équipes de terrain) : le menu se replie
+  const [menuMobile, setMenuMobile] = useState(false);
   // Session expirée pendant le travail : message du serveur, reconnexion sur place
   const [expiree, setExpiree] = useState<string | null>(null);
 
@@ -166,7 +168,7 @@ export function Coquille({ children }: { children: ReactNode }) {
     ])
       .then(([c, n]) => setCircuit({ ...c, aTraiter: c.aTraiter + n.total }))
       .catch(() => undefined);
-  }, [role]);
+  }, [role, session?.profil.compteVide]);
   useEffect(() => {
     if (Date.now() - derniersCompteurs.current > 15_000) lireCompteurs();
   }, [chemin, lireCompteurs]);
@@ -227,8 +229,26 @@ export function Coquille({ children }: { children: ReactNode }) {
     <Contexte.Provider value={session}>
       {/* Envois et téléchargements de fichiers : fenêtre de chargement animée */}
       <ChargementFichiers />
+      {/* Sur un téléphone : une barre avec le bouton « Menu » ; le menu s'ouvre par-dessus la page */}
+      <div className="no-print sticky top-0 z-30 flex items-center gap-3 bg-nuit px-3 py-2 text-white md:hidden">
+        <button type="button" onClick={() => setMenuMobile(true)} className="inline-flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[14px] font-semibold hover:bg-white/10" aria-label="Ouvrir le menu">
+          <IconeMenu className="size-5" /> Menu
+        </button>
+        <span className="text-[12px] font-bold tracking-wide text-or-400">SIGRHAS-MEPPSA</span>
+      </div>
+      {menuMobile && <div className="no-print fixed inset-0 z-40 bg-black/40 md:hidden" onClick={() => setMenuMobile(false)} aria-hidden />}
       <div className="flex min-h-screen gap-0 p-0 lg:p-3">
-        <aside className="no-print sticky top-0 flex h-screen w-64 shrink-0 flex-col overflow-hidden bg-nuit text-white lg:top-3 lg:h-[calc(100vh-1.5rem)] lg:rounded-[28px]">
+        <aside
+          // Un lien choisi dans le menu le referme (téléphone)
+          onClickCapture={(e) => (e.target as HTMLElement).closest("a") && setMenuMobile(false)}
+          className={cx(
+            "no-print top-0 h-screen w-64 shrink-0 flex-col overflow-hidden bg-nuit text-white md:sticky md:flex lg:top-3 lg:h-[calc(100vh-1.5rem)] lg:rounded-[28px]",
+            menuMobile ? "fixed left-0 z-50 flex shadow-2xl" : "hidden",
+          )}
+        >
+          <button type="button" onClick={() => setMenuMobile(false)} className="absolute top-3 right-3 cursor-pointer rounded-lg p-1.5 text-white/60 hover:bg-white/10 md:hidden" aria-label="Fermer le menu">
+            <X className="size-5" />
+          </button>
           <div className="px-6 pt-7 pb-6">
             <div className="flex items-center gap-3">
               <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-white p-1.5 shadow-lg shadow-black/20">
@@ -300,7 +320,7 @@ export function Coquille({ children }: { children: ReactNode }) {
             <div className="bandeau-national mt-4 h-1 w-16 rounded-full" aria-hidden />
           </div>
         </aside>
-        <main className="min-w-0 flex-1 px-5 py-6 lg:px-10 lg:py-8">
+        <main className="min-w-0 flex-1 px-3 py-4 sm:px-5 sm:py-6 lg:px-10 lg:py-8">
           {/* Chaque page apparaît en fondu léger lors de la navigation */}
           <div key={chemin} className="animate-apparition">
             <FilAriane chemin={chemin} profil={p} />

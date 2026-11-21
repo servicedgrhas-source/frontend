@@ -180,11 +180,9 @@ export default function Nominations() {
       (x) => {
         const res = x as { faites: number; erreurs: string[]; placement?: { placees: number; responsables: number; aTraiter: number } | null };
         setCoches(new Set());
-        // Placement d'office : le nommé prend son poste dans l'école (DG, 21/11/2026)
+        // Le nommé ne prend son poste qu'à la signature de la note (DG, 21/11/2026)
         const p = res.placement;
-        const place = p
-          ? ` ${p.placees} placée(s) d’office dans leur structure${p.responsables ? `, dont ${p.responsables} nouveau(x) responsable(s)` : ""}.${p.aTraiter ? ` ${p.aTraiter} à traiter dans « Placer les nommés » (structure à confirmer, conflit ou sans fiche).` : ""}`
-          : "";
+        const place = p ? "" : decision === "VALIDEE" ? " Les nommés prendront leur poste dans les écoles quand la note sera signée." : "";
         return `${res.faites} nomination(s) ${decision === "VALIDEE" ? "validée(s)" : decision === "REJETEE" ? "rejetée(s)" : "remise(s) en proposition"}.${place}${res.erreurs.length ? ` Non faites : ${res.erreurs.slice(0, 4).join(" ; ")}${res.erreurs.length > 4 ? "…" : ""}` : ""}`;
       },
     );

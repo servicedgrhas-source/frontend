@@ -5,12 +5,13 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState, Suspense } from "react";
 import { CarteEmploiDuTemps } from "@/components/ecoles/emploi-du-temps";
+import { BlocLocalisation, type Position } from "@/components/ecoles/localisation";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
 import { Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, Chiffre, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, cx, useConfirmation } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { type Besoins, CYCLES, decimal, ecartTexte, ETATS_BESOIN, ETATS_LOCAL, nomCourtNiveau } from "@/lib/ecoles";
 
-interface Batiment {
+interface Batiment extends Position {
   id: number;
   nom: string;
   type: string | null;
@@ -45,7 +46,7 @@ interface Fiche {
     posteResponsable: string;
     responsable: { id: number; nom: string; grade?: string | null } | null;
     responsableInterim: boolean;
-  };
+  } & Position;
   annee: string;
   batiments: Batiment[];
   salles: Salle[];
@@ -152,6 +153,19 @@ function FicheEcole() {
       />
       <Annonce fermer={() => setMessage(null)}>{message}</Annonce>
       {erreur && <Alerte>{erreur}</Alerte>}
+
+      {/* Localisation GPS de l'école (mission de terrain, DG 21/11/2026) */}
+      <Carte titre="Localisation">
+        <BlocLocalisation
+          position={s}
+          enregistrer={async (p) => {
+            await api.put(`/etablissements/${s.id}/localisation`, p);
+            setMessage(p.latitude === null ? "Position effacée." : "Position de l’école enregistrée.");
+            f.recharger();
+          }}
+        />
+        {d.batiments.length > 1 && <p className="mt-2 text-[12px] text-zinc-500">Une annexe ou un bâtiment ailleurs : localisez-le dans l’onglet « Bâtiments et salles ».</p>}
+      </Carte>
 
       <div className="grid gap-4 sm:grid-cols-4">
         <Chiffre libelle="Classes ouvertes" valeur={d.classes.length} detail={`${d.classes.reduce((t, c) => t + (c.effectif ?? 0), 0)} élève(s) déclaré(s)`} />
@@ -295,6 +309,19 @@ function FicheEcole() {
                         </span>
                       )}
                     </div>
+                    {bt && (
+                      <div className="border-b border-zinc-100 px-3 py-1.5">
+                        <BlocLocalisation
+                          compact
+                          position={bt}
+                          enregistrer={async (p) => {
+                            await api.put(`/etablissements/${s.id}/batiments/${bt.id}/localisation`, p);
+                            setMessage(p.latitude === null ? "Position effacée." : `Position de « ${bt.nom} » enregistrée.`);
+                            f.recharger();
+                          }}
+                        />
+                      </div>
+                    )}
                     {salles.length ? (
                       <ul className="divide-y divide-zinc-100">
                         {salles.map((x) => (

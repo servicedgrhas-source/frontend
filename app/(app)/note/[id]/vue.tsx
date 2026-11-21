@@ -30,8 +30,13 @@ export function VueNote() {
 
   async function action(chemin: string, corps?: unknown, succes?: string) {
     try {
-      await api.post(`/notes/${id}/${chemin}`, corps);
-      setMessage({ ton: "vert", texte: succes ?? "Action enregistrée." });
+      const r = await api.post<{ placement?: { placees: number; responsables: number; aTraiter: number } | null }>(`/notes/${id}/${chemin}`, corps);
+      // Note de nomination signée : les nommés prennent leur poste dans les écoles (DG, 21/11/2026)
+      const p = r?.placement;
+      const place = p
+        ? ` ${p.placees} nommé(s) placé(s) dans leur structure${p.responsables ? `, dont ${p.responsables} nouveau(x) responsable(s)` : ""}.${p.aTraiter ? ` ${p.aTraiter} à traiter dans Nominations › « Placer les nommés » (structure à confirmer, conflit ou sans fiche).` : ""}`
+        : "";
+      setMessage({ ton: "vert", texte: (succes ?? "Action enregistrée.") + place });
       setDialogue(null);
       recharger();
     } catch (e) {

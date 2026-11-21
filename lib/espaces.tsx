@@ -366,6 +366,13 @@ export const ESPACES: Espace[] = [
         explication: "Rechercher un agent et compléter ce qui lui manque, ajouter un agent absent de la base (contrôle, puis décision du DG), importer le fichier d’un recensement.",
       },
       {
+        href: "/recensement/terrain",
+        libelle: "Recensement sur le terrain",
+        icone: ClipboardList,
+        visible: recenser,
+        explication: "Pour les équipes en mission, sur tablette ou téléphone : télécharger une école, compléter ses agents sur une grille rapide (même sans connexion), localiser l’école, puis envoyer.",
+      },
+      {
         groupe: "La base du personnel",
         href: "/personnel",
         libelle: "Tableau de bord",
