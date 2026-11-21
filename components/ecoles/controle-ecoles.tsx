@@ -103,16 +103,21 @@ export function EnBref({ e }: { e: Nombres }) {
 }
 
 /** Une école dans une comparaison : nom, DEPPSA, effectifs, écritures rencontrées. */
-export function FicheEcole({ e }: { e: EcoleDetaillee }) {
+export function FicheEcole({ e, role }: { e: EcoleDetaillee; role?: "organigramme" | "fiches" }) {
+  // Deux écritures d'une même école : à gauche l'école de l'organigramme, à droite ce que les fiches écrivent
+  const ecrits = e.variantes.map((v) => `« ${v.ecrit} »`).join(", ");
+  const titre = role === "organigramme" ? (e.ecoleOrganigramme ?? e.nom) : role === "fiches" ? ecrits : e.nom;
   return (
     <div className="min-w-0 space-y-1.5 rounded-xl border border-zinc-200 bg-white p-3">
-      <div className="font-semibold">{e.nom}</div>
+      <div className="font-semibold">{titre}</div>
       <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-zinc-500">
         {e.departement} · {e.cycle ? CYCLES_ECOLES[e.cycle] : "cycle non reconnu"}
-        {e.organigramme ? (
-          <Badge ton="vert">{e.ecoleOrganigramme && e.ecoleOrganigramme !== e.nom ? `écriture de « ${e.ecoleOrganigramme} » (organigramme)` : "dans l’organigramme"}</Badge>
+        {role === "fiches" ? (
+          <Badge ton="jaune">Écrit dans les fiches</Badge>
+        ) : e.organigramme ? (
+          <Badge ton="vert">École de l’organigramme</Badge>
         ) : (
-          <Badge ton="gris">hors organigramme</Badge>
+          <Badge ton="gris">Écrit dans les fiches (pas dans l’organigramme)</Badge>
         )}
         {e.jumelees > 0 && <Badge ton="bleu">{e.jumelees} école(s) jumelée(s)</Badge>}
       </div>
@@ -508,8 +513,12 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
           ) : (
             <div className="space-y-4">
               {paires.map((p) => {
-                const garde = p.garder === "a" ? p.a : p.b;
-                const autre = p.garder === "a" ? p.b : p.a;
+                // Deux écritures d'une même école : le côté qui écrit le nom de l'organigramme le représente
+                const plat = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+                const cote = p.memeEcole ? [p.a, p.b].find((e) => e.variantes.some((v) => plat(v.ecrit) === plat(e.ecoleOrganigramme ?? ""))) : undefined;
+                const garde = cote ?? (p.garder === "a" ? p.a : p.b);
+                const autre = garde === p.a ? p.b : p.a;
+                const nomOrg = p.a.ecoleOrganigramme ?? p.b.ecoleOrganigramme ?? garde.nom;
                 const k = clePaire({ a: p.a.id, b: p.b.id });
                 const coche = cochees.has(k);
                 const bouton = envoi.get(k);
@@ -550,29 +559,37 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
                     </div>
                     {p.memeEcole && (
                       <p className="mb-2 rounded-lg bg-marque-50 px-3 py-2 text-[12px] text-marque-800">
-                        Une seule école dans l’organigramme : <strong>{p.a.ecoleOrganigramme ?? p.b.ecoleOrganigramme}</strong>. Ce sont deux façons de l’écrire dans les fiches ; « Même école »
-                        rattache toutes ces fiches à cette école (rien n’est fusionné dans l’organigramme).
+                        À gauche, l’école de l’organigramme ; à droite, le nom tel qu’il est écrit dans {autre.total} fiche(s). C’est la même école : le bouton vert corrige ces fiches (rien ne change dans
+                        l’organigramme).
                       </p>
                     )}
                     <div className="grid gap-3 md:grid-cols-2">
-                      {[p.a, p.b].map((e) => (
+                      {[garde, autre].map((e) => (
                         <button key={e.id} type="button" className="relative text-left" onClick={() => setOuverte(e.id)} title="Ouvrir cette école">
-                          {e.id === garde.id && (
+                          {e.id === garde.id && !p.memeEcole && (
                             <span className="absolute top-2 right-2 z-[1]">
                               <Badge ton="vert">Nom gardé</Badge>
                             </span>
                           )}
-                          <FicheEcole e={e} />
+                          <FicheEcole e={e} role={p.memeEcole ? (e.id === garde.id ? "organigramme" : "fiches") : undefined} />
                         </button>
                       ))}
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Bouton variante="principal" disabled={verrou} chargement={bouton === "garder-a"} onClick={() => void trancher(p, "garder-a", { type: "JUMELEE", cle: autre.id, autreCle: garde.id })}>
-                        <GitMerge /> Même école : garder « {garde.nom} »
-                      </Bouton>
-                      <Bouton disabled={verrou} chargement={bouton === "garder-b"} onClick={() => void trancher(p, "garder-b", { type: "JUMELEE", cle: garde.id, autreCle: autre.id })}>
-                        <GitMerge /> Même école : garder « {autre.nom} »
-                      </Bouton>
+                      {p.memeEcole ? (
+                        <Bouton variante="principal" disabled={verrou} chargement={bouton === "garder-a"} onClick={() => void trancher(p, "garder-a", { type: "JUMELEE", cle: autre.id, autreCle: garde.id })}>
+                          <GitMerge /> Rattacher ces {autre.total} fiche(s) à « {nomOrg} »
+                        </Bouton>
+                      ) : (
+                        <>
+                          <Bouton variante="principal" disabled={verrou} chargement={bouton === "garder-a"} onClick={() => void trancher(p, "garder-a", { type: "JUMELEE", cle: autre.id, autreCle: garde.id })}>
+                            <GitMerge /> Même école : garder « {garde.nom} »
+                          </Bouton>
+                          <Bouton disabled={verrou} chargement={bouton === "garder-b"} onClick={() => void trancher(p, "garder-b", { type: "JUMELEE", cle: garde.id, autreCle: autre.id })}>
+                            <GitMerge /> Même école : garder « {autre.nom} »
+                          </Bouton>
+                        </>
+                      )}
                       <Bouton variante="discret" disabled={verrou} chargement={bouton === "differentes"} onClick={() => void trancher(p, "differentes", { type: "DIFFERENTES", cle: p.a.id, autreCle: p.b.id })}>
                         Deux écoles différentes
                       </Bouton>
