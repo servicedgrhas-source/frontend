@@ -572,6 +572,8 @@ function Case({ c, ligne, maj, manques, grande, idCase, auClavier }: { c: Colonn
     change ? "border-or-300 bg-or-50" : manque ? "border-rouge-200 bg-rouge-50/60" : grande ? "border-zinc-200" : "border-transparent",
   );
   const commun = { id: idCase, "data-case": idCase, onKeyDown: auClavier, "aria-label": c.libelle, title: c.aide || c.libelle };
+  // Les enfants : un nom et une date par enfant, un bouton pour en ajouter ; rien à taper d'autre
+  if (c.code === "ENFANTS" && c.type === "TABLEAU") return <CaseEnfants valeur={v} maj={maj} grande={grande} classe={cls} commun={commun} />;
   if (c.type === "LISTE")
     return (
       <select {...commun} className={cls} value={v} onChange={(e) => maj(e.target.value)}>
@@ -590,14 +592,130 @@ function Case({ c, ligne, maj, manques, grande, idCase, auClavier }: { c: Colonn
       value={v}
       type={c.type === "DATE" ? "date" : "text"}
       inputMode={c.type === "NOMBRE" ? "numeric" : c.type === "TELEPHONE" ? "tel" : undefined}
-      placeholder={c.type === "TABLEAU" ? (c.code === "ENFANTS" ? "Nom | date de naissance ; …" : "… ; …") : undefined}
       onChange={(e) => maj(c.code === "NOMS_PRENOMS" ? e.target.value.toUpperCase() : e.target.value)}
     />
   );
 }
 
+/* ------------------------------ Les enfants ------------------------------ */
+
+/** Un enfant : son nom, sa date ; le reste de sa ligne en base (père, mère) est gardé tel quel. */
+interface Enfant {
+  nom: string;
+  date: string;
+  reste: string[];
+}
+// Le format d'échange avec le serveur reste interne : la personne ne tape jamais de symbole
+const lireEnfants = (v: string): Enfant[] =>
+  v
+    .split(" ; ")
+    .map((x) => x.split(" | "))
+    .filter((x) => x.some((y) => y.trim()))
+    .map(([nom = "", date = "", ...reste]) => ({ nom: nom.trim(), date: date.trim(), reste }));
+const ecrireEnfants = (l: Enfant[]) =>
+  l
+    .filter((e) => e.nom.trim() || e.date)
+    .map((e) => [e.nom.trim(), e.date, ...e.reste].join(" | ").replace(/(\s\|\s)+$/, ""))
+    .join(" ; ");
+
+/** Grille : un bouton « 2 enfants » qui ouvre la liste ; une personne à la fois : la liste directement. */
+function CaseEnfants({ valeur, maj, grande, classe, commun }: { valeur: string; maj: (v: string) => void; grande?: boolean; classe: string; commun: Record<string, unknown> }) {
+  const [ouverte, setOuverte] = useState(false);
+  const n = lireEnfants(valeur).length;
+  if (grande) return <ListeEnfants valeur={valeur} maj={maj} />;
+  return (
+    <>
+      <button type="button" {...commun} className={cx(classe, "cursor-pointer text-left")} onClick={() => setOuverte(true)}>
+        {n ? `${n} enfant${n > 1 ? "s" : ""}` : <span className="text-zinc-400">+ Enfants</span>}
+      </button>
+      {ouverte && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-3 sm:items-center" onClick={() => setOuverte(false)}>
+          <div className="w-full max-w-lg space-y-3 rounded-2xl bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <strong className="text-[15px]">Enfants</strong>
+              <Bouton variante="principal" onClick={() => setOuverte(false)}>
+                Terminé
+              </Bouton>
+            </div>
+            <ListeEnfants valeur={valeur} maj={maj} auto />
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Une ligne par enfant (nom, date de naissance) ; Entrée passe à la date, puis à l'enfant suivant. */
+function ListeEnfants({ valeur, maj, auto }: { valeur: string; maj: (v: string) => void; auto?: boolean }) {
+  // Les lignes vivent ici pendant la saisie (une ligne vide ajoutée reste visible)
+  const [lignes, setLignes] = useState<Enfant[]>(() => {
+    const l = lireEnfants(valeur);
+    return l.length ? l : [{ nom: "", date: "", reste: [] }];
+  });
+  const boite = useRef<HTMLDivElement>(null);
+  const poser = (l: Enfant[]) => {
+    setLignes(l);
+    maj(ecrireEnfants(l));
+  };
+  const changer = (i: number, e: Partial<Enfant>) => poser(lignes.map((x, k) => (k === i ? { ...x, ...e } : x)));
+  const ajouter = () => {
+    setLignes([...lignes, { nom: "", date: "", reste: [] }]);
+    setTimeout(() => boite.current?.querySelectorAll<HTMLInputElement>("input[data-nom]")[lignes.length]?.focus(), 30);
+  };
+  const enlever = (i: number) => {
+    const l = lignes.filter((_, k) => k !== i);
+    poser(l.length ? l : [{ nom: "", date: "", reste: [] }]);
+  };
+  return (
+    <div ref={boite} className="space-y-2">
+      {lignes.map((e, i) => (
+        // Téléphone : le nom sur toute la largeur, la date en dessous ; tablette : sur une ligne
+        <div key={i} className="grid grid-cols-[1.25rem_1fr_auto] items-center gap-x-2 gap-y-1.5 sm:grid-cols-[1.25rem_1fr_10rem_auto]">
+          <span className="text-right text-[12px] text-zinc-400">{i + 1}.</span>
+          <input
+            data-nom
+            autoFocus={auto && i === lignes.length - 1}
+            className="h-11 min-w-0 rounded-md border border-zinc-200 px-3 text-[15px] outline-none focus:border-marque-500 focus:ring-2 focus:ring-marque-200"
+            value={e.nom}
+            placeholder="Nom et prénoms"
+            aria-label={`Enfant ${i + 1} : nom et prénoms`}
+            onChange={(x) => changer(i, { nom: x.target.value.toUpperCase() })}
+            onKeyDown={(x) => x.key === "Enter" && (x.preventDefault(), x.currentTarget.parentElement?.querySelector<HTMLElement>('input[type="date"]')?.focus())}
+          />
+          <input
+            type="date"
+            className="order-last col-start-2 h-11 rounded-md border border-zinc-200 px-2 text-[14px] outline-none focus:border-marque-500 sm:order-none sm:col-start-auto"
+            value={e.date}
+            aria-label={`Enfant ${i + 1} : date de naissance`}
+            onChange={(x) => changer(i, { date: x.target.value })}
+            onKeyDown={(x) => x.key === "Enter" && (x.preventDefault(), ajouter())}
+          />
+          <button type="button" className="cursor-pointer p-1 text-zinc-400 hover:text-rouge-600" aria-label={`Retirer l’enfant ${i + 1}`} onClick={() => enlever(i)}>
+            <Trash2 className="size-4" />
+          </button>
+        </div>
+      ))}
+      <button type="button" onClick={ajouter} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1.5 text-[14px] font-medium text-marque-700 hover:bg-marque-50">
+        <Plus className="size-4" /> Ajouter un enfant
+      </button>
+    </div>
+  );
+}
+
 const ecrireCase = (setEtat: (f: (e: Etat) => Etat) => void, cle: string, code: string, v: string) =>
-  setEtat((e) => ({ ...e, lignes: e.lignes.map((l) => (l.cle === cle ? { ...l, erreur: undefined, valeurs: { ...l.valeurs, [code]: v } } : l)) }));
+  setEtat((e) => ({
+    ...e,
+    lignes: e.lignes.map((l) => {
+      if (l.cle !== cle) return l;
+      const valeurs = { ...l.valeurs, [code]: v };
+      // Le nombre d'enfants suit la liste : rien à compter ni à taper
+      if (code === "ENFANTS" && "NOMBRE_ENFANTS" in valeurs) {
+        const n = lireEnfants(v).filter((x) => x.nom || x.date).length;
+        if (n) valeurs.NOMBRE_ENFANTS = String(n);
+      }
+      return { ...l, erreur: undefined, valeurs };
+    }),
+  }));
 const ecrireStatut = (setEtat: (f: (e: Etat) => Etat) => void, cle: string, v: string) => setEtat((e) => ({ ...e, lignes: e.lignes.map((l) => (l.cle === cle ? { ...l, statut: v } : l)) }));
 const retirer = (setEtat: (f: (e: Etat) => Etat) => void, cle: string) => setEtat((e) => ({ ...e, lignes: e.lignes.filter((l) => l.cle !== cle) }));
 const manquantes = (p: Paquet, l: Ligne) => p.colonnes.filter((c) => obligatoire(c, l.statut) && !l.valeurs[c.code]).length;
@@ -706,7 +824,7 @@ function UnePersonne({ etat, setEtat, manques }: { etat: Etat; setEtat: (f: (e: 
       <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-zinc-600">
         <input type="checkbox" checked={seulementIncomplets} onChange={(e) => (setSeulementIncomplets(e.target.checked), setI(0))} /> Seulement ceux à qui il manque quelque chose
       </label>
-      <div className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4">
+      <div key={l.cle} className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4">
         <div className="flex flex-wrap items-center gap-2">
           {l.nouveau && <Badge ton="bleu">nouveau</Badge>}
           {l.rattacher && <Badge ton="bleu">arrive ici</Badge>}
@@ -720,7 +838,6 @@ function UnePersonne({ etat, setEtat, manques }: { etat: Etat; setEtat: (f: (e: 
         {p.colonnes.map((c) => (
           <label key={c.code} className="block text-[12px] font-medium text-zinc-600">
             {c.libelle}
-            {c.type === "TABLEAU" && <span className="font-normal text-zinc-400"> — séparez par « ; »</span>}
             <Case c={c} ligne={l} grande maj={(v) => ecrireCase(setEtat, l.cle, c.code, v)} manques={manques} />
           </label>
         ))}
