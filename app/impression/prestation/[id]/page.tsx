@@ -201,7 +201,7 @@ function Formulaire({ d }: { d: FichePrestation }) {
           <strong className="underline">N.B.</strong> : 1°) Le formulaire de demande de prestation devra accompagner la demande manuscrite et les pièces jointes afin de prendre les avis
           successifs des autorités hiérarchiques.
           <br />
-          2°) La rétention des demandes de prestation est proscrite. Toute demande doit parvenir au destinataire final (niveau de décision) avec les avis favorables ou
+          2°) La rétention des demandes de prestation est proscrite. Toute demande doit parvenir au niveau de décision le plus élevé avec les avis favorables ou
           défavorables des autorités hiérarchiques successives.
         </div>
         <div className="h-[26mm] w-[58mm] shrink-0 border border-dashed border-zinc-500 p-1.5 text-center text-[8pt] text-zinc-600">Cachet et signature</div>
