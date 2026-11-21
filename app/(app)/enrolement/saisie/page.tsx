@@ -477,6 +477,15 @@ export default function SaisieEnrolement() {
                     </Bouton>
                   </>
                 )}
+                {(etat === "A_CONTROLER" || etat === "CONTROLE") && lignes.length > 0 && (
+                  <BarreExport
+                    chemin={etat === "CONTROLE" ? "/enrolement/listes/a-decider" : "/enrolement/listes/a-controler"}
+                    impression={etat === "CONTROLE" ? "/impression/enrolement-a-decider" : "/impression/enrolement-a-controler"}
+                    nom={`${etat === "CONTROLE" ? "Dossiers à décider" : "Dossiers à contrôler"} ${campagne.annee}`}
+                    filtres={{ campagne: campagne.id }}
+                    erreur={(m) => setMessage({ ton: "rouge", texte: m })}
+                  />
+                )}
                 {etat === "NON_RETENU" && <BarreExport chemin="/enrolement/listes/non-retenus" impression="/impression/enrolement-non-retenus" nom={`Liste des non retenus ${campagne.annee}`} filtres={{ campagne: campagne.id }} erreur={(m) => setMessage({ ton: "rouge", texte: m })} />}
                 {etat !== "NON_RETENU" && (
                   <Bouton disabled={!choisis.length} onClick={() => setChangerNote(lignes.filter((l) => coches.has(l.id)))}>
