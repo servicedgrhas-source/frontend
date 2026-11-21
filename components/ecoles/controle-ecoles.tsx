@@ -51,6 +51,8 @@ export interface Ecole extends Nombres {
 
 export interface EcoleDetaillee extends Ecole {
   variantes: { ecrit: string; n: number }[];
+  /** L'école de l'organigramme à laquelle cette écriture correspond (son nom). */
+  ecoleOrganigramme?: string | null;
   /** La proposition d'ajout à l'organigramme (DG), s'il y en a une (18/11/2026). */
   proposition?: { etat: "A_CONTROLER" | "VALIDEE" | "REJETEE"; note: string | null; controlePar: string | null } | null;
 }
@@ -83,6 +85,8 @@ interface PaireEcoles {
   niveau: Niveau;
   raison: string;
   garder: "a" | "b";
+  /** Les deux écritures mènent à la même école de l'organigramme. */
+  memeEcole?: boolean;
   a: EcoleDetaillee;
   b: EcoleDetaillee;
 }
@@ -105,7 +109,11 @@ export function FicheEcole({ e }: { e: EcoleDetaillee }) {
       <div className="font-semibold">{e.nom}</div>
       <div className="flex flex-wrap items-center gap-1.5 text-[12px] text-zinc-500">
         {e.departement} · {e.cycle ? CYCLES_ECOLES[e.cycle] : "cycle non reconnu"}
-        {e.organigramme ? <Badge ton="vert">dans l’organigramme</Badge> : <Badge ton="gris">hors organigramme</Badge>}
+        {e.organigramme ? (
+          <Badge ton="vert">{e.ecoleOrganigramme && e.ecoleOrganigramme !== e.nom ? `écriture de « ${e.ecoleOrganigramme} » (organigramme)` : "dans l’organigramme"}</Badge>
+        ) : (
+          <Badge ton="gris">hors organigramme</Badge>
+        )}
         {e.jumelees > 0 && <Badge ton="bleu">{e.jumelees} école(s) jumelée(s)</Badge>}
       </div>
       <EnBref e={e} />
@@ -540,6 +548,12 @@ export function ControleEcoles({ ongletInitial }: { ongletInitial?: string }) {
                         {p.a.departement} · ressemblance <strong className="text-zinc-800">{pourcent(p.score)}</strong> · {p.raison}
                       </span>
                     </div>
+                    {p.memeEcole && (
+                      <p className="mb-2 rounded-lg bg-marque-50 px-3 py-2 text-[12px] text-marque-800">
+                        Une seule école dans l’organigramme : <strong>{p.a.ecoleOrganigramme ?? p.b.ecoleOrganigramme}</strong>. Ce sont deux façons de l’écrire dans les fiches ; « Même école »
+                        rattache toutes ces fiches à cette école (rien n’est fusionné dans l’organigramme).
+                      </p>
+                    )}
                     <div className="grid gap-3 md:grid-cols-2">
                       {[p.a, p.b].map((e) => (
                         <button key={e.id} type="button" className="relative text-left" onClick={() => setOuverte(e.id)} title="Ouvrir cette école">
