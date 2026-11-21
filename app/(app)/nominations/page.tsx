@@ -178,9 +178,14 @@ export default function Nominations() {
     agir(
       () => api.post<{ faites: number; erreurs: string[] }>("/nominations/decision", { ids: [...coches], decision }),
       (x) => {
-        const res = x as { faites: number; erreurs: string[] };
+        const res = x as { faites: number; erreurs: string[]; placement?: { placees: number; responsables: number; aTraiter: number } | null };
         setCoches(new Set());
-        return `${res.faites} nomination(s) ${decision === "VALIDEE" ? "validée(s)" : decision === "REJETEE" ? "rejetée(s)" : "remise(s) en proposition"}.${res.erreurs.length ? ` Non faites : ${res.erreurs.slice(0, 4).join(" ; ")}${res.erreurs.length > 4 ? "…" : ""}` : ""}`;
+        // Placement d'office : le nommé prend son poste dans l'école (DG, 21/11/2026)
+        const p = res.placement;
+        const place = p
+          ? ` ${p.placees} placée(s) d’office dans leur structure${p.responsables ? `, dont ${p.responsables} nouveau(x) responsable(s)` : ""}.${p.aTraiter ? ` ${p.aTraiter} à traiter dans « Placer les nommés » (structure à confirmer, conflit ou sans fiche).` : ""}`
+          : "";
+        return `${res.faites} nomination(s) ${decision === "VALIDEE" ? "validée(s)" : decision === "REJETEE" ? "rejetée(s)" : "remise(s) en proposition"}.${place}${res.erreurs.length ? ` Non faites : ${res.erreurs.slice(0, 4).join(" ; ")}${res.erreurs.length > 4 ? "…" : ""}` : ""}`;
       },
     );
 
