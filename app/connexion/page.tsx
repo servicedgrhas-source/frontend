@@ -89,7 +89,7 @@ export default function Connexion() {
             <p className="mt-1 text-sm text-zinc-400">Accès réservé au personnel habilité.</p>
           </div>
           {erreur && <Alerte>{erreur}</Alerte>}
-          <Champ libelle="Adresse e-mail (ou identifiant de recenseur : RG-001-BZ)">
+          <Champ libelle="Adresse e-mail ou identifiant">
             <div className="relative">
               <Mail className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-400" />
               <Saisie type="text" inputMode="email" autoCapitalize="none" spellCheck={false} autoComplete="username" required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-9" />
@@ -101,7 +101,7 @@ export default function Connexion() {
               <SaisieMotDePasse autoComplete="current-password" required maxLength={128} value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} className="pl-9" />
             </div>
           </Champ>
-          {!recenseur && <Champ libelle="Code personnel" aide="Les 12 caractères remis par l’administrateur (ex. T3G8-GH6J-FG3U). Laissez vide si vous n’en avez pas reçu.">
+          {!recenseur && <Champ libelle="Code personnel">
             <div className="relative">
               <KeyRound className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-400" />
               <Saisie
@@ -121,7 +121,6 @@ export default function Connexion() {
           <Bouton variante="principal" type="submit" disabled={envoi} className="w-full py-2.5">
             {envoi ? "Connexion…" : "Se connecter"}
           </Bouton>
-          <p className="text-center text-[11px] text-zinc-400">Les actions effectuées sont enregistrées dans le journal.</p>
         </form>
       </div>
     </div>

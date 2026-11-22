@@ -3,6 +3,7 @@
 import { Crosshair, ExternalLink, MapPin, PencilLine } from "lucide-react";
 import { useState } from "react";
 import { Bouton, Modale, Saisie } from "@/components/ui";
+import { dernierePosition } from "@/lib/suivi-position";
 
 /** Position GPS d'une école ou d'un bâtiment (mission de terrain, DG 21/11/2026). */
 export interface Position {
@@ -16,26 +17,45 @@ export interface Position {
 export const carte = (p: Position) => `https://www.openstreetmap.org/?mlat=${p.latitude}&mlon=${p.longitude}#map=18/${p.latitude}/${p.longitude}`;
 
 /**
- * Prélever la position avec le GPS de la tablette ou du téléphone : la plus précise possible, en
- * attendant au plus 30 s. La précision annoncée (en mètres) est gardée avec la position.
+ * Prélever la position, TOUT DE SUITE (le recenseur n'attend pas) :
+ * 1. la position que l’appareil vient de relever (suivi de la mission, moins de 30 secondes, précise
+ *    à 50 m) : immédiate ;
+ * 2. sinon le GPS : on garde la meilleure position reçue ; dès qu'elle est précise à 30 m, c'est
+ *    fini ; au bout de 4 secondes, on prend la meilleure si elle est précise à 150 m ; au bout de
+ *    8 secondes au plus, on prend ce qu'on a (à 500 m près), sinon on dit clairement qu'il n'y a pas
+ *    de signal ici. La précision (en mètres) est gardée avec la position.
  */
 export function preleverPosition(): Promise<{ latitude: number; longitude: number; precision: number }> {
   return new Promise((ok, ko) => {
     if (typeof navigator === "undefined" || !navigator.geolocation) return ko(new Error("Cet appareil ne donne pas sa position (GPS)."));
-    const tropLong = "Le GPS n’a pas répondu en 30 secondes : sortez à découvert (loin des toits et des arbres) et réessayez. La position peut aussi être reprise plus tard.";
-    // Certains appareils ne rappellent jamais (ni position, ni erreur) : au bout de 35 s, on le dit
-    const garde = setTimeout(() => ko(new Error(tropLong)), 35_000);
-    navigator.geolocation.getCurrentPosition(
+    const recente = dernierePosition();
+    if (recente?.latitude !== undefined && recente.longitude !== undefined && Date.now() - new Date(recente.le).getTime() < 30_000 && (recente.precision ?? 999) <= 50)
+      return ok({ latitude: recente.latitude, longitude: recente.longitude, precision: recente.precision ?? 0 });
+    let meilleure: GeolocationPosition | null = null;
+    let fini = false;
+    const finir = (p: GeolocationPosition | null, erreur?: string) => {
+      if (fini) return;
+      fini = true;
+      navigator.geolocation.clearWatch(suivi);
+      clearTimeout(a);
+      clearTimeout(b);
+      if (p) ok({ latitude: p.coords.latitude, longitude: p.coords.longitude, precision: p.coords.accuracy });
+      else ko(new Error(erreur ?? "Pas de signal GPS ici : faites quelques pas dehors, loin des toits, et réessayez. Vous pouvez aussi continuer : la position se reprend plus tard."));
+    };
+    const suivi = navigator.geolocation.watchPosition(
       (p) => {
-        clearTimeout(garde);
-        ok({ latitude: p.coords.latitude, longitude: p.coords.longitude, precision: p.coords.accuracy });
+        if (!meilleure || p.coords.accuracy < meilleure.coords.accuracy) meilleure = p;
+        if (p.coords.accuracy <= 30) finir(p);
       },
       (e) => {
-        clearTimeout(garde);
-        ko(new Error(e.code === 1 ? "La position est refusée : autorisez la localisation pour ce site (icône du cadenas dans la barre d’adresse)." : e.code === 3 ? tropLong : "Position introuvable : activez la localisation (GPS) de l’appareil dans ses réglages, puis réessayez."));
+        if (e.code === 1) finir(null, "La position est refusée : autorisez la localisation pour ce site (icône du cadenas dans la barre d’adresse).");
       },
-      { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 },
+      { enableHighAccuracy: true, maximumAge: 30_000 },
     );
+    const a = setTimeout(() => {
+      if (meilleure && meilleure.coords.accuracy <= 150) finir(meilleure);
+    }, 4_000);
+    const b = setTimeout(() => finir(meilleure && meilleure.coords.accuracy <= 500 ? meilleure : null), 8_000);
   });
 }
 
@@ -122,7 +142,7 @@ export function BlocLocalisation({
           </Bouton>
         </div>
       )}
-      {encours && !saisie && <p className="text-[12px] text-marque-700">Recherche du signal GPS… Restez dehors, devant l’entrée : cela peut prendre jusqu’à 30 secondes.</p>}
+      {encours && !saisie && <p className="text-[12px] text-marque-700">Recherche de la position…</p>}
       {erreur && <p className="text-[12px] text-rouge-600">{erreur}</p>}
       <Modale titre="Saisir la position" ouverte={!!saisie} fermer={() => setSaisie(null)}>
         <div className="space-y-3 text-[13px]">

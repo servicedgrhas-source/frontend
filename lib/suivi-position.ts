@@ -25,8 +25,14 @@ export interface Releve {
 const FILE = "positions:file";
 const INTERVALLE = 5 * 60_000;
 
+/** La toute dernière position donnée par le GPS (en mémoire : à chaque mouvement, sans écriture). */
+let enMemoire: Releve | null = null;
 /** La dernière position sûre de l'appareil (gardée même après l'envoi : « êtes-vous dans la bonne école ? »). */
-export const dernierePosition = () => lire<Releve>("positions:derniere");
+export const dernierePosition = (): Releve | null => {
+  const gardee = lire<Releve>("positions:derniere");
+  if (!enMemoire) return gardee;
+  return !gardee || enMemoire.le > gardee.le ? enMemoire : gardee;
+};
 
 function garder(r: Releve) {
   if (r.etat === "OK") ecrire("positions:derniere", r);
@@ -59,6 +65,8 @@ export function useSuiviPosition(actif: boolean) {
     let dernier = 0;
     let dernierEtat = "";
     const ok = (p: GeolocationPosition) => {
+      // (gardée en mémoire à chaque fois : « Prélever la localisation » la prend sans attendre)
+      enMemoire = { latitude: p.coords.latitude, longitude: p.coords.longitude, precision: Math.round(p.coords.accuracy), etat: "OK", le: new Date().toISOString() };
       const maintenant = Date.now();
       // Un relevé toutes les 5 minutes (et tout de suite quand le signal revient)
       if (dernierEtat === "OK" && maintenant - dernier < INTERVALLE - 5_000) return;

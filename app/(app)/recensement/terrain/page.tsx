@@ -1392,7 +1392,7 @@ function AjoutBatiment({ ajouter }: { ajouter: (b: { cle: string; nom: string; p
   return (
     <div className="mb-3 space-y-2">
       <div className="flex flex-wrap gap-2">
-        <Saisie value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nouveau bâtiment : Bâtiment B, Annexe de…" className="h-10 min-w-0 flex-1" aria-label="Nom du nouveau bâtiment" />
+        <Saisie value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nouveau bâtiment : Bâtiment B, Annexe…" className="h-10 min-w-0 flex-1" aria-label="Nom du nouveau bâtiment" />
         <Bouton variante="principal" chargement={encours} disabled={!nom.trim()} onClick={() => void valider(true)} title="Vous êtes devant ce bâtiment : sa position est prise ici">
           <MapPinned /> Ajouter, avec la position d’ici
         </Bouton>
@@ -1400,8 +1400,8 @@ function AjoutBatiment({ ajouter }: { ajouter: (b: { cle: string; nom: string; p
           <Plus /> Ajouter sans position
         </Bouton>
       </div>
-      {encours && <p className="text-[12px] text-marque-700">Recherche du signal GPS… Restez devant le bâtiment, dehors : jusqu’à 30 secondes.</p>}
-      {erreur && <p className="text-[12px] text-rouge-700">{erreur} Sinon : « Ajouter sans position », la position se reprend plus tard.</p>}
+      {encours && <p className="text-[12px] text-marque-700">Recherche de la position…</p>}
+      {erreur && <p className="text-[12px] text-rouge-700">{erreur} Ou « Ajouter sans position ».</p>}
     </div>
   );
 }
@@ -1666,7 +1666,7 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
               </ul>
             )}
             {!p.batiments.length ? (
-              !etat.nouveauxBatiments?.length && <p className="text-[13px] text-zinc-500">Aucun bâtiment enregistré pour cette école : ajoutez chacun ci-dessus, avec sa position, surtout une annexe ailleurs.</p>
+              !etat.nouveauxBatiments?.length && <p className="text-[13px] text-zinc-500">Aucun bâtiment enregistré pour cette école. Une annexe, même ailleurs, est un bâtiment de cette école : ajoutez-la ici, avec sa position.</p>
             ) : (
               <ul className="divide-y divide-zinc-100">
                 {p.batiments.map((b) => (
