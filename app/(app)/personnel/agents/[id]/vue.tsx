@@ -781,7 +781,7 @@ function Contentieux({ fiche, recharger }: { fiche: Fiche; recharger: () => void
         {x.note && ` : ${x.note}`}
         {x.controlePar && (
           <div className="mt-1 text-[12px]">
-            Avis du contrôle : {x.avisControle === "FAVORABLE" ? "favorable" : "défavorable"} ({x.controlePar}, le {dateFr(x.controleLe)}){x.noteControle ? ` — ${x.noteControle}` : ""}
+            Avis du contrôle : {x.avisControle === "FAVORABLE" ? "favorable" : "défavorable"} (le {dateFr(x.controleLe)}){x.noteControle ? ` — ${x.noteControle}` : ""}
           </div>
         )}
       </Alerte>
@@ -804,7 +804,7 @@ function Contentieux({ fiche, recharger }: { fiche: Fiche; recharger: () => void
         <ol className="grid gap-2 sm:grid-cols-2">
           <li className={`rounded-xl px-3 py-2 text-[12px] ${sansControle ? "bg-white font-medium" : "bg-white/60"}`}>
             <span className="font-semibold">1. Contrôle</span> (bureau du contrôle) :{" "}
-            {sansControle ? "à faire" : `avis ${x.avisControle === "FAVORABLE" ? "favorable" : "défavorable"} de ${x.controlePar}, le ${dateFr(x.controleLe)}${x.noteControle ? ` — « ${x.noteControle} »` : ""}`}
+            {sansControle ? "à faire" : `avis ${x.avisControle === "FAVORABLE" ? "favorable" : "défavorable"}, le ${dateFr(x.controleLe)}${x.noteControle ? ` — « ${x.noteControle} »` : ""}`}
           </li>
           <li className={`rounded-xl px-3 py-2 text-[12px] ${!sansControle ? "bg-white font-medium" : "bg-white/60"}`}>
             <span className="font-semibold">2. Décision du DG</span> : {sansControle ? "après le contrôle" : "à prendre"}

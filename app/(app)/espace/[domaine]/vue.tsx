@@ -7,7 +7,7 @@ import { GuideEnrolement } from "@/components/enrolement/guide";
 import { useSession } from "@/components/session";
 import { Alerte, EnTete, Pastille } from "@/components/ui";
 import { useApi } from "@/lib/api";
-import { ESPACES, lienEspace, POLES, rubriquesVisibles, travailEspace, type Compteurs, type Pole } from "@/lib/espaces";
+import { ESPACES, lienEspace, POLES, rubriquesVisibles, travailEspace, type Compteurs, type Pole, type Rubrique } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
 
 /** Page d'accueil d'un domaine : ses rubriques, dans l'ordre du travail, avec ce qui attend. */
@@ -20,8 +20,13 @@ export function VueEspace() {
 
   if (pole) return <VuePole pole={pole} c={c} />;
   if (!espace) return <Alerte>Cette page n’existe pas.</Alerte>;
-  const rubriques = rubriquesVisibles(espace, profil);
-  if (!rubriques.length) return <Alerte>Ce domaine n’est pas ouvert à votre rôle.</Alerte>;
+  const toutes = rubriquesVisibles(espace, profil);
+  // Les rubriques rangées dans une autre (« dans ») : un lien dans la carte de celle-ci, pas une carte
+  // à part (sauf si leur rubrique n'est pas ici : menu réglé autrement, ou fermée à ce compte)
+  const ici = new Set(toutes.map((r) => r.href));
+  const rubriques = toutes.filter((r) => !r.dans || !ici.has(r.dans));
+  const dedans = (href: string) => toutes.filter((r) => r.dans === href);
+  if (!toutes.length) return <Alerte>Ce domaine n’est pas ouvert à votre rôle.</Alerte>;
   const Icone = espace.icone;
 
   return (
@@ -58,6 +63,9 @@ export function VueEspace() {
           const travail = c && r.compteur ? r.compteur(c) : null;
           const info = c && r.info ? r.info(c) : null;
           const R = r.icone;
+          const enfants = dedans(r.href);
+          if (enfants.length)
+            return <CarteAvecRubriques key={r.href} r={r} enfants={enfants} c={c} />;
           return (
             <Link
               key={r.href}
@@ -108,6 +116,52 @@ export function VueEspace() {
       </div>
       </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Une rubrique qui en contient d'autres (Recensement : le recensement ouvert, le terrain, les
+ * recenseurs, leur suivi, l'import) : la carte s'ouvre sur la rubrique, et chacune des autres a
+ * sa ligne dedans, avec ce qu'on y fait.
+ */
+function CarteAvecRubriques({ r, enfants, c }: { r: Rubrique; enfants: Rubrique[]; c: Compteurs | null }) {
+  const travail = c && r.compteur ? r.compteur(c) : null;
+  const R = r.icone;
+  return (
+    <div className="flex flex-col rounded-3xl bg-white p-6 shadow-doux md:col-span-2 xl:col-span-3">
+      <Link href={r.href} className="group flex items-start gap-3">
+        <Pastille ton={travail?.n ? "jaune" : "gris"}>
+          <R />
+        </Pastille>
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] text-zinc-400">Rubrique · {enfants.length + 1} pages</div>
+          <div className="text-[16px] font-semibold text-encre group-hover:text-marque-700">{r.libelle}</div>
+          <p className="mt-1 text-[13px] leading-relaxed text-zinc-500">{r.explication}</p>
+          {!!travail?.n && <div className="mt-1 text-[12px] font-medium text-or-700">{travail.texte}</div>}
+        </div>
+        <span className="inline-flex shrink-0 items-center gap-1 text-[13px] font-semibold text-marque-700">
+          Ouvrir <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-1" />
+        </span>
+      </Link>
+      <div className="mt-4 grid gap-2 border-t border-zinc-100 pt-4 sm:grid-cols-2 xl:grid-cols-3">
+        {enfants.map((x) => {
+          const X = x.icone;
+          const t = c && x.compteur ? x.compteur(c) : null;
+          return (
+            <Link key={x.href} href={x.href} className="group flex items-start gap-3 rounded-2xl px-3 py-2.5 transition-colors hover:bg-marque-50">
+              <X className="mt-0.5 size-5 shrink-0 text-zinc-400 group-hover:text-marque-600" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 text-[14px] font-semibold text-encre group-hover:text-marque-700">
+                  {x.libelle}
+                  {!!t?.n && <span className="rounded-full bg-or-400 px-2 py-0.5 text-[11px] font-bold text-zinc-900 tabular-nums">{t.n}</span>}
+                </div>
+                <p className="line-clamp-2 text-[12px] leading-snug text-zinc-500">{x.explication}</p>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
     </div>
   );
 }

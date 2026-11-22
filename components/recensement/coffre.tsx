@@ -3,7 +3,7 @@
 import { Fingerprint, KeyRound, Lock, ShieldCheck, Trash2 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Alerte, Bouton, Carte, Saisie } from "@/components/ui";
-import { api, APPAREIL_A_EFFACER, APPAREIL_EFFACE, effacerAppareilMaintenant } from "@/lib/api";
+import { api, APPAREIL_A_EFFACER, APPAREIL_EFFACE, effacerAppareilMaintenant, fermerSession } from "@/lib/api";
 import * as coffre from "@/lib/coffre-terrain";
 
 /*
@@ -109,7 +109,16 @@ export function CoffreTerrain({ utilisateur, identifiant, children }: { utilisat
       "Données effacées",
       <>
         <p>{etat.pourquoi}</p>
-        <Bouton onClick={() => void relire()}>Continuer</Bouton>
+        <p className="text-zinc-500">Le compte est fermé sur cet appareil : il peut servir à un autre recenseur, qui se connecte avec son identifiant.</p>
+        <Bouton
+          onClick={() => {
+            // Plus rien du recenseur ne reste : ni ses données, ni sa session (jeton, profil)
+            fermerSession();
+            window.location.replace("/connexion");
+          }}
+        >
+          Continuer
+        </Bouton>
       </>,
     );
 

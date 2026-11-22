@@ -9,6 +9,7 @@ import { ApercuFiche } from "@/components/recensement/apercu-fiche";
 import { PropositionsAgents } from "@/components/banque-mondiale/propositions";
 import { ControleModifications } from "@/components/recensement/controle-modifications";
 import { ImportFichier } from "@/components/recensement/import-fichier";
+import { BandeauRecensementOuvert, PagesDuRecensement } from "@/components/recensement/recensement-ouvert";
 import { useSession } from "@/components/session";
 import { Alerte, Badge, Bouton, Carte, Chargement, EnTete, Saisie, Segments, Tableau, Vide } from "@/components/ui";
 import { qs, useApi } from "@/lib/api";
@@ -100,6 +101,8 @@ function Recensement() {
         titre="Recensement"
         sousTitre="Depuis Brazzaville, on ne voit pas tout ce qui se passe sur le terrain : le recensement sert à compléter les fiches des agents déjà dans la base, et à ajouter ceux qui manquent. Un agent ajouté passe d’abord par le bureau du contrôle, puis par le DG qui l’accepte dans la base ou le rejette."
       />
+      <PagesDuRecensement />
+      <BandeauRecensementOuvert />
 
       {/* 1. Rechercher un agent, voir ce qui lui manque */}
       <Carte titre="1. Rechercher un agent et compléter ce qui lui manque">

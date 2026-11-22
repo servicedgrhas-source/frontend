@@ -77,7 +77,7 @@ export function ApercuFiche({ id, c, fermer, action }: { id: number; c: ConfigRe
             <div className="grid gap-2 rounded-2xl bg-zinc-50 px-4 py-3 sm:grid-cols-2">
               <Info l="Ajouté" v={`le ${dateFr(ct.ouvertLe)}${ct.ouvertPar ? ` par ${ct.ouvertPar}` : ""}`} />
               <Info l="Pourquoi / d’où" v={ct.motif} />
-              {ct.avisControle && <Info l="Avis du contrôle" v={`${ct.avisControle === "FAVORABLE" ? "Favorable" : "Défavorable"}${ct.controlePar ? ` (${ct.controlePar})` : ""}${ct.noteControle ? ` : ${ct.noteControle}` : ""}`} />}
+              {ct.avisControle && <Info l="Avis du contrôle" v={`${ct.avisControle === "FAVORABLE" ? "Favorable" : "Défavorable"}${ct.noteControle ? ` : ${ct.noteControle}` : ""}`} />}
               {ct.decidePar && <Info l="Décision du DG" v={`${ct.etat === "REJETE" ? "Rejeté" : "Accepté"} par ${ct.decidePar}${ct.decideLe ? ` le ${dateFr(ct.decideLe)}` : ""}${ct.note ? ` : ${ct.note}` : ""}`} />}
             </div>
           )}

@@ -19,7 +19,19 @@ interface Modification {
   /** Proposition (rapports des DDEPPSA) : la fiche n'est pas encore modifiée. */
   proposition: boolean;
   source: string | null;
+  /** Le recensement pendant lequel la modification a été faite. */
+  campagne: string | null;
   champs: { code: string; libelle: string; avant: string; apres: string }[];
+}
+
+/** Ce qui est arrivé à une rubrique : ajoutée (elle était vide), effacée, ou modifiée. */
+const nature = (x: { avant: string; apres: string }) => (!x.avant ? "ajouté" : !x.apres ? "effacé" : "modifié");
+/** La phrase du contrôle : « Rattaché à l’école et genre modifié », « Téléphone ajouté »… */
+function resume(m: Modification) {
+  if (m.proposition) return "Proposée";
+  const parties = m.champs.map((x) => (x.code === "STRUCTURE" ? "Rattaché à une autre école" : `${x.libelle} ${nature(x)}`));
+  const t = parties.length > 3 ? `${parties.slice(0, 3).join(", ")} et ${parties.length - 3} autre(s)` : parties.join(", ");
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : "Modifiée";
 }
 
 const quand = (d: string) => new Date(d).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).replace(" ", " à ");
@@ -162,9 +174,15 @@ export function ControleModifications() {
                     </Link>
                     <span className="text-[12px] text-zinc-400">
                       {m.numeroFiche}
-                      {m.structure ? ` · ${m.structure}` : ""} · {m.proposition ? "proposée" : "modifiée"} par {m.faitePar ?? "—"} le {quand(m.faiteLe)}
+                      {m.structure ? ` · ${m.structure}` : ""}
                     </span>
                   </div>
+                  {/* Qui l'a fait, et quoi (le nom du contrôleur qui valide n'est pas utile ici) */}
+                  <p className="mt-0.5 text-[13px] text-zinc-700">
+                    {resume(m)} par <strong>{m.faitePar ?? "auteur inconnu"}</strong>
+                    <span className="text-zinc-500"> · le {quand(m.faiteLe)}</span>
+                    {m.campagne && <span className="ml-2 rounded-full bg-marque-50 px-2 py-0.5 text-[11px] text-marque-700 ring-1 ring-marque-100">{m.campagne}</span>}
+                  </p>
                   {m.proposition && (
                     <div className="mt-1 rounded-xl bg-sky-50 px-3 py-1.5 text-[12px] text-sky-800 ring-1 ring-sky-100">
                       <strong>Proposition, pas encore dans la fiche</strong>
@@ -175,7 +193,9 @@ export function ControleModifications() {
                     <tbody>
                       {m.champs.map((x) => (
                         <tr key={x.code} className="align-top">
-                          <td className="w-56 py-0.5 pr-3 text-zinc-500">{x.libelle}</td>
+                          <td className="w-56 py-0.5 pr-3 text-zinc-500">
+                            {x.libelle} <span className={`ml-1 rounded px-1 text-[10px] font-medium ${nature(x) === "ajouté" ? "bg-marque-100 text-marque-800" : nature(x) === "effacé" ? "bg-rouge-100 text-rouge-700" : "bg-or-100 text-or-800"}`}>{nature(x)}</span>
+                          </td>
                           <td className="py-0.5 pr-2 text-rouge-600 line-through decoration-rouge-300">{x.avant || <span className="text-zinc-400 no-underline">(vide)</span>}</td>
                           <td className="w-5 py-0.5 text-zinc-300">
                             <ArrowRight className="size-3.5" />

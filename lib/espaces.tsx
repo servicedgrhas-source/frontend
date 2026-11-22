@@ -14,6 +14,7 @@ import {
   BarChart3,
   MapPinned,
   CalendarCheck,
+  CalendarRange,
   Scale,
   Star,
   School,
@@ -104,6 +105,12 @@ export interface Rubrique {
   compteur?: (c: Compteurs) => { n: number; texte: string; etapes?: { n: number; texte: string; ton: "jaune" | "bleu" | "vert" }[] };
   /** Information seulement (ex. textes attendus de la FP) : pas comptée dans le menu. */
   info?: (c: Compteurs) => { n: number; texte: string };
+  /**
+   * Rangée DANS une autre rubrique (son adresse) : pas de carte à elle sur la page du domaine, mais
+   * un lien dans la carte de sa rubrique (22/11/2026 : « tout ce qui concerne le recensement » dans
+   * une seule carte Recensement).
+   */
+  dans?: string;
 }
 
 export interface Espace {
@@ -363,9 +370,18 @@ export const ESPACES: Espace[] = [
         libelle: "Recensement",
         icone: ClipboardCheck,
         visible: recenser,
-        explication: "Rechercher un agent et compléter ce qui lui manque, ajouter un agent absent de la base (contrôle, puis décision du DG), importer le fichier d’un recensement.",
+        explication: "Tout le recensement au même endroit : chercher un agent et compléter sa fiche, ajouter un agent absent de la base, contrôler ce qui a été modifié ; et ci-dessous, le recensement ouvert, la mission sur le terrain, les recenseurs, leur suivi, l’import.",
       },
       {
+        dans: "/recensement",
+        href: "/recensement/campagnes",
+        libelle: "Recensements (ouvrir, clôturer)",
+        icone: CalendarRange,
+        visible: recenser,
+        explication: "Ouvrir un recensement (nom, année, année scolaire, début et fin) : tout ce qu’il produit est rangé sous lui, on sait d’où viennent les données. Un seul ouvert à la fois.",
+      },
+      {
+        dans: "/recensement",
         href: "/recensement/terrain",
         libelle: "Recensement sur le terrain",
         icone: ClipboardList,
@@ -373,6 +389,7 @@ export const ESPACES: Espace[] = [
         explication: "Pour les équipes en mission, sur tablette ou téléphone : télécharger une école, compléter ses agents sur une grille rapide (même sans connexion), localiser l’école, puis envoyer.",
       },
       {
+        dans: "/recensement",
         href: "/recensement/recenseurs",
         libelle: "Recenseurs de la mission",
         icone: UserCheck,
@@ -380,6 +397,7 @@ export const ESPACES: Espace[] = [
         explication: "Planifier la mission : créer les comptes des recenseurs (identifiant RG-001-BZ, mot de passe à leur remettre), leurs départements et leurs dates ; suivre leurs envois ; effacer l’appareil d’un recenseur (perdu, retiré).",
       },
       {
+        dans: "/recensement",
         href: "/recensement/recenseurs/suivi",
         libelle: "Suivi des recenseurs (carte)",
         icone: MapPinned,
@@ -403,6 +421,7 @@ export const ESPACES: Espace[] = [
         explication: "Une fiche par personne : la créer, la corriger, déposer ses pièces scannées. Les volontaires du registre y sont déjà.",
       },
       {
+        groupe: "La base du personnel",
         href: "/personnel/sans-ecole",
         libelle: "Agents sans école",
         icone: MapPinned,
@@ -434,7 +453,8 @@ export const ESPACES: Espace[] = [
         explication: "Les agents qui ont des échelons en retard (promotions ou avancements dus), avec des filtres et l’export Excel, Word, PDF : préparer la commission administrative paritaire sans demander de dossier.",
       },
       {
-        groupe: "Recensement",
+        groupe: "La base du personnel",
+        dans: "/recensement",
         href: "/personnel/import",
         libelle: "Modèle Excel, import et scans",
         icone: FileSpreadsheet,
@@ -996,6 +1016,9 @@ export function cheminDe(chemin: string, p: Profil): { libelle: string; href?: s
       return chemin === base || chemin.startsWith(`${base}/`);
     })
     .sort((a, b) => b.href.length - a.href.length)[0];
+  // Rangée dans une autre rubrique (Recensement › Recenseurs de la mission) : celle-ci d'abord
+  const parent = r?.dans ? rubriquesVisibles(e, p).find((x) => x.href === r.dans) : undefined;
+  if (parent) etapes.push({ libelle: parent.libelle, href: parent.href });
   // Même nom que le domaine (« Base du personnel ») : une seule étape
   if (r && r.libelle !== e.titre) etapes.push({ libelle: r.libelle, href: r.href });
   const detail = DETAILS.find(([re]) => re.test(chemin));

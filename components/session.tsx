@@ -252,7 +252,7 @@ export function Coquille({ children }: { children: ReactNode }) {
   if (p.role === "RECENSEUR")
     return (
       <Contexte.Provider value={session}>
-        <div className="no-print sticky top-0 z-30 flex items-center gap-3 bg-nuit px-3 py-2 text-white sm:px-5">
+        <div className="no-print sticky top-0 z-30 flex h-12 items-center gap-3 bg-nuit px-3 text-white sm:px-5">
           <Image src="/armoiries.png" alt="" width={28} height={28} className="size-7 rounded-md bg-white object-contain p-0.5" priority />
           <div className="min-w-0 flex-1 leading-tight">
             <div className="truncate text-[13px] font-semibold">{p.nom}</div>
@@ -262,7 +262,8 @@ export function Coquille({ children }: { children: ReactNode }) {
             <LogOut className="size-4" /> Se déconnecter
           </button>
         </div>
-        <main className="min-w-0 px-3 py-4 sm:px-5 sm:py-6">{chemin.startsWith("/recensement/terrain") ? children : <SqueletteApplication />}</main>
+        {/* (--barre-haut : les bandeaux qui restent en haut de la page se collent SOUS cette barre) */}
+        <main className="min-w-0 px-3 py-4 sm:px-5 sm:py-6" style={{ "--barre-haut": "3rem" } as React.CSSProperties}>{chemin.startsWith("/recensement/terrain") ? children : <SqueletteApplication />}</main>
         {expiree !== null && (
           <Reconnexion
             profil={p}

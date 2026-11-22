@@ -3,6 +3,7 @@
 import { Ban, KeyRound, LockOpen, MapPinned, Pencil, Phone, Printer, RotateCcw, Trash2, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { BandeauRecensementOuvert } from "@/components/recensement/recensement-ouvert";
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, EnTete, Modale, Saisie, Tableau, Vide, Zone, cx, useConfirmation } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
@@ -40,6 +41,8 @@ interface Recenseur {
   derniereConnexion: string | null;
   envois: number;
   lignesEnvoyees: number;
+  /** Le recensement pour lequel il a été créé. */
+  campagne: string | null;
 }
 
 interface Liste {
@@ -150,6 +153,7 @@ export default function PageRecenseurs() {
           </>
         }
       />
+      <BandeauRecensementOuvert action="Les recenseurs se créent pour un recensement : ouvrez-le d’abord." />
       <Annonce fermer={() => setMessage(null)}>{message}</Annonce>
       {erreur && <Alerte>{erreur}</Alerte>}
       {plusieurs.length > 0 && (
@@ -215,6 +219,7 @@ export default function PageRecenseurs() {
                   </td>
                   <td className="whitespace-nowrap">
                     {jour(x.debut)} → {jour(x.fin)}
+                    {x.campagne && <div className="max-w-56 truncate text-[11px] text-zinc-500" title={x.campagne}>{x.campagne}</div>}
                   </td>
                   <td className="whitespace-nowrap">{quand(x.derniereConnexion)}</td>
                   <td className="whitespace-nowrap tabular-nums">{x.envois ? `${x.envois} envoi(s), ${x.lignesEnvoyees} ligne(s)` : "—"}</td>

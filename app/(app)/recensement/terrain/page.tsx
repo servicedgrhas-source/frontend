@@ -3,12 +3,12 @@
 import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, CloudOff, MapPinned, Download, ExternalLink, Globe2, LayoutGrid, Plus, RefreshCw, Search, Send, Smartphone, Trash2, UserPlus, Wifi } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BlocLocalisation, type Position } from "@/components/ecoles/localisation";
+import { BlocLocalisation, preleverPosition, type Position } from "@/components/ecoles/localisation";
 import { ChargementBase, type ProgresBase } from "@/components/recensement/chargement-base";
 import { CoffreTerrain, ReglagesAppareil } from "@/components/recensement/coffre";
 import { useSession } from "@/components/session";
 import { Alerte, Badge, Bouton, Carte, EnTete, Liste, Saisie, Segments, Vide, cx } from "@/components/ui";
-import { api } from "@/lib/api";
+import { api, ErreurApi } from "@/lib/api";
 import { CYCLES } from "@/lib/ecoles";
 import { accesDonne } from "@/lib/espaces";
 import { cles, ecrire, fixerEffacement, lire, surAvantEffacement } from "@/lib/coffre-terrain";
@@ -80,8 +80,10 @@ interface Etat {
   lignes: Ligne[];
   /** Positions prélevées sans connexion, envoyées avec le reste. */
   positions: { ecole?: Position; batiments: Record<string, Position> };
+  /** Bâtiments ou annexes ajoutés sur place, en attente d'envoi (avec leur position si prélevée). */
+  nouveauxBatiments?: { cle: string; nom: string; position?: Position }[];
 }
-type Presence = "PRESENT" | "ABSENT" | "PARTI" | "INCONNU";
+type Presence = "PRESENT" | "ABSENT" | "PARTI" | "INCONNU" | "DOUBLON";
 interface Semblable {
   id: number;
   nomComplet: string;
@@ -163,6 +165,7 @@ const PRESENCES: { code: Presence; libelle: string; ton: string }[] = [
   { code: "ABSENT", libelle: "Absent ce jour", ton: "text-or-700" },
   { code: "PARTI", libelle: "Parti de l’école", ton: "text-rouge-700" },
   { code: "INCONNU", libelle: "Inconnu ici", ton: "text-rouge-700" },
+  { code: "DOUBLON", libelle: "Même personne qu’une autre ligne", ton: "text-rouge-700" },
 ];
 interface EcoleListe {
   id: number;
@@ -194,6 +197,8 @@ interface MissionT {
   departements?: { id: number; nom: string }[];
   fin?: string | null;
   effacerApres?: string | null;
+  /** Le recensement pour lequel il travaille. */
+  campagne?: string | null;
 }
 interface Departement {
   telechargeLe: string;
@@ -253,6 +258,7 @@ async function envoyerToutAvantEffacement() {
       if (modifications.length) await api.post("/recensement/terrain/envoyer", { modifications });
       if (e.positions.ecole) await api.put(`/etablissements/${e.paquet.ecole.id}/localisation`, { ...e.positions.ecole, precision: e.positions.ecole.precisionGps });
       for (const [b, pos] of Object.entries(e.positions.batiments)) await api.put(`/etablissements/${e.paquet.ecole.id}/batiments/${b}/localisation`, { ...pos, precision: pos.precisionGps });
+      await envoyerBatiments(e);
     } catch {
       /* pas de réseau ou refus : on efface quand même */
     }
@@ -290,7 +296,24 @@ export interface ResultatSynchro {
   refusees: number;
   majEcoles: number;
 }
-const enAttenteEcole = (e: Etat) => aEnvoyer(e).length > 0 || !!e.positions.ecole || Object.keys(e.positions.batiments).length > 0;
+const enAttenteEcole = (e: Etat) => aEnvoyer(e).length > 0 || !!e.positions.ecole || Object.keys(e.positions.batiments).length > 0 || !!e.nouveauxBatiments?.length;
+
+/** Envoyer les bâtiments ajoutés sur place : ceux qui partent rejoignent la liste de l'école. */
+async function envoyerBatiments(e: Etat): Promise<Etat> {
+  let etat = e;
+  for (const b of e.nouveauxBatiments ?? []) {
+    const r = await api.post<{ id: number; nom: string }>(`/recensement/terrain/ecole/${e.paquet.ecole.id}/batiments`, {
+      nom: b.nom,
+      ...(b.position ? { latitude: b.position.latitude, longitude: b.position.longitude, precision: b.position.precisionGps } : {}),
+    });
+    etat = {
+      ...etat,
+      nouveauxBatiments: (etat.nouveauxBatiments ?? []).filter((x) => x.cle !== b.cle),
+      paquet: { ...etat.paquet, batiments: [...etat.paquet.batiments, { id: r.id, nom: r.nom, latitude: b.position?.latitude ?? null, longitude: b.position?.longitude ?? null, precisionGps: b.position?.precisionGps ?? null, localiseLe: b.position?.localiseLe ?? null }] },
+    };
+  }
+  return etat;
+}
 /** L'école ouverte à l'écran : la synchronisation ne la touche pas (on y travaille). */
 let ecoleOuverte: number | null = null;
 let synchroEnCours: Promise<ResultatSynchro | null> | null = null;
@@ -322,7 +345,7 @@ function rangerPaquet(brut: PaquetBase, mission: boolean): boolean {
   const parAgent = new Map(attente.filter((l) => l.agentId !== null).map((l) => [l.agentId as number, l]));
   const presents = new Set(p.agents.map((a) => a.id));
   const lignes = [...attente.filter((l) => l.agentId === null || !presents.has(l.agentId)), ...p.agents.map((a) => parAgent.get(a.id) ?? nouvelleLigne(p, a))];
-  ecrire(`ecole:${id}`, { paquet: p, lignes, positions: deja.positions } satisfies Etat);
+  ecrire(`ecole:${id}`, { paquet: p, lignes, positions: deja.positions, nouveauxBatiments: deja.nouveauxBatiments } satisfies Etat);
   return true;
 }
 
@@ -429,6 +452,7 @@ async function envoyerEtat(e: Etat): Promise<{ etat: Etat; faites: number; refus
   if (e.positions.ecole) await api.put(`/etablissements/${id}/localisation`, { ...e.positions.ecole, precision: e.positions.ecole.precisionGps });
   for (const [b, pos] of Object.entries(e.positions.batiments)) await api.put(`/etablissements/${id}/batiments/${b}/localisation`, { ...pos, precision: pos.precisionGps });
   if (e.positions.ecole || Object.keys(e.positions.batiments).length) etat = { ...etat, positions: { batiments: {} } };
+  etat = await envoyerBatiments(etat);
   return { etat, faites, refusees };
 }
 
@@ -487,6 +511,17 @@ function synchroniserBase(): Promise<ResultatSynchro | null> {
 const SYNCHRO_FAITE = "dgrhas:terrain-synchro";
 /** Événement : synchroniser dès que possible (une école vient d'être quittée). */
 const SYNCHRO_DEMANDEE = "dgrhas:terrain-synchro-demandee";
+/** Les noms écrits plusieurs fois dans la liste de l'école (souvent un doublon de la base). */
+const nomCle = (n: string | undefined) => (n ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z]/g, "");
+function homonymes(lignes: Ligne[]) {
+  const n = new Map<string, number>();
+  for (const l of lignes) {
+    const k = nomCle(l.valeurs.NOMS_PRENOMS);
+    if (k.length >= 6) n.set(k, (n.get(k) ?? 0) + 1);
+  }
+  return new Set([...n].filter(([, x]) => x > 1).map(([k]) => k));
+}
+const MARQUE_HOMONYME = "Ce nom est écrit plusieurs fois dans cette école : vérifiez la date de naissance et le matricule. Si c’est la même personne, choisissez « Même personne qu’une autre ligne » pour l’une des deux.";
 const obligatoire = (c: Colonne, statut: string) => !c.obligatoirePour.length || c.obligatoirePour.includes(statut);
 
 export default function Page() {
@@ -636,6 +671,7 @@ function Mission({ enLigne, apres }: { enLigne: boolean; apres: () => void }) {
         <div>
           <strong>{m.nom}</strong> · {(m.departements ?? []).map((d) => d.nom).join(", ")}
           {m.fin ? ` · jusqu’au ${jour(m.fin)}` : ""}
+          {m.campagne && <div className="text-zinc-500">Pour le recensement : {m.campagne}</div>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {info?.complete ? (
@@ -856,7 +892,7 @@ function ChoixEcole({ enLigne, ouvrir, recenseur, mission }: { enLigne: boolean;
           </ul>
         </div>
       </Carte>
-      <Signalements enLigne={enLigne} />
+      {!recenseur && <Signalements enLigne={enLigne} />}
       <Carte titre="Écoles sur cet appareil">
         {!locales.length ? (
           <p className="text-[13px] text-zinc-500">Aucune pour l’instant. Avant de partir en zone sans réseau, téléchargez les écoles de votre itinéraire.</p>
@@ -900,7 +936,47 @@ function ChoixEcole({ enLigne, ouvrir, recenseur, mission }: { enLigne: boolean;
 
 /* ------------------------------ 2. Travailler dans l'école ------------------------------ */
 
+/** Un bâtiment ou une annexe découvert sur place : son nom, et sa position prélevée ici (facultatif). */
+function AjoutBatiment({ ajouter }: { ajouter: (b: { cle: string; nom: string; position?: Position }) => void }) {
+  const [nom, setNom] = useState("");
+  const [encours, setEncours] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const valider = async (avecPosition: boolean) => {
+    if (!nom.trim()) return setErreur("Donnez un nom au bâtiment (ex. Bâtiment A, Annexe de Kimba).");
+    setErreur(null);
+    let position: Position | undefined;
+    if (avecPosition) {
+      setEncours(true);
+      try {
+        const g = await preleverPosition();
+        position = { latitude: g.latitude, longitude: g.longitude, precisionGps: g.precision, localiseLe: new Date().toISOString() };
+      } catch (e) {
+        setEncours(false);
+        return setErreur((e as Error).message);
+      }
+      setEncours(false);
+    }
+    ajouter({ cle: `b${Date.now()}`, nom: nom.trim(), position });
+    setNom("");
+  };
+  return (
+    <div className="mb-3 space-y-2">
+      <div className="flex flex-wrap gap-2">
+        <Saisie value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nouveau bâtiment : Bâtiment B, Annexe de…" className="h-10 min-w-0 flex-1" aria-label="Nom du nouveau bâtiment" />
+        <Bouton variante="principal" chargement={encours} disabled={!nom.trim()} onClick={() => void valider(true)} title="Vous êtes devant ce bâtiment : sa position est prise ici">
+          <MapPinned /> Ajouter, avec la position d’ici
+        </Bouton>
+        <Bouton disabled={!nom.trim() || encours} onClick={() => void valider(false)}>
+          <Plus /> Ajouter sans position
+        </Bouton>
+      </div>
+      {erreur && <p className="text-[12px] text-rouge-700">{erreur}</p>}
+    </div>
+  );
+}
+
 function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; retour: () => void }) {
+  const { profil } = useSession();
   const [etat, setEtatBrut] = useState<Etat | null>(() => lire<Etat>(`ecole:${id}`));
   // L'école à l'écran n'est pas touchée par la synchronisation ; en la quittant, on synchronise
   useEffect(() => {
@@ -925,44 +1001,56 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
   const [manques, setManques] = useState(true);
   const [envoi, setEnvoi] = useState(false);
   const [message, setMessage] = useState<{ ton: "vert" | "rouge" | "jaune"; texte: string } | null>(null);
+  // « Envoyé » s'efface seul (le bandeau reste court) ; un refus ou une erreur reste jusqu'au prochain envoi
+  useEffect(() => {
+    if (message?.ton !== "vert") return;
+    const t = setTimeout(() => setMessage(null), 10_000);
+    return () => clearTimeout(t);
+  }, [message]);
 
   if (!etat) return <Alerte>Cette école n’est plus sur l’appareil.</Alerte>;
   const p = etat.paquet;
   const enAttente = aEnvoyer(etat);
-  const positionsEnAttente = (etat.positions.ecole ? 1 : 0) + Object.keys(etat.positions.batiments).length;
+  const positionsEnAttente = (etat.positions.ecole ? 1 : 0) + Object.keys(etat.positions.batiments).length + (etat.nouveauxBatiments?.length ?? 0);
 
   const envoyer = async () => {
     setEnvoi(true);
     setMessage(null);
     try {
       let faites = 0;
-      const erreurs: string[] = [];
+      let erreurs: string[] = [];
       if (enAttente.length) {
         const modifications = modificationsDe(etat);
+        // Ce qui part : une saisie faite PENDANT l'envoi ne doit pas passer pour envoyée
+        const parties = new Map(enAttente.map((l) => [l.cle, { valeurs: { ...l.valeurs }, statut: l.statut, presence: l.presence ?? "", nom: l.valeurs.NOMS_PRENOMS }]));
         const { resultats } = await api.post<{ resultats: { cle: string; ok: boolean; id?: number; erreur?: string; semblables?: Semblable[] }[] }>("/recensement/terrain/envoyer", { modifications });
         const parCle = new Map(resultats.map((r) => [r.cle, r]));
+        // (compté ici, sur la réponse : le message dit ce qui est vraiment parti)
+        faites = resultats.filter((r) => r.ok).length;
+        erreurs = resultats.filter((r) => !r.ok).map((r) => `${parties.get(r.cle)?.nom || "Ligne"} : ${r.erreur}`);
         setEtat((e) => ({
           ...e,
           lignes: e.lignes.map((l) => {
             const r = parCle.get(l.cle);
-            if (!r) return l;
-            if (!r.ok) {
-              erreurs.push(`${l.valeurs.NOMS_PRENOMS || "Ligne"} : ${r.erreur}`);
-              return { ...l, erreur: r.erreur, semblables: r.semblables };
-            }
-            faites++;
-            return { ...l, agentId: r.id ?? l.agentId, cle: r.id ? `a${r.id}` : l.cle, origine: { ...l.valeurs }, statutOrigine: l.statut, aControler: l.nouveau || l.aControler, nouveau: false, rattacher: false, presence: "", erreur: undefined, semblables: undefined, forcer: false };
+            const s = parties.get(l.cle);
+            if (!r || !s) return l;
+            if (!r.ok) return { ...l, erreur: r.erreur, semblables: r.semblables };
+            return { ...l, agentId: r.id ?? l.agentId, cle: r.id ? `a${r.id}` : l.cle, origine: s.valeurs, statutOrigine: s.statut, aControler: l.nouveau || l.aControler, nouveau: false, rattacher: false, presence: (l.presence ?? "") === s.presence ? "" : l.presence, erreur: undefined, semblables: undefined, forcer: false };
           }),
         }));
       }
       // Les positions prélevées sans connexion
       if (etat.positions.ecole) await api.put(`/etablissements/${p.ecole.id}/localisation`, { ...etat.positions.ecole, precision: etat.positions.ecole.precisionGps });
       for (const [b, pos] of Object.entries(etat.positions.batiments)) await api.put(`/etablissements/${p.ecole.id}/batiments/${b}/localisation`, { ...pos, precision: pos.precisionGps });
-      if (positionsEnAttente) setEtat((e) => ({ ...e, positions: { batiments: {} } }));
+      if (etat.positions.ecole || Object.keys(etat.positions.batiments).length) setEtat((e) => ({ ...e, positions: { batiments: {} } }));
+      if (etat.nouveauxBatiments?.length) {
+        const apres = await envoyerBatiments(etat);
+        setEtat((e) => ({ ...e, nouveauxBatiments: apres.nouveauxBatiments, paquet: { ...e.paquet, batiments: apres.paquet.batiments } }));
+      }
       setMessage(
         erreurs.length
           ? { ton: "jaune", texte: `${faites} ligne(s) envoyée(s). ${erreurs.length} à corriger (en rouge) : ${erreurs.slice(0, 3).join(" ; ")}${erreurs.length > 3 ? "…" : ""}` }
-          : { ton: "vert", texte: `Envoyé : ${faites} agent(s)${positionsEnAttente ? ` et ${positionsEnAttente} position(s)` : ""}. Les modifications partent au contrôle, comme au recensement ; les agents nouveaux, au contrôle puis au DG.` },
+          : { ton: "vert", texte: `Envoyé : ${faites} agent(s)${positionsEnAttente ? ` et ${positionsEnAttente} position(s) ou bâtiment(s)` : ""}. Les modifications partent au contrôle, comme au recensement ; les agents nouveaux, au contrôle puis au DG.` },
       );
     } catch (e) {
       setMessage({ ton: "rouge", texte: `${(e as Error).message} — rien n’est perdu : tout reste sur l’appareil, réessayez plus tard.` });
@@ -1000,14 +1088,22 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
       setMessage({ ton: "jaune", texte: "Position gardée sur l’appareil : elle partira avec « Envoyer »." });
       return;
     }
-    await api.put(batiment ? `/etablissements/${p.ecole.id}/batiments/${batiment}/localisation` : `/etablissements/${p.ecole.id}/localisation`, pos);
+    try {
+      await api.put(batiment ? `/etablissements/${p.ecole.id}/batiments/${batiment}/localisation` : `/etablissements/${p.ecole.id}/localisation`, pos);
+    } catch (e) {
+      // Réseau annoncé mais qui ne passe pas (signal faible, Wi-Fi sans Internet) : gardée, pas perdue
+      if (!(e instanceof ErreurApi) || e.statut !== 0) throw e;
+      local();
+      setMessage({ ton: "jaune", texte: "Le réseau ne passe pas : position gardée sur l’appareil, elle partira avec « Envoyer »." });
+      return;
+    }
     setEtat((e) => ({ ...e, paquet: batiment ? { ...e.paquet, batiments: e.paquet.batiments.map((b) => (b.id === batiment ? { ...b, ...v } : b)) } : { ...e.paquet, ecole: { ...e.paquet.ecole, ...v } } }));
     setMessage({ ton: "vert", texte: "Position enregistrée." });
   };
 
   return (
     <div className="space-y-3">
-      <div className="sticky top-0 z-10 -mx-1 space-y-2 rounded-b-2xl bg-white/95 px-1 pt-1 pb-2 shadow-sm backdrop-blur">
+      <div className="sticky top-[var(--barre-haut,0px)] z-10 -mx-1 space-y-2 rounded-b-2xl bg-white/95 px-1 pt-1 pb-2 shadow-sm backdrop-blur">
         <div className="flex flex-wrap items-center gap-2">
           <Bouton variante="discret" onClick={retour}>
             <ArrowLeft /> Écoles
@@ -1048,8 +1144,13 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
             </>
           )}
         </div>
+        {/* Dans le bandeau qui reste en haut : vu même quand on est descendu dans la liste ou la fiche */}
+        {message && (
+          <div role="status" aria-live="polite">
+            <Alerte ton={message.ton}>{message.texte}</Alerte>
+          </div>
+        )}
       </div>
-      {message && <Alerte ton={message.ton}>{message.texte}</Alerte>}
 
       {onglet === "personnel" ? (
         <>
@@ -1068,9 +1169,24 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
             <BlocLocalisation position={p.ecole} enregistrer={enregistrerPosition(null)} />
             {etat.positions.ecole && <p className="mt-1 text-[12px] text-or-700">Prélevée sans connexion : elle partira avec « Envoyer ».</p>}
           </Carte>
-          <Carte titre={`Bâtiments (${p.batiments.length})`}>
+          <Carte titre={`Bâtiments (${p.batiments.length + (etat.nouveauxBatiments?.length ?? 0)})`}>
+            <AjoutBatiment ajouter={(b) => setEtat((e) => ({ ...e, nouveauxBatiments: [...(e.nouveauxBatiments ?? []), b] }))} />
+            {!!etat.nouveauxBatiments?.length && (
+              <ul className="mb-2 divide-y divide-zinc-100">
+                {etat.nouveauxBatiments.map((b) => (
+                  <li key={b.cle} className="flex flex-wrap items-center gap-2 py-2 text-[13px]">
+                    <span className="font-medium">{b.nom}</span>
+                    <Badge ton="jaune">à envoyer</Badge>
+                    <span className="text-zinc-500">{b.position ? `${b.position.latitude?.toFixed(5)}, ${b.position.longitude?.toFixed(5)}` : "sans position"}</span>
+                    <button type="button" title="Retirer" className="cursor-pointer text-zinc-400 hover:text-rouge-600" onClick={() => setEtat((e) => ({ ...e, nouveauxBatiments: (e.nouveauxBatiments ?? []).filter((x) => x.cle !== b.cle) }))}>
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
             {!p.batiments.length ? (
-              <p className="text-[13px] text-zinc-500">Aucun bâtiment enregistré. Ajoutez-les sur la fiche de l’école (avec la connexion), puis localisez chacun, surtout une annexe ailleurs.</p>
+              !etat.nouveauxBatiments?.length && <p className="text-[13px] text-zinc-500">Aucun bâtiment enregistré pour cette école : ajoutez chacun ci-dessus, avec sa position, surtout une annexe ailleurs.</p>
             ) : (
               <ul className="divide-y divide-zinc-100">
                 {p.batiments.map((b) => (
@@ -1085,7 +1201,9 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
           <Carte titre="Salles et classes">
             <p className="text-[13px] text-zinc-600">
               {p.ecole.salles} salle(s), {p.ecole.classes} classe(s) enregistrée(s).{" "}
-              {enLigne ? (
+              {profil.role === "RECENSEUR" ? (
+                "La DGRHAS les complète sur la fiche de l’école."
+              ) : enLigne ? (
                 <Link href={`/ecoles/${p.ecole.id}`} target="_blank" className="inline-flex items-center gap-1 text-marque-700 hover:underline">
                   Compléter sur la fiche de l’école <ExternalLink className="size-3" />
                 </Link>
@@ -1163,7 +1281,14 @@ function AjoutAgent({ etat, setEtat, enLigne }: { etat: Etat; setEtat: (f: (e: E
       setEtat((e) => ({ ...e, lignes: [nouvelleLigne(e.paquet, f.agent, true), ...e.lignes] }));
     } catch {
       if (!hors) return;
-      const agent = { id: hors[0], nomComplet: hors[1], statut: hors[5], matricule: hors[3], donnees: { NOMS_PRENOMS: hors[1], ...(hors[4] ? { DATE_NAISSANCE: hors[4] } : {}) } };
+      // (tout ce que la liste nationale connaît : naissance, genre, grade, matricule)
+      const agent = {
+        id: hors[0],
+        nomComplet: hors[1],
+        statut: hors[5],
+        matricule: hors[3],
+        donnees: { NOMS_PRENOMS: hors[1], ...(hors[4] ? { DATE_NAISSANCE: hors[4] } : {}), ...(hors[6] ? { GENRE: hors[6] } : {}), ...(hors[7] ? { GRADE: hors[7] } : {}), ...(hors[3] ? { MATRICULE_SOLDE: hors[3] } : {}) },
+      };
       setEtat((e) => ({ ...e, lignes: [nouvelleLigne(e.paquet, agent, true), ...e.lignes] }));
     }
     setQ("");
@@ -1528,6 +1653,7 @@ function Grille({ etat, setEtat, manques }: { etat: Etat; setEtat: (f: (e: Etat)
     cible?.focus();
   };
   const vides = (code: string) => etat.lignes.filter((l) => !l.valeurs[code] && obligatoire(p.colonnes.find((c) => c.code === code)!, l.statut)).length;
+  const memes = homonymes(etat.lignes);
   return (
     <div className="overflow-auto rounded-2xl border border-zinc-200 bg-white" style={{ maxHeight: "70vh" }}>
       <table ref={table} className="min-w-full border-separate border-spacing-0 text-left">
@@ -1555,13 +1681,18 @@ function Grille({ etat, setEtat, manques }: { etat: Etat; setEtat: (f: (e: Etat)
             const cols = p.colonnes.filter((c) => c.code !== "NOMS_PRENOMS");
             const nom = p.colonnes.find((c) => c.code === "NOMS_PRENOMS");
             return (
-              <tr key={l.cle} className={cx("align-top", l.erreur && "bg-rouge-50/50", (l.presence === "PARTI" || l.presence === "INCONNU") && "opacity-60")}>
+              <tr key={l.cle} data-ligne={l.cle} data-agent={l.agentId ?? ""} className={cx("align-top", l.erreur && "bg-rouge-50/50", (l.presence === "PARTI" || l.presence === "INCONNU" || l.presence === "DOUBLON") && "opacity-60")}>
                 <td className="sticky left-0 z-[1] border-b border-zinc-100 bg-white px-1 py-1">
                   {nom && <Case c={nom} ligne={l} maj={(v) => ecrireCase(setEtat, l.cle, nom.code, v)} manques={manques} idCase={`${r}-0`} auClavier={auClavier(r, 0)} />}
                   <div className="flex flex-wrap gap-1 px-1 pt-0.5">
                     {l.nouveau && <Badge ton="bleu">nouveau</Badge>}
                     {l.aControler && <Badge ton="jaune" titre="Ajouté par une équipe : il est dans la base, en attente de la décision du DG (rejeté, il disparaîtra des tablettes)">ajouté, en contrôle</Badge>}
                     {l.rattacher && <Badge ton="bleu">arrive ici</Badge>}
+                    {memes.has(nomCle(l.valeurs.NOMS_PRENOMS)) && (
+                      <Badge ton="rouge" titre={MARQUE_HOMONYME}>
+                        même nom qu’une autre ligne
+                      </Badge>
+                    )}
                     {l.erreur && !l.semblables?.length && <span className="text-[11px] text-rouge-700">{l.erreur}</span>}
                     {!!l.semblables?.length && <Semblables ligne={l} setEtat={setEtat} />}
                   </div>
@@ -1611,6 +1742,7 @@ function UnePersonne({ etat, setEtat, manques }: { etat: Etat; setEtat: (f: (e: 
   const l = liste[n];
   if (!l) return <Vide>Tous les agents sont complets.</Vide>;
   const m = manquantes(p, l);
+  const memes = homonymes(etat.lignes);
   return (
     <div className="mx-auto max-w-xl space-y-3">
       <div className="flex items-center gap-2 text-[13px]">
@@ -1627,11 +1759,16 @@ function UnePersonne({ etat, setEtat, manques }: { etat: Etat; setEtat: (f: (e: 
       <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-zinc-600">
         <input type="checkbox" checked={seulementIncomplets} onChange={(e) => (setSeulementIncomplets(e.target.checked), setI(0))} /> Seulement ceux à qui il manque quelque chose
       </label>
-      <div key={l.cle} className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4">
+      <div key={l.cle} data-ligne={l.cle} data-agent={l.agentId ?? ""} className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4">
         <div className="flex flex-wrap items-center gap-2">
           {l.nouveau && <Badge ton="bleu">nouveau</Badge>}
           {l.aControler && <Badge ton="jaune" titre="Ajouté par une équipe : il est dans la base, en attente de la décision du DG (rejeté, il disparaîtra des tablettes)">ajouté, en contrôle</Badge>}
           {l.rattacher && <Badge ton="bleu">arrive ici</Badge>}
+          {memes.has(nomCle(l.valeurs.NOMS_PRENOMS)) && (
+            <Badge ton="rouge" titre={MARQUE_HOMONYME}>
+              même nom qu’une autre ligne
+            </Badge>
+          )}
           {m ? <Badge ton="rouge">manque {m}</Badge> : <Badge ton="vert">complet</Badge>}
           {l.erreur && !l.semblables?.length && <span className="text-[12px] text-rouge-700">{l.erreur}</span>}
         </div>
