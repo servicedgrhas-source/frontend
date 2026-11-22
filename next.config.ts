@@ -47,7 +47,8 @@ const ENTETES = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "same-origin" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()" },
+  // GPS permis pour notre site (localisation des écoles, mission de terrain 21/11/2026) ; jamais pour un autre
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(self), payment=(), usb=(), interest-cohort=()" },
   // https imposé pendant un an (en ligne seulement : le poste reste en http)
   ...(enLigne ? [{ key: "Strict-Transport-Security", value: "max-age=31536000" }] : []),
 ];
@@ -57,7 +58,11 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
   poweredByHeader: false,
   async headers() {
-    return [{ source: "/:chemin*", headers: ENTETES }];
+    return [
+      { source: "/:chemin*", headers: ENTETES },
+      // Le service du hors ligne n'est jamais gardé en cache par le navigateur (toujours la dernière version)
+      { source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }] },
+    ];
   },
   async rewrites() {
     return [{ source: "/api/:chemin*", destination: `${BACKEND_URL}/api/:chemin*` }];

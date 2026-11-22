@@ -7,7 +7,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { api, CLE_JETON, fermerSession, lireSession, memoriserProfil, ouvrirSession, qs, SESSION_ROUVERTE, surSessionExpiree, TRAVAIL_MODIFIE, type Profil } from "@/lib/api";
+import { api, CLE_JETON, ErreurApi, fermerSession, lireSession, memoriserProfil, ouvrirSession, qs, SESSION_ROUVERTE, surSessionExpiree, TRAVAIL_MODIFIE, type Profil } from "@/lib/api";
 import { appliquerMenu, cheminDe, ESPACES, espaceDe, lienEspace, MENU, MENU_MODIFIE, niveauPage, POLES, poleDe, rubriquesVisibles, travailEspace, type Compteurs, type ConfigMenu } from "@/lib/espaces";
 import { ROLES } from "@/lib/libelles";
 import type { Referentiels } from "@/lib/types";
@@ -58,9 +58,27 @@ export function Coquille({ children }: { children: ReactNode }) {
       .then(([p, refs, menu]) => {
         appliquerMenu(menu);
         memoriserProfil(p);
+        try {
+          localStorage.setItem("dgrhas.referentiels", JSON.stringify(refs));
+        } catch {
+          /* appareil plein : la copie hors ligne sera plus ancienne */
+        }
         setSession({ profil: p, refs });
       })
-      .catch((e: Error) => setErreur(e.message));
+      .catch((e: Error) => {
+        // Sans réseau (mission de terrain, DG 21/11/2026) : on travaille avec ce qui est gardé sur l'appareil
+        if (e instanceof ErreurApi && e.statut === 0) {
+          let refs = {} as Referentiels;
+          try {
+            refs = JSON.parse(localStorage.getItem("dgrhas.referentiels") ?? "{}") as Referentiels;
+          } catch {
+            /* rien de gardé */
+          }
+          setSession({ profil, refs });
+          return;
+        }
+        setErreur(e.message);
+      });
   }, [router]);
 
   const ouvertRefs = !!session;

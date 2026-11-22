@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, CheckCircle2, CloudOff, Download, ExternalLink, LayoutGrid, Plus, RefreshCw, Search, Send, Smartphone, Trash2, UserPlus, Wifi } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, CloudOff, MapPinned, Download, ExternalLink, LayoutGrid, Plus, RefreshCw, Search, Send, Smartphone, Trash2, UserPlus, Wifi } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlocLocalisation, type Position } from "@/components/ecoles/localisation";
@@ -9,6 +9,7 @@ import { Alerte, Badge, Bouton, Carte, EnTete, Liste, Saisie, Segments, Vide, cx
 import { api } from "@/lib/api";
 import { CYCLES } from "@/lib/ecoles";
 import { accesDonne } from "@/lib/espaces";
+import { chercher, preparer, type Prepare } from "@/lib/recherche-souple";
 
 /*
  * Recensement sur le terrain (DG, 21/11/2026). Les équipes partent école par école, avec une tablette
@@ -57,6 +58,8 @@ interface Ligne {
   rattacher?: boolean;
   /** Absent de nos bases : il part au contrôle puis à la décision du DG. */
   nouveau?: boolean;
+  /** Ce que l'équipe constate (présent, absent ce jour, parti, inconnu ici). */
+  presence?: Presence | "";
   erreur?: string;
 }
 interface Etat {
@@ -65,8 +68,16 @@ interface Etat {
   /** Positions prélevées sans connexion, envoyées avec le reste. */
   positions: { ecole?: Position; batiments: Record<string, Position> };
 }
+type Presence = "PRESENT" | "ABSENT" | "PARTI" | "INCONNU";
+const PRESENCES: { code: Presence; libelle: string; ton: string }[] = [
+  { code: "PRESENT", libelle: "Présent", ton: "text-marque-700" },
+  { code: "ABSENT", libelle: "Absent ce jour", ton: "text-or-700" },
+  { code: "PARTI", libelle: "Parti de l’école", ton: "text-rouge-700" },
+  { code: "INCONNU", libelle: "Inconnu ici", ton: "text-rouge-700" },
+];
 interface EcoleListe {
   id: number;
+  parentId?: number | null;
   type: string;
   nom: string;
   cycle: string | null;
@@ -118,18 +129,18 @@ function enTexte(c: Colonne, v: unknown): string {
   if (c.type === "DATE") return String(v).slice(0, 10);
   return String(v);
 }
-const plat = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
 
 function nouvelleLigne(p: Paquet, a: Paquet["agents"][number], rattacher = false): Ligne {
   const valeurs = Object.fromEntries(p.colonnes.map((c) => [c.code, enTexte(c, c.code === "NOMS_PRENOMS" ? (a.donnees.NOMS_PRENOMS ?? a.nomComplet) : a.donnees[c.code])]));
   return { cle: `a${a.id}`, agentId: a.id, statut: a.statut, statutOrigine: rattacher ? "" : a.statut, valeurs, origine: rattacher ? {} : { ...valeurs }, rattacher };
 }
 const changees = (l: Ligne) => Object.keys(l.valeurs).filter((k) => (l.valeurs[k] ?? "") !== (l.origine[k] ?? ""));
-const aEnvoyer = (e: Etat) => e.lignes.filter((l) => l.nouveau || l.rattacher || l.statut !== l.statutOrigine || changees(l).length);
+const aEnvoyer = (e: Etat) => e.lignes.filter((l) => l.nouveau || l.rattacher || !!l.presence || l.statut !== l.statutOrigine || changees(l).length);
 const obligatoire = (c: Colonne, statut: string) => !c.obligatoirePour.length || c.obligatoirePour.includes(statut);
 
 export default function Page() {
   const { profil } = useSession();
+  useServiceHorsLigne();
   const [enLigne, setEnLigne] = useState(true);
   // L'école ouverte reste ouverte après un rechargement ou un changement d'écran (téléphone tourné)
   const [ouverte, setOuverteBrut] = useState<number | null>(() => lire<number>("ouverte"));
@@ -180,14 +191,47 @@ function ChoixEcole({ enLigne, ouvrir }: { enLigne: boolean; ouvrir: (id: number
     api
       .get<EcoleListe[]>("/structures")
       .then((l) => {
-        const e = l.filter((s) => s.actif && s.type === "ETABLISSEMENT");
+        // Les écoles et les inspections (pour tout télécharger d'une zone), gardées sur l'appareil
+        const e = l.filter((s) => s.actif && (s.type === "ETABLISSEMENT" || s.type === "INSPECTION"));
         setEcoles(e);
-        ecrire("ecoles", e.map(({ id, type, nom, cycle, localite, departementId, actif }) => ({ id, type, nom, cycle, localite, departementId, actif })));
+        ecrire("ecoles", e.map(({ id, parentId, type, nom, cycle, localite, departementId, actif }) => ({ id, parentId, type, nom, cycle, localite, departementId, actif })));
       })
       .catch(() => undefined);
   }, [enLigne]);
-  const mots = plat(q).split(/\s+/).filter(Boolean);
-  const trouvees = mots.length ? ecoles.filter((e) => (!cycle || e.cycle === cycle) && mots.every((m) => plat(`${e.nom} ${e.localite ?? ""}`).includes(m))).slice(0, 30) : [];
+  // Recherche intelligente : on tape comme on entend (fautes, accents, ordre, début des mots)
+  const index = useMemo(() => ecoles.map((e) => ({ item: e, prepare: preparer(`${e.nom} ${e.localite ?? ""}`, true) as Prepare })), [ecoles]);
+  const resultats = q.trim().length >= 2 ? chercher(q, index.filter((x) => !cycle || x.item.type === "INSPECTION" || x.item.cycle === cycle), 40, true) : [];
+  const trouvees = resultats.filter((x) => x.item.type === "ETABLISSEMENT").slice(0, 25).map((x) => x.item);
+  const inspections = resultats.filter((x) => x.item.type === "INSPECTION").slice(0, 3).map((x) => x.item);
+  const ecolesDe = (i: number) => ecoles.filter((e) => e.type === "ETABLISSEMENT" && e.parentId === i);
+  const [zone, setZone] = useState<{ fait: number; total: number } | null>(null);
+  // Toute une inspection d'un coup (DG : « on travaille par zone »)
+  const telechargerZone = async (i: EcoleListe) => {
+    const liste = ecolesDe(i.id).filter((e) => !cycle || e.cycle === cycle);
+    if (!liste.length) return setErreur("Aucune école sous cette inspection.");
+    if (!confirm(`Télécharger les ${liste.length} école(s) de « ${i.nom} » sur cet appareil ?`)) return;
+    setErreur(null);
+    let fait = 0;
+    const ratees: string[] = [];
+    for (const e of liste) {
+      setZone({ fait, total: liste.length });
+      const deja = lire<Etat>(`ecole:${e.id}`);
+      if (deja && aEnvoyer(deja).length) {
+        fait++;
+        continue;
+      }
+      try {
+        const p = await api.get<Paquet>(`/recensement/terrain/ecole/${e.id}`);
+        ecrire(`ecole:${e.id}`, { paquet: p, lignes: p.agents.map((a) => nouvelleLigne(p, a)), positions: { batiments: {} } } satisfies Etat);
+      } catch {
+        ratees.push(e.nom);
+      }
+      fait++;
+    }
+    setZone(null);
+    setLocales(ecolesTelechargees());
+    if (ratees.length) setErreur(`${ratees.length} école(s) non téléchargée(s) : ${ratees.slice(0, 3).join(", ")}${ratees.length > 3 ? "…" : ""}. Réessayez avec une meilleure connexion.`);
+  };
 
   const telecharger = async (id: number) => {
     const deja = lire<Etat>(`ecole:${id}`);
@@ -212,7 +256,7 @@ function ChoixEcole({ enLigne, ouvrir }: { enLigne: boolean; ouvrir: (id: number
     <div className="mx-auto max-w-3xl space-y-4">
       <EnTete
         titre="Recensement sur le terrain"
-        sousTitre="École par école : on télécharge l’école (avec la connexion), on complète ses agents sur place, même sans réseau, puis on envoie. On part de nos bases : on ne ressaisit pas ce qui est déjà juste."
+        sousTitre="École par école, ou toute une inspection : on télécharge (avec la connexion), on complète sur place, même sans réseau, puis on envoie. Conseil : « Ajouter à l’écran d’accueil » (menu du navigateur) pour l’ouvrir comme une application, même hors réseau."
         actions={<Reseau enLigne={enLigne} />}
       />
       {erreur && <Alerte>{erreur}</Alerte>}
@@ -224,7 +268,24 @@ function ChoixEcole({ enLigne, ouvrir }: { enLigne: boolean; ouvrir: (id: number
           </div>
           <Segments valeur={cycle} changer={setCycle} options={[{ valeur: "", libelle: "Tous les cycles" }, ...Object.entries(CYCLES).map(([valeur, libelle]) => ({ valeur, libelle }))]} />
           {!ecoles.length && <p className="text-[13px] text-zinc-500">{enLigne ? "Chargement des écoles…" : "La liste des écoles n’a pas encore été chargée sur cet appareil : connectez-vous une première fois."}</p>}
-          {mots.length > 0 && !trouvees.length && <Vide>Aucune école ne correspond.</Vide>}
+          {q.trim().length >= 2 && !trouvees.length && !inspections.length && <Vide>Aucune école ne ressemble à « {q.trim()} ». Essayez un autre mot du nom ou le village.</Vide>}
+          {inspections.map((i) => (
+            <div key={i.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-marque-200 bg-marque-50/60 px-3 py-2.5">
+              <MapPinned className="size-5 text-marque-600" />
+              <div className="min-w-0 flex-1">
+                <div className="text-[14px] font-medium">{i.nom}</div>
+                <div className="text-[12px] text-zinc-500">{ecolesDe(i.id).filter((e) => !cycle || e.cycle === cycle).length} école(s) dans cette inspection</div>
+              </div>
+              <Bouton disabled={!enLigne || !!zone} onClick={() => void telechargerZone(i)}>
+                <Download /> Tout télécharger
+              </Bouton>
+            </div>
+          ))}
+          {zone && (
+            <p className="text-[13px] text-marque-700">
+              Téléchargement : {zone.fait} / {zone.total} école(s)…
+            </p>
+          )}
           <ul className="divide-y divide-zinc-100">
             {trouvees.map((e) => (
               <li key={e.id}>
@@ -242,6 +303,7 @@ function ChoixEcole({ enLigne, ouvrir }: { enLigne: boolean; ouvrir: (id: number
           </ul>
         </div>
       </Carte>
+      <Signalements enLigne={enLigne} />
       <Carte titre="Écoles sur cet appareil">
         {!locales.length ? (
           <p className="text-[13px] text-zinc-500">Aucune pour l’instant. Avant de partir en zone sans réseau, téléchargez les écoles de votre itinéraire.</p>
@@ -315,6 +377,8 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
             agentId: l.agentId,
             statut: l.nouveau || l.statut !== l.statutOrigine ? l.statut : undefined,
             structureId: l.nouveau || l.rattacher ? p.ecole.id : undefined,
+            presence: l.presence || undefined,
+            ecoleId: p.ecole.id,
             donnees,
           };
         });
@@ -330,7 +394,7 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
               return { ...l, erreur: r.erreur };
             }
             faites++;
-            return { ...l, agentId: r.id ?? l.agentId, cle: r.id ? `a${r.id}` : l.cle, origine: { ...l.valeurs }, statutOrigine: l.statut, nouveau: false, rattacher: false, erreur: undefined };
+            return { ...l, agentId: r.id ?? l.agentId, cle: r.id ? `a${r.id}` : l.cle, origine: { ...l.valeurs }, statutOrigine: l.statut, nouveau: false, rattacher: false, presence: "", erreur: undefined };
           }),
         }));
       }
@@ -494,16 +558,17 @@ function AjoutAgent({ etat, setEtat, enLigne }: { etat: Etat; setEtat: (f: (e: E
   const [resultats, setResultats] = useState<{ id: number; nomComplet: string; statut: string; structureNom: string | null; matricule: string | null }[]>([]);
   const [cherche, setCherche] = useState(false);
   const p = etat.paquet;
-  const ici = useMemo(() => {
-    const m = plat(q).split(/\s+/).filter((x) => x.length >= 2);
-    return m.length ? etat.lignes.filter((l) => m.every((x) => plat(`${l.valeurs.NOMS_PRENOMS ?? ""} ${l.valeurs.MATRICULE_SOLDE ?? ""}`).includes(x))) : [];
-  }, [q, etat.lignes]);
+  // Dans cette école d'abord (même sans réseau), avec la même recherche intelligente
+  const ici = useMemo(
+    () => (q.trim().length >= 2 ? chercher(q, etat.lignes.map((l) => ({ item: l, prepare: preparer(`${l.valeurs.NOMS_PRENOMS ?? ""} ${l.valeurs.MATRICULE_SOLDE ?? ""}`) })), 5).map((x) => x.item) : []),
+    [q, etat.lignes],
+  );
   useEffect(() => {
     if (!enLigne || q.trim().length < 3) return;
     const t = setTimeout(() => {
       setCherche(true);
       api
-        .get<{ lignes: typeof resultats }>(`/recensement/agents/recherche?q=${encodeURIComponent(q.trim())}`)
+        .get<{ lignes: typeof resultats }>(`/recensement/terrain/agents?q=${encodeURIComponent(q.trim())}`)
         .then((r) => setResultats(r.lignes.filter((x) => !etat.lignes.some((l) => l.agentId === x.id))))
         .catch(() => setResultats([]))
         .finally(() => setCherche(false));
@@ -595,6 +660,99 @@ function Case({ c, ligne, maj, manques, grande, idCase, auClavier }: { c: Colonn
       onChange={(e) => maj(c.code === "NOMS_PRENOMS" ? e.target.value.toUpperCase() : e.target.value)}
     />
   );
+}
+
+/* ------------------------------ Présence constatée ------------------------------ */
+
+const ecrirePresence = (setEtat: (f: (e: Etat) => Etat) => void, cle: string, v: Presence | "") =>
+  setEtat((e) => ({ ...e, lignes: e.lignes.map((l) => (l.cle === cle ? { ...l, presence: v, erreur: undefined } : l)) }));
+
+/** Grille : présent, absent ce jour, parti, inconnu ici (parti et inconnu : un signalement à la DGRHAS). */
+function ChoixPresence({ ligne, setEtat, idCase, auClavier }: { ligne: Ligne; setEtat: (f: (e: Etat) => Etat) => void; idCase: string; auClavier: (e: React.KeyboardEvent<HTMLElement>) => void }) {
+  if (ligne.nouveau) return <span className="px-2 text-[12px] text-zinc-400">—</span>;
+  const p = PRESENCES.find((x) => x.code === ligne.presence);
+  return (
+    <select
+      data-case={idCase}
+      onKeyDown={auClavier}
+      aria-label="Présence aujourd’hui"
+      value={ligne.presence ?? ""}
+      onChange={(e) => ecrirePresence(setEtat, ligne.cle, e.target.value as Presence | "")}
+      className={cx("h-8 w-full rounded-md border bg-transparent px-1 text-[13px] outline-none focus:border-marque-500", ligne.presence ? "border-or-300 bg-or-50" : "border-transparent", p?.ton)}
+    >
+      <option value="">—</option>
+      {PRESENCES.map((x) => (
+        <option key={x.code} value={x.code}>
+          {x.libelle}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** À la DGRHAS : ce que les équipes ont signalé (absent, parti, inconnu ici), à vérifier puis traiter. */
+function Signalements({ enLigne }: { enLigne: boolean }) {
+  const [liste, setListe] = useState<{ id: number; agentId: number; nomComplet: string; ecole: string; etat: string; observation: string | null; par: string | null; le: string }[]>([]);
+  const [vu, setVu] = useState(0);
+  useEffect(() => {
+    if (!enLigne) return;
+    api
+      .get<typeof liste>("/recensement/terrain/signalements")
+      .then(setListe)
+      .catch(() => undefined);
+  }, [enLigne, vu]);
+  if (!liste.length) return null;
+  const libelle = (e: string) => PRESENCES.find((x) => x.code === e)?.libelle ?? e;
+  return (
+    <Carte titre={`Signalements des équipes (${liste.length} à traiter)`}>
+      <p className="mb-2 text-[12px] text-zinc-500">Rien n’est effacé : vérifiez, corrigez la fiche (mutation, sortie, école) si besoin, puis marquez « Traité ».</p>
+      <ul className="divide-y divide-zinc-100">
+        {liste.map((g) => (
+          <li key={g.id} className="flex flex-wrap items-center gap-2 py-2 text-[13px]">
+            <AlertTriangle className="size-4 text-or-600" />
+            <Link href={`/personnel/agents/${g.agentId}`} target="_blank" className="font-medium text-marque-700 hover:underline">
+              {g.nomComplet}
+            </Link>
+            <Badge ton={g.etat === "ABSENT" ? "jaune" : "rouge"}>{libelle(g.etat)}</Badge>
+            <span className="text-zinc-500">
+              {g.ecole} · {g.par ?? ""}, le {new Date(g.le).toLocaleDateString("fr-FR")}
+              {g.observation ? ` · « ${g.observation} »` : ""}
+            </span>
+            <Bouton
+              variante="discret"
+              className="ml-auto"
+              onClick={() =>
+                void api
+                  .post(`/recensement/terrain/signalements/${g.id}/traite`, {})
+                  .then(() => setVu((v) => v + 1))
+                  .catch(() => undefined)
+              }
+            >
+              <CheckCircle2 /> Traité
+            </Bouton>
+          </li>
+        ))}
+      </ul>
+    </Carte>
+  );
+}
+
+/**
+ * Le service hors ligne : la page et ses fichiers sont gardés sur l'appareil, l'application
+ * s'ouvre ensuite même sans réseau (et s'installe sur l'écran d'accueil).
+ */
+function useServiceHorsLigne() {
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then(() => navigator.serviceWorker.ready)
+      .then((reg) => {
+        const urls = [location.href, ...performance.getEntriesByType("resource").map((e) => e.name)].filter((u) => u.startsWith(location.origin) && !u.includes("/api/"));
+        reg.active?.postMessage({ type: "GARDER", urls });
+      })
+      .catch(() => undefined);
+  }, []);
 }
 
 /* ------------------------------ Les enfants ------------------------------ */
@@ -740,6 +898,9 @@ function Grille({ etat, setEtat, manques }: { etat: Etat; setEtat: (f: (e: Etat)
           <tr>
             <th className="sticky left-0 z-[3] min-w-56 border-b border-zinc-200 bg-zinc-50 px-2 py-2">Noms et prénoms</th>
             <th className="min-w-32 border-b border-zinc-200 px-2 py-2">Statut</th>
+            <th className="min-w-36 border-b border-zinc-200 px-2 py-2" title="Ce que vous constatez aujourd’hui dans l’école">
+              Présence
+            </th>
             {p.colonnes
               .filter((c) => c.code !== "NOMS_PRENOMS")
               .map((c) => (
@@ -757,7 +918,7 @@ function Grille({ etat, setEtat, manques }: { etat: Etat; setEtat: (f: (e: Etat)
             const cols = p.colonnes.filter((c) => c.code !== "NOMS_PRENOMS");
             const nom = p.colonnes.find((c) => c.code === "NOMS_PRENOMS");
             return (
-              <tr key={l.cle} className={cx("align-top", l.erreur && "bg-rouge-50/50")}>
+              <tr key={l.cle} className={cx("align-top", l.erreur && "bg-rouge-50/50", (l.presence === "PARTI" || l.presence === "INCONNU") && "opacity-60")}>
                 <td className="sticky left-0 z-[1] border-b border-zinc-100 bg-white px-1 py-1">
                   {nom && <Case c={nom} ligne={l} maj={(v) => ecrireCase(setEtat, l.cle, nom.code, v)} manques={manques} idCase={`${r}-0`} auClavier={auClavier(r, 0)} />}
                   <div className="flex flex-wrap gap-1 px-1 pt-0.5">
@@ -775,9 +936,12 @@ function Grille({ etat, setEtat, manques }: { etat: Etat; setEtat: (f: (e: Etat)
                     ))}
                   </select>
                 </td>
+                <td className="border-b border-zinc-100 px-1 py-1">
+                  <ChoixPresence ligne={l} setEtat={setEtat} idCase={`${r}-2`} auClavier={auClavier(r, 2)} />
+                </td>
                 {cols.map((c, k) => (
                   <td key={c.code} className="border-b border-zinc-100 px-1 py-1">
-                    <Case c={c} ligne={l} maj={(v) => ecrireCase(setEtat, l.cle, c.code, v)} manques={manques} idCase={`${r}-${k + 2}`} auClavier={auClavier(r, k + 2)} />
+                    <Case c={c} ligne={l} maj={(v) => ecrireCase(setEtat, l.cle, c.code, v)} manques={manques} idCase={`${r}-${k + 3}`} auClavier={auClavier(r, k + 3)} />
                   </td>
                 ))}
                 <td className="border-b border-zinc-100 px-2 py-1.5 text-[12px] whitespace-nowrap">
@@ -831,6 +995,23 @@ function UnePersonne({ etat, setEtat, manques }: { etat: Etat; setEtat: (f: (e: 
           {m ? <Badge ton="rouge">manque {m}</Badge> : <Badge ton="vert">complet</Badge>}
           {l.erreur && <span className="text-[12px] text-rouge-700">{l.erreur}</span>}
         </div>
+        {!l.nouveau && (
+          <div className="space-y-1">
+            <div className="text-[12px] font-medium text-zinc-600">Aujourd’hui dans l’école</div>
+            <div className="grid grid-cols-2 gap-2">
+              {PRESENCES.map((x) => (
+                <button
+                  key={x.code}
+                  type="button"
+                  onClick={() => ecrirePresence(setEtat, l.cle, l.presence === x.code ? "" : x.code)}
+                  className={cx("h-11 cursor-pointer rounded-lg border text-[14px] font-medium", l.presence === x.code ? "border-marque-600 bg-marque-600 text-white" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50")}
+                >
+                  {x.libelle}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <label className="block text-[12px] font-medium text-zinc-600">
           Statut
           <Liste className="h-11 text-[15px]" value={l.statut} onChange={(e) => ecrireStatut(setEtat, l.cle, e.target.value)} options={p.statuts.map((s) => ({ valeur: s.code, libelle: s.libelle }))} />
