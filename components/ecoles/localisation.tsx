@@ -22,18 +22,18 @@ export const carte = (p: Position) => `https://www.openstreetmap.org/?mlat=${p.l
 export function preleverPosition(): Promise<{ latitude: number; longitude: number; precision: number }> {
   return new Promise((ok, ko) => {
     if (typeof navigator === "undefined" || !navigator.geolocation) return ko(new Error("Cet appareil ne donne pas sa position (GPS)."));
+    const tropLong = "Le GPS n’a pas répondu en 30 secondes : sortez à découvert (loin des toits et des arbres) et réessayez. La position peut aussi être reprise plus tard.";
+    // Certains appareils ne rappellent jamais (ni position, ni erreur) : au bout de 35 s, on le dit
+    const garde = setTimeout(() => ko(new Error(tropLong)), 35_000);
     navigator.geolocation.getCurrentPosition(
-      (p) => ok({ latitude: p.coords.latitude, longitude: p.coords.longitude, precision: p.coords.accuracy }),
-      (e) =>
-        ko(
-          new Error(
-            e.code === 1
-              ? "La position est refusée : autorisez la localisation pour ce site (icône du cadenas dans la barre d’adresse)."
-              : e.code === 3
-                ? "Le GPS n’a pas répondu à temps : sortez à découvert et réessayez."
-                : "Position introuvable : activez le GPS de l’appareil et réessayez.",
-          ),
-        ),
+      (p) => {
+        clearTimeout(garde);
+        ok({ latitude: p.coords.latitude, longitude: p.coords.longitude, precision: p.coords.accuracy });
+      },
+      (e) => {
+        clearTimeout(garde);
+        ko(new Error(e.code === 1 ? "La position est refusée : autorisez la localisation pour ce site (icône du cadenas dans la barre d’adresse)." : e.code === 3 ? tropLong : "Position introuvable : activez la localisation (GPS) de l’appareil dans ses réglages, puis réessayez."));
+      },
       { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 },
     );
   });
@@ -117,11 +117,12 @@ export function BlocLocalisation({
           <Bouton variante={connue ? "secondaire" : "principal"} chargement={encours} onClick={prelever} title="Sur place : la tablette ou le téléphone donne sa position (GPS)">
             <Crosshair /> {connue ? "Reprendre la position" : "Prélever la localisation"}
           </Bouton>
-          <Bouton variante="discret" disabled={encours} onClick={() => setSaisie({ lat: connue ? String(position.latitude) : "", lng: connue ? String(position.longitude) : "" })}>
+          <Bouton variante="discret" onClick={() => setSaisie({ lat: connue ? String(position.latitude) : "", lng: connue ? String(position.longitude) : "" })}>
             <PencilLine /> Saisir
           </Bouton>
         </div>
       )}
+      {encours && !saisie && <p className="text-[12px] text-marque-700">Recherche du signal GPS… Restez dehors, devant l’entrée : cela peut prendre jusqu’à 30 secondes.</p>}
       {erreur && <p className="text-[12px] text-rouge-600">{erreur}</p>}
       <Modale titre="Saisir la position" ouverte={!!saisie} fermer={() => setSaisie(null)}>
         <div className="space-y-3 text-[13px]">

@@ -12,6 +12,11 @@
  *   la même clé est aussi enfermée avec ce secret : le doigt ouvre le coffre. L'empreinte ne
  *   quitte jamais l'appareil et le serveur ne la voit jamais. Sinon, le code suffit.
  * - 10 codes faux d'affilée : tout est effacé.
+ * - CODE OUBLIÉ : la même clé est enfermée une troisième fois avec une clé de secours que le
+ *   serveur garde pour cet appareil ; il ne la rend qu'avec le MOT DE PASSE du compte (pas avec la
+ *   seule session). Le recenseur rouvre ainsi ses données, puis choisit un nouveau code.
+ * - Fin de mission : l'appareil ne s'efface jamais tout seul tant que des lignes attendent l'envoi
+ *   (sauf 30 jours après la fin) ; et pas si sa date semble fausse.
  *
  * Une fois ouvert, le coffre est lu en mémoire : `lire` et `ecrire` sont immédiats ; l'écriture
  * chiffrée suit en arrière-plan.
@@ -48,7 +53,18 @@ export interface MetaCoffre {
    * le doigt), ce qui attend est envoyé, puis tout est effacé.
    */
   effacementDemande?: boolean;
+  /** Identifiant de cet appareil (pour sa clé de secours). */
+  appareil?: string;
+  /** La clé des données, enfermée avec la clé de secours (gardée par le serveur). */
+  parSecours?: Chiffre;
+  /** Lignes qui attendent l'envoi (lu sans ouvrir le coffre : pas d'effacement qui les perdrait). */
+  enAttente?: number;
+  /** Dernier jour donné par le serveur (une date d'appareil très loin de lui est fausse). */
+  dernierServeur?: string;
 }
+
+/** Événement : la mémoire de l'appareil est pleine, ce qui est saisi n'est plus gardé. */
+export const MEMOIRE_PLEINE = "dgrhas:memoire-pleine";
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -86,6 +102,8 @@ const ecrireMeta = (m: MetaCoffre) => requete(META, "readwrite", (s) => s.put(m,
 /* ------------------------------ Chiffrement ------------------------------ */
 
 const aleatoire = (n: number) => crypto.getRandomValues(new Uint8Array(n));
+/** Un identifiant au hasard (randomUUID manque sur les navigateurs Android anciens). */
+const nouvelIdentifiant = () => (typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Array.from(aleatoire(16), (b) => b.toString(16).padStart(2, "0")).join(""));
 
 async function cleDuCode(code: string, sel: Uint8Array, tours: number) {
   const base = await crypto.subtle.importKey("raw", enc.encode(code), "PBKDF2", false, ["deriveKey"]);
@@ -146,7 +164,18 @@ async function enregistrer(cle: string) {
       await requete(DONNEES, "readwrite", (s) => s.put(c, cle));
     }
   } catch {
-    /* mémoire pleine : la valeur reste en mémoire tant que la page est ouverte */
+    // Mémoire pleine : la valeur reste en mémoire tant que la page est ouverte. On le DIT tout de
+    // suite (sinon, l'application fermée, la saisie serait perdue sans que personne le sache)
+    if (typeof window !== "undefined") window.dispatchEvent(new Event(MEMOIRE_PLEINE));
+  }
+}
+
+/** Demander au navigateur de ne jamais effacer ces données pour faire de la place (Android). */
+async function garderDurablement() {
+  try {
+    await navigator.storage?.persist?.();
+  } catch {
+    /* non disponible */
   }
 }
 /** Tout écrire maintenant (avant de fermer, d'effacer ou de verrouiller). */
@@ -209,7 +238,8 @@ export async function creer(code: string, utilisateur: string, identifiant: stri
   brute = aleatoire(32);
   const cleCode = await cleDuCode(code.trim(), sel, TOURS);
   await requete(DONNEES, "readwrite", (s) => s.clear());
-  await ecrireMeta({ sel, tours: TOURS, parCode: await chiffrer(cleCode, brute), essais: 0, utilisateur, identifiant });
+  await ecrireMeta({ sel, tours: TOURS, parCode: await chiffrer(cleCode, brute), essais: 0, utilisateur, identifiant, appareil: nouvelIdentifiant() });
+  void garderDurablement();
   cleDonnees = await cleBrute(brute);
   memoire.clear();
   reprendreAnciennes();
@@ -236,8 +266,61 @@ export async function ouvrirAvecCode(code: string): Promise<{ ok: true } | { ok:
   cleDonnees = await cleBrute(brute);
   await chargerTout(cleDonnees);
   reprendreAnciennes();
+  void garderDurablement();
   prevenir();
   return { ok: true };
+}
+
+/* ------------------------------ Clé de secours (code oublié) ------------------------------ */
+
+const versOctets = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+
+/** L'identifiant de l'appareil (créé avec le coffre ; ajouté aux coffres plus anciens). */
+export async function identifiantAppareil(): Promise<string | null> {
+  const m = await lireMeta();
+  if (!m) return null;
+  if (m.appareil) return m.appareil;
+  const appareil = nouvelIdentifiant();
+  await ecrireMeta({ ...m, appareil });
+  return appareil;
+}
+
+/** Le coffre a-t-il sa clé de secours ? (sinon : la demander au serveur, avec le réseau) */
+export const aSecours = async () => !!(await lireMeta())?.parSecours;
+
+/** Enfermer aussi la clé des données avec la clé de secours donnée par le serveur (coffre ouvert). */
+export async function enfermerSecours(cleB64: string) {
+  const m = await lireMeta();
+  if (!m || !brute) return;
+  await ecrireMeta({ ...m, parSecours: await chiffrer(await cleBrute(versOctets(cleB64)), brute) });
+}
+
+/** Code oublié : ouvrir avec la clé de secours (rendue par le serveur contre le mot de passe). */
+export async function ouvrirAvecSecours(cleB64: string) {
+  const m = await lireMeta();
+  if (!m?.parSecours) throw new Error("Cet appareil n’a pas de clé de secours.");
+  try {
+    brute = new Uint8Array(await dechiffrer(await cleBrute(versOctets(cleB64)), m.parSecours));
+  } catch {
+    throw new Error("La clé de secours ne correspond pas à cet appareil : appelez la DGRHAS.");
+  }
+  await ecrireMeta({ ...m, essais: 0 });
+  cleDonnees = await cleBrute(brute);
+  await chargerTout(cleDonnees);
+  void garderDurablement();
+  prevenir();
+}
+
+/** Le nombre de lignes qui attendent l'envoi (gardé à part : lu même coffre fermé). */
+export async function noterEnAttente(n: number) {
+  const m = await lireMeta();
+  if (m && m.enAttente !== n) await ecrireMeta({ ...m, enAttente: n });
+}
+
+/** Le jour donné par le serveur (pour reconnaître une date d'appareil fausse). */
+export async function noterServeur(jour: string) {
+  const m = await lireMeta();
+  if (m && m.dernierServeur !== jour) await ecrireMeta({ ...m, dernierServeur: jour });
 }
 
 /** Changer le code (le coffre doit être ouvert) : l'empreinte reste valable. */
@@ -312,15 +395,33 @@ export async function fixerEffacement(jour: string | null) {
   if (m && m.effacerApres !== jour) await ecrireMeta({ ...m, effacerApres: jour });
 }
 
-/** La date d'effacement est passée : on efface (à appeler à l'ouverture de la page). */
-export async function effacerSiMissionFinie(): Promise<boolean> {
+const plusJours = (jour: string, n: number) => {
+  const d = new Date(`${jour}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+
+/**
+ * La mission est finie (date d'effacement passée) : on efface, SAUF
+ * - si des lignes attendent encore l'envoi (elles partiront d'abord ; au-delà de 30 jours après la
+ *   fin, on efface quand même : l'appareil est sans doute perdu) ;
+ * - si la date de l'appareil semble fausse (plus de 45 jours après le dernier jour donné par le
+ *   serveur : une horloge mal réglée ne doit pas tout effacer).
+ */
+export async function effacerSiMissionFinie(): Promise<boolean | "a_envoyer"> {
   const m = await lireMeta();
   const aujourdhui = new Date().toISOString().slice(0, 10);
-  if (m?.effacerApres && aujourdhui > m.effacerApres) {
-    await effacerTout();
-    return true;
-  }
-  return false;
+  if (!m?.effacerApres || aujourdhui <= m.effacerApres) return false;
+  if (m.dernierServeur && aujourdhui > plusJours(m.dernierServeur, 45)) return false;
+  if ((m.enAttente ?? 0) > 0 && aujourdhui <= plusJours(m.effacerApres, 30)) return "a_envoyer";
+  await effacerTout();
+  return true;
+}
+
+/** La mission est-elle finie (date d'effacement passée) ? */
+export async function missionFinie() {
+  const m = await lireMeta();
+  return !!m?.effacerApres && new Date().toISOString().slice(0, 10) > m.effacerApres;
 }
 
 /* ------------------------------ Empreinte digitale ------------------------------ */

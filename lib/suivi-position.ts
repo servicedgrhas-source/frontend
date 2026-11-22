@@ -25,7 +25,11 @@ export interface Releve {
 const FILE = "positions:file";
 const INTERVALLE = 5 * 60_000;
 
+/** La dernière position sûre de l'appareil (gardée même après l'envoi : « êtes-vous dans la bonne école ? »). */
+export const dernierePosition = () => lire<Releve>("positions:derniere");
+
 function garder(r: Releve) {
+  if (r.etat === "OK") ecrire("positions:derniere", r);
   const f = lire<Releve[]>(FILE) ?? [];
   // 2 000 relevés au plus (une semaine sans réseau, un relevé toutes les 5 minutes)
   ecrire(FILE, [...f, r].slice(-2000));

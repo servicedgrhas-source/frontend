@@ -15,10 +15,25 @@ import * as coffre from "@/lib/coffre-terrain";
 type Etat =
   | { e: "chargement" }
   | { e: "nouveau" }
-  | { e: "verrouille"; empreinte: boolean; identifiant: string; essais: number; aEffacer: boolean }
+  | { e: "verrouille"; empreinte: boolean; identifiant: string; essais: number; aEffacer: boolean; finie: boolean; enAttente: number }
+  | { e: "oubli"; identifiant: string; secours: boolean }
+  | { e: "nouveauCode" }
   | { e: "autre"; identifiant: string }
   | { e: "efface"; pourquoi: string }
   | { e: "ouvert" };
+
+/** La clé de secours de l'appareil (code oublié) : demandée au serveur une fois, avec le réseau. */
+async function assurerSecours() {
+  try {
+    if (!navigator.onLine || (await coffre.aSecours())) return;
+    const appareil = await coffre.identifiantAppareil();
+    if (!appareil) return;
+    const r = await api.post<{ cle: string }>("/recensement/terrain/cle-secours", { appareil });
+    await coffre.enfermerSecours(r.cle);
+  } catch {
+    /* pas de réseau : redemandée à la prochaine ouverture */
+  }
+}
 
 export function CoffreTerrain({ utilisateur, identifiant, children }: { utilisateur: string; identifiant: string; children: ReactNode }) {
   const [etat, setEtat] = useState<Etat>({ e: "chargement" });
@@ -29,18 +44,26 @@ export function CoffreTerrain({ utilisateur, identifiant, children }: { utilisat
   const [proposerEmpreinte, setProposerEmpreinte] = useState(false);
 
   const relire = async () => {
-    if (await coffre.effacerSiMissionFinie()) return setEtat({ e: "efface", pourquoi: "La mission est terminée : les données gardées sur cet appareil ont été effacées." });
+    const fin = await coffre.effacerSiMissionFinie();
+    if (fin === true) return setEtat({ e: "efface", pourquoi: "La mission est terminée et tout avait été envoyé : les données gardées sur cet appareil ont été effacées." });
     if (coffre.estOuvert()) return setEtat({ e: "ouvert" });
     const m = await coffre.lireMeta();
     if (!m) return setEtat({ e: "nouveau" });
     if (m.utilisateur !== utilisateur) return setEtat({ e: "autre", identifiant: m.identifiant });
-    setEtat({ e: "verrouille", empreinte: !!m.parEmpreinte, identifiant: m.identifiant, essais: m.essais, aEffacer: !!m.effacementDemande });
+    setEtat({ e: "verrouille", empreinte: !!m.parEmpreinte, identifiant: m.identifiant, essais: m.essais, aEffacer: !!m.effacementDemande, finie: fin === "a_envoyer", enAttente: m.enAttente ?? 0 });
   };
+  // La mémoire de l'appareil est pleine : on le dit, tant que ce n'est pas réglé
+  const [pleine, setPleine] = useState(false);
+  useEffect(() => {
+    const f = () => setPleine(true);
+    window.addEventListener(coffre.MEMOIRE_PLEINE, f);
+    return () => window.removeEventListener(coffre.MEMOIRE_PLEINE, f);
+  }, []);
   useEffect(() => {
     // (lecture asynchrone de la mémoire de l'appareil : l'état change après, pas pendant l'effet)
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void relire();
-    const efface = () => setEtat({ e: "efface", pourquoi: "La DGRHAS a arrêté la mission de ce compte : les données gardées sur cet appareil ont été effacées." });
+    const efface = (e: Event) => setEtat({ e: "efface", pourquoi: (e as CustomEvent<string | undefined>).detail || "La DGRHAS a arrêté la mission de ce compte : les données gardées sur cet appareil ont été effacées." });
     window.addEventListener(APPAREIL_EFFACE, efface);
     // Mission arrêtée pendant que le coffre est fermé : l'écran le dit
     const aEffacer = () => void relire();
@@ -69,6 +92,7 @@ export function CoffreTerrain({ utilisateur, identifiant, children }: { utilisat
       await effacerAppareilMaintenant();
       return setEtat({ e: "efface", pourquoi: "La DGRHAS a arrêté la mission de ce compte : ce qui attendait a été envoyé (s’il y avait du réseau), puis les données de cet appareil ont été effacées." });
     }
+    void assurerSecours();
     setEtat({ e: "ouvert" });
   };
 
@@ -84,15 +108,6 @@ export function CoffreTerrain({ utilisateur, identifiant, children }: { utilisat
     }
   };
 
-  if (etat.e === "chargement") return <p className="p-4 text-[14px] text-zinc-500">Ouverture des données de l’appareil…</p>;
-  if (etat.e === "ouvert")
-    return (
-      <>
-        {proposerEmpreinte && <ProposerEmpreinte fermer={() => setProposerEmpreinte(false)} />}
-        {children}
-      </>
-    );
-
   const cadre = (titre: string, contenu: ReactNode) => (
     <div className="mx-auto max-w-md space-y-3 pt-4">
       <Carte titre={titre}>
@@ -103,6 +118,107 @@ export function CoffreTerrain({ utilisateur, identifiant, children }: { utilisat
       </Carte>
     </div>
   );
+
+  if (etat.e === "chargement") return <p className="p-4 text-[14px] text-zinc-500">Ouverture des données de l’appareil…</p>;
+  if (etat.e === "ouvert")
+    return (
+      <>
+        {pleine && (
+          <div className="mb-3">
+            <Alerte>
+              <strong>La mémoire de cet appareil est pleine.</strong> Ce que vous saisissez maintenant n’est plus gardé si l’application se ferme. Avec le réseau, appuyez sur « Envoyer » tout de suite ; puis libérez de la place (photos, vidéos, applications inutiles) et rouvrez cette page.
+            </Alerte>
+          </div>
+        )}
+        {proposerEmpreinte && <ProposerEmpreinte fermer={() => setProposerEmpreinte(false)} />}
+        {children}
+      </>
+    );
+
+  // Code oublié : le mot de passe du compte (avec le réseau) rouvre les données
+  if (etat.e === "oubli")
+    return cadre(
+      "Code oublié",
+      etat.secours ? (
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!navigator.onLine) return setErreur("Il faut du réseau : le mot de passe est vérifié par la DGRHAS. Vos données restent gardées, chiffrées.");
+            void agir(async () => {
+              const appareil = await coffre.identifiantAppareil();
+              const r = await api.post<{ cle: string }>("/recensement/terrain/cle-secours/recuperer", { appareil, motDePasse: code });
+              setCode("");
+              await coffre.ouvrirAvecSecours(r.cle);
+              setEtat({ e: "nouveauCode" });
+            });
+          }}
+        >
+          <p>
+            Tapez le <strong>mot de passe de votre compte</strong> (celui de la connexion, remis par la DGRHAS), pas le code de l’appareil. Vos données s’ouvrent, puis vous choisissez un nouveau code.
+          </p>
+          <Saisie type="password" autoComplete="current-password" autoFocus placeholder="Mot de passe du compte" value={code} onChange={(e) => setCode(e.target.value)} className="h-12 w-full text-[16px]" />
+          <div className="flex flex-wrap gap-2">
+            <Bouton type="submit" variante="principal" chargement={occupe} disabled={!code}>
+              <KeyRound /> Rouvrir mes données
+            </Bouton>
+            <Bouton type="button" onClick={() => (setErreur(null), setCode(""), void relire())}>
+              Retour
+            </Bouton>
+          </div>
+          <p className="text-[12px] text-zinc-500">Mot de passe oublié aussi ? La DGRHAS vous en donne un nouveau (page des recenseurs), puis revenez ici.</p>
+        </form>
+      ) : (
+        <>
+          <p>
+            Cet appareil n’a pas de clé de secours (il n’avait pas de réseau à son premier usage). Sans le code, les données gardées ici ne peuvent pas être rouvertes.
+          </p>
+          <p className="text-[13px] text-zinc-600">Essayez encore de vous souvenir du code. Si tout avait déjà été envoyé, vous pouvez effacer et recommencer : la base se retélécharge avec le réseau.</p>
+          <div className="flex flex-wrap gap-2">
+            <Bouton onClick={() => (setErreur(null), void relire())}>Retour</Bouton>
+            <Bouton
+              variante="danger"
+              chargement={occupe}
+              onClick={() =>
+                confirm("Effacer les données de cet appareil et recommencer ? Ce qui n’a pas été envoyé sera perdu.") &&
+                void agir(async () => {
+                  await coffre.effacerTout();
+                  await relire();
+                })
+              }
+            >
+              <Trash2 /> Effacer et recommencer
+            </Bouton>
+          </div>
+        </>
+      ),
+    );
+
+  // Après « code oublié » : le nouveau code, tout de suite
+  if (etat.e === "nouveauCode")
+    return cadre(
+      "Choisissez un nouveau code",
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (code !== code2) return setErreur("Les deux codes ne sont pas pareils.");
+          void agir(async () => {
+            await coffre.changerCode(code);
+            setCode("");
+            setCode2("");
+            await apresOuverture();
+          });
+        }}
+      >
+        <p className="text-marque-700">Vos données sont rouvertes. Choisissez un nouveau code (6 chiffres au moins) et retenez-le.</p>
+        <Saisie type="password" inputMode="numeric" autoComplete="new-password" autoFocus placeholder="Nouveau code" value={code} onChange={(e) => setCode(e.target.value)} className="h-12 w-full text-[18px] tracking-widest" />
+        <Saisie type="password" inputMode="numeric" autoComplete="new-password" placeholder="Le même code, encore une fois" value={code2} onChange={(e) => setCode2(e.target.value)} className="h-12 w-full text-[18px] tracking-widest" />
+        <Bouton type="submit" variante="principal" chargement={occupe} disabled={!coffre.codeAcceptable(code)}>
+          <KeyRound /> Enregistrer ce code
+        </Bouton>
+      </form>,
+    );
 
   if (etat.e === "efface")
     return cadre(
@@ -158,6 +274,7 @@ export function CoffreTerrain({ utilisateur, identifiant, children }: { utilisat
             setCode("");
             setCode2("");
             setProposerEmpreinte(await coffre.lecteurDisponible());
+            void assurerSecours();
             setEtat({ e: "ouvert" });
           });
         }}
@@ -166,6 +283,7 @@ export function CoffreTerrain({ utilisateur, identifiant, children }: { utilisat
           <ShieldCheck className="mr-1 inline size-4 text-marque-600" />
           Les écoles et les agents seront gardés sur cet appareil, <strong>chiffrés</strong>. Choisissez un code d’au moins 6 chiffres : il sera demandé pour les ouvrir. Ne le donnez à personne.
         </p>
+        <p className="text-[12px] text-zinc-500">Évitez 123456 ou votre date de naissance. Code oublié un jour ? Le mot de passe de votre compte permettra de rouvrir vos données (avec le réseau).</p>
         <Saisie type="password" inputMode="numeric" autoComplete="new-password" autoFocus placeholder="Code (6 chiffres au moins)" value={code} onChange={(e) => setCode(e.target.value)} className="h-12 w-full text-[18px] tracking-widest" />
         <Saisie type="password" inputMode="numeric" autoComplete="new-password" placeholder="Le même code, encore une fois" value={code2} onChange={(e) => setCode2(e.target.value)} className="h-12 w-full text-[18px] tracking-widest" />
         <Bouton type="submit" variante="principal" chargement={occupe} disabled={!coffre.codeAcceptable(code)}>
@@ -186,7 +304,7 @@ export function CoffreTerrain({ utilisateur, identifiant, children }: { utilisat
           setCode("");
           if (r.ok) return apresOuverture();
           if (!r.restants) return setEtat({ e: "efface", pourquoi: `${coffre.ESSAIS_MAX} codes faux d’affilée : par sécurité, les données gardées sur cet appareil ont été effacées. Retéléchargez-les avec la connexion.` });
-          setErreur(`Code faux. Encore ${r.restants} essai(s) ; ensuite, tout ce qui est gardé ici sera effacé.`);
+          setErreur(`Code faux. Encore ${r.restants} essai(s) ; ensuite, tout ce qui est gardé ici sera effacé.${r.restants <= 5 ? " Vous ne vous en souvenez pas ? « J’ai oublié mon code » ci-dessous, au lieu de deviner." : ""}`);
           setEtat({ ...etat, essais: coffre.ESSAIS_MAX - r.restants });
         });
       }}
@@ -198,6 +316,11 @@ export function CoffreTerrain({ utilisateur, identifiant, children }: { utilisat
       {etat.aEffacer && (
         <Alerte>
           La DGRHAS a arrêté la mission de ce compte. Ouvrez avec votre code : ce qui attend sera envoyé, puis tout ce qui est gardé ici sera effacé.
+        </Alerte>
+      )}
+      {!etat.aEffacer && etat.finie && (
+        <Alerte>
+          Votre mission est terminée, mais {etat.enAttente} ligne(s) n’ont pas encore été envoyées. Ouvrez avec votre code et connectez-vous au réseau : elles partiront, puis l’appareil s’effacera. Si la connexion est refusée (accès terminé), appelez la DGRHAS pour prolonger votre accès.
         </Alerte>
       )}
       {etat.empreinte && (
@@ -221,6 +344,19 @@ export function CoffreTerrain({ utilisateur, identifiant, children }: { utilisat
         <KeyRound /> Ouvrir avec le code
       </Bouton>
       {etat.essais > 0 && <p className="text-[12px] text-rouge-700">{etat.essais} code(s) faux déjà ; au {coffre.ESSAIS_MAX}e, tout est effacé.</p>}
+      <button
+        type="button"
+        className="cursor-pointer text-[13px] font-medium text-marque-700 hover:underline"
+        onClick={() =>
+          void coffre.aSecours().then((secours) => {
+            setErreur(null);
+            setCode("");
+            setEtat({ e: "oubli", identifiant: etat.identifiant, secours });
+          })
+        }
+      >
+        J’ai oublié mon code
+      </button>
       {etat.aEffacer && (
         <Bouton
           type="button"

@@ -1,10 +1,10 @@
 "use client";
 
-import { CalendarPlus, Lock, LockOpen, Pencil } from "lucide-react";
+import { BarChart3, CalendarPlus, Download, Lock, LockOpen, Pencil } from "lucide-react";
 import { useState } from "react";
 import { jourFr, type Campagne } from "@/components/recensement/recensement-ouvert";
 import { useSession } from "@/components/session";
-import { Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, EnTete, Modale, Saisie, Vide, Zone, useConfirmation } from "@/components/ui";
+import { Alerte, Annonce, Badge, Bouton, Carte, Champ, Chargement, EnTete, Modale, Saisie, Tableau, Vide, Zone, useConfirmation } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { accesDonne } from "@/lib/espaces";
 import { peut } from "@/lib/libelles";
@@ -23,6 +23,7 @@ export default function PageCampagnes() {
   const { profil } = useSession();
   const r = useApi<{ lignes: Campagne[]; ouverte: { id: number; nom: string } | null }>("/recensement/campagnes");
   const [edition, setEdition] = useState<Campagne | "nouveau" | null>(null);
+  const [bilan, setBilan] = useState<Campagne | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [confirmation, demander] = useConfirmation();
@@ -110,29 +111,35 @@ export default function PageCampagnes() {
                     </span>
                   ))}
                 </div>
-                {decider && (
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    <Bouton onClick={() => setEdition(c)}>
-                      <Pencil /> Corriger
-                    </Bouton>
-                    <Bouton variante={c.clotureLe ? "secondaire" : "danger"} disabled={!!c.clotureLe && !!ouverte} title={c.clotureLe && ouverte ? `Clôturez d’abord « ${ouverte.nom} »` : undefined} onClick={() => void basculer(c)}>
-                      {c.clotureLe ? (
-                        <>
-                          <LockOpen /> Rouvrir
-                        </>
-                      ) : (
-                        <>
-                          <Lock /> Clôturer
-                        </>
-                      )}
-                    </Bouton>
-                  </div>
-                )}
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Bouton variante={bilan?.id === c.id ? "principal" : "secondaire"} onClick={() => setBilan(bilan?.id === c.id ? null : c)}>
+                    <BarChart3 /> {bilan?.id === c.id ? "Fermer le bilan" : "Voir le bilan"}
+                  </Bouton>
+                  {decider && (
+                    <>
+                      <Bouton onClick={() => setEdition(c)}>
+                        <Pencil /> Corriger
+                      </Bouton>
+                      <Bouton variante={c.clotureLe ? "secondaire" : "danger"} disabled={!!c.clotureLe && !!ouverte} title={c.clotureLe && ouverte ? `Clôturez d’abord « ${ouverte.nom} »` : undefined} onClick={() => void basculer(c)}>
+                        {c.clotureLe ? (
+                          <>
+                            <LockOpen /> Rouvrir
+                          </>
+                        ) : (
+                          <>
+                            <Lock /> Clôturer
+                          </>
+                        )}
+                      </Bouton>
+                    </>
+                  )}
+                </div>
               </div>
             </Carte>
           ))}
         </div>
       )}
+      {bilan && <Bilan campagne={bilan} />}
       {edition && (
         <Edition
           campagne={edition === "nouveau" ? null : edition}
@@ -146,6 +153,112 @@ export default function PageCampagnes() {
       )}
       {confirmation}
     </div>
+  );
+}
+
+interface LigneBilan {
+  departementId?: number;
+  departement?: string;
+  ecoles: number;
+  visitees: number;
+  terminees: number;
+  fermees: number;
+  agents: number;
+  vus: number;
+  presents: number;
+  absents: number;
+  partis: number;
+  inconnus: number;
+  decedes: number;
+  doublons: number;
+  aussi: number;
+  nonVus: number;
+  nouveaux: number;
+}
+
+/**
+ * Le bilan d'un recensement (où en est-on, que reste-t-il) : par département, les écoles visitées et
+ * terminées, les agents vus et comment, ceux qu'aucune équipe n'a vus (à vérifier : agents
+ * fictifs, partis sans le dire…), et les agents ajoutés. L'Excel donne les listes.
+ */
+function Bilan({ campagne }: { campagne: Campagne }) {
+  const r = useApi<{ lignes: LigneBilan[]; total: LigneBilan & { ecolesSignalees: number } }>(`/recensement/campagnes/${campagne.id}/bilan`);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [enCours, setEnCours] = useState<string | null>(null);
+  const pc = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)} %` : "—");
+  const excel = async (dep?: LigneBilan) => {
+    setErreur(null);
+    setEnCours(dep?.departement ?? "tout");
+    try {
+      await api.telecharger(`/recensement/campagnes/${campagne.id}/bilan.xlsx${dep?.departementId ? `?departement=${dep.departementId}` : ""}`, `Bilan ${campagne.nom}${dep?.departement ? ` - ${dep.departement}` : ""}.xlsx`);
+    } catch (e) {
+      setErreur((e as Error).message);
+    } finally {
+      setEnCours(null);
+    }
+  };
+  const ligne = (l: LigneBilan, total = false) => (
+    <tr key={l.departement ?? "total"} className={total ? "font-semibold" : undefined}>
+      <td>{l.departement ?? "Total"}</td>
+      <td className="tabular-nums">
+        {nf.format(l.visitees)} / {nf.format(l.ecoles)} <span className="text-[11px] text-zinc-400">({pc(l.visitees, l.ecoles)})</span>
+      </td>
+      <td className="tabular-nums">{nf.format(l.terminees)}</td>
+      <td className="tabular-nums">{l.fermees ? <span className="text-rouge-700">{nf.format(l.fermees)}</span> : 0}</td>
+      <td className="tabular-nums">
+        {nf.format(l.vus)} / {nf.format(l.agents)} <span className="text-[11px] text-zinc-400">({pc(l.vus, l.agents)})</span>
+      </td>
+      <td className="tabular-nums">{nf.format(l.presents)}</td>
+      <td className="tabular-nums">{nf.format(l.absents)}</td>
+      <td className="tabular-nums">{nf.format(l.partis + l.inconnus)}</td>
+      <td className="tabular-nums">{nf.format(l.decedes)}</td>
+      <td className="tabular-nums">{l.nonVus ? <strong className="text-or-700">{nf.format(l.nonVus)}</strong> : 0}</td>
+      <td className="tabular-nums">{nf.format(l.nouveaux)}</td>
+      <td>
+        <Bouton variante="discret" chargement={enCours === (l.departement ?? "tout")} onClick={() => void excel(total ? undefined : l)} title="Excel : synthèse, agents non vus, tous les constats (avec ceux faits loin de l’école, à vérifier)">
+          <Download /> Excel
+        </Bouton>
+      </td>
+    </tr>
+  );
+  return (
+    <Carte titre={`Bilan : ${campagne.nom}`}>
+      {erreur && <Alerte>{erreur}</Alerte>}
+      {r.erreur ? (
+        <Alerte>{r.erreur}</Alerte>
+      ) : !r.donnees ? (
+        <Chargement />
+      ) : (
+        <div className="space-y-3">
+          <p className="text-[13px] text-zinc-600">
+            <strong>Vus</strong> : les agents pour qui une équipe a dit ce qu’elle constate (présent, absent, parti…). <strong>Non vus</strong> : aucune équipe ne les a vus : à vérifier en priorité (agent fictif, parti sans le dire, école pas encore
+            visitée). {r.donnees.total.ecolesSignalees ? `${r.donnees.total.ecolesSignalees} école(s) absentes de la liste ont été signalées par les équipes.` : ""}
+          </p>
+          <Tableau>
+            <thead>
+              <tr>
+                <th>Département</th>
+                <th>Écoles visitées</th>
+                <th>Terminées</th>
+                <th title="Fermées ou introuvables">Fermées</th>
+                <th>Agents vus</th>
+                <th>Présents</th>
+                <th>Absents</th>
+                <th title="Partis de l’école, ou inconnus ici">Partis / inconnus</th>
+                <th>Décédés</th>
+                <th>Non vus</th>
+                <th>Ajoutés</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {r.donnees.lignes.map((l) => ligne(l))}
+              {ligne(r.donnees.total, true)}
+            </tbody>
+          </Tableau>
+        </div>
+      )}
+    </Carte>
   );
 }
 
