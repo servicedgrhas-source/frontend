@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { EcranCompteSignale } from "@/components/compte-signale";
+import { ApplicationInstallable } from "@/components/application-installable";
 import { GardeVisiteur } from "@/components/garde-visiteur";
 import "./globals.css";
 
@@ -22,17 +23,26 @@ export const metadata: Metadata = {
   title: "DGRHAS – MEPPSA",
   description:
     "Gestion des affectations et des mutations du personnel du MEPPSA (DGRHAS)",
+  applicationName: "SIGRHAS-MEPPSA",
+  // iPhone et iPad : « Sur l'écran d'accueil » ouvre en plein écran, comme une application
+  appleWebApp: { capable: true, title: "SIGRHAS", statusBarStyle: "black-translucent" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0c1a14",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr" className={`${poppins.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">
+    <html lang="fr" className={`${poppins.variable} h-full antialiased`} suppressHydrationWarning>
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
         {/* Compte visiteur : ni impression ni téléchargement (DG, 04/11/2026) */}
         <GardeVisiteur />
         {children}
         {/* Compte suspendu par l'outil de détection : écran de vérification (08/11/2026) */}
         <EcranCompteSignale />
+        {/* Application installable : le service hors ligne, et l'invitation à installer (22/11/2026) */}
+        <ApplicationInstallable />
       </body>
     </html>
   );

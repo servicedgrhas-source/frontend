@@ -58,6 +58,9 @@ const nextConfig: NextConfig = {
   // Interface d'essai (copie de la base) : dossier de travail séparé, pour tourner à côté de l'interface normale
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
   poweredByHeader: false,
+  // Sur le poste seulement : ouvrir l'interface depuis un téléphone ou une tablette du même Wi-Fi
+  // (adresse IP de la machine) ou par un tunnel https (ngrok), pour les essais du terrain
+  allowedDevOrigins: ["192.168.*.*", "10.*.*.*", "172.*.*.*", "*.ngrok-free.app", "*.ngrok-free.dev", "*.ngrok.app", "*.ngrok.io"],
   async headers() {
     return [
       { source: "/:chemin*", headers: ENTETES },

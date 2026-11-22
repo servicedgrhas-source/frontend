@@ -4,7 +4,7 @@
  * - Les fichiers de l'application (scripts, styles, polices, images) : gardés et réutilisés.
  * - L'API (/api) n'est jamais gardée ici : les données du terrain vivent dans l'appareil (page du terrain).
  */
-const VERSION = "sigrhas-terrain-1";
+const VERSION = "sigrhas-2";
 const PAGE_TERRAIN = "/recensement/terrain";
 
 self.addEventListener("install", (e) => {
@@ -63,21 +63,19 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // Fichiers de l'application : la copie gardée tout de suite, rafraîchie en arrière-plan
-  if (/\/_next\/|\/polices\/|\.(?:js|css|woff2?|png|svg|ico|webmanifest)$/.test(url.pathname)) {
+  // Fichiers de l'application : le réseau d'abord (jamais une ancienne version), la copie gardée
+  // seulement sans réseau
+  if (/\/_next\/|\/polices\/|\/icones\/|\.(?:js|css|woff2?|png|svg|ico|webmanifest)$/.test(url.pathname)) {
     e.respondWith(
-      caches.match(r).then((m) => {
-        const reseau = fetch(r)
-          .then((rep) => {
-            if (rep.ok) {
-              const copie = rep.clone();
-              caches.open(VERSION).then((c) => c.put(r, copie));
-            }
-            return rep;
-          })
-          .catch(() => m);
-        return m || reseau;
-      }),
+      fetch(r)
+        .then((rep) => {
+          if (rep.ok) {
+            const copie = rep.clone();
+            caches.open(VERSION).then((c) => c.put(r, copie));
+          }
+          return rep;
+        })
+        .catch(() => caches.match(r).then((m) => m || Response.error())),
     );
   }
 });
