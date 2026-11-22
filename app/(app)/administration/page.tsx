@@ -335,7 +335,7 @@ function EditionUtilisateur({ u, fermer, apres }: { u: Utilisateur | null; ferme
             value={f.role}
             onChange={(e) => setF({ ...f, role: e.target.value as Role })}
             options={Object.entries(ROLES)
-              .filter(([k]) => profil.role === "ADMIN" || k !== "ADMIN")
+              .filter(([k]) => (profil.role === "ADMIN" || k !== "ADMIN") && (k !== "RECENSEUR" || f.role === "RECENSEUR"))
               .map(([k, v]) => ({ valeur: k, libelle: v }))}
           />
         </Champ>

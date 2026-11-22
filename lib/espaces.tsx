@@ -373,6 +373,20 @@ export const ESPACES: Espace[] = [
         explication: "Pour les équipes en mission, sur tablette ou téléphone : télécharger une école, compléter ses agents sur une grille rapide (même sans connexion), localiser l’école, puis envoyer.",
       },
       {
+        href: "/recensement/recenseurs",
+        libelle: "Recenseurs de la mission",
+        icone: UserCheck,
+        visible: traiter,
+        explication: "Planifier la mission : créer les comptes des recenseurs (identifiant RG-001-BZ, mot de passe à leur remettre), leurs départements et leurs dates ; suivre leurs envois ; effacer l’appareil d’un recenseur (perdu, retiré).",
+      },
+      {
+        href: "/recensement/recenseurs/suivi",
+        libelle: "Suivi des recenseurs (carte)",
+        icone: MapPinned,
+        visible: (p) => p.role === "DG" || p.role === "ADMIN",
+        explication: "Depuis Brazzaville : la position de chaque recenseur sur la carte, son trajet du jour, qui a coupé sa position ou n’a plus de signal, ses téléphones ; le bloquer ou effacer sa tablette.",
+      },
+      {
         groupe: "La base du personnel",
         href: "/personnel",
         libelle: "Tableau de bord",

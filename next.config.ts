@@ -28,7 +28,8 @@ const POLITIQUE = [
   // « unsafe-eval » seulement sur le poste (outils de développement de React)
   `script-src 'self' 'unsafe-inline'${developpement ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  // Les tuiles d'OpenStreetMap : la carte du suivi des recenseurs (DG, 22/11/2026)
+  "img-src 'self' data: blob: https://tile.openstreetmap.org",
   "font-src 'self' data:",
   // L'API, et sur le poste le rechargement à chaud de l'interface
   `connect-src 'self'${origineApi ? ` ${origineApi}` : ""}${developpement ? " ws: wss:" : ""}`,

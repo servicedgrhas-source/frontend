@@ -67,7 +67,9 @@ export function Coquille({ children }: { children: ReactNode }) {
       })
       .catch((e: Error) => {
         // Sans réseau (mission de terrain, DG 21/11/2026) : on travaille avec ce qui est gardé sur l'appareil
-        if (e instanceof ErreurApi && e.statut === 0) {
+        // De même pour un recenseur dont la mission vient d'être arrêtée (410) : l'écran du code
+        // s'affiche, ce qui attend part, puis l'appareil s'efface
+        if (e instanceof ErreurApi && (e.statut === 0 || (e.statut === 410 && profil.role === "RECENSEUR"))) {
           let refs = {} as Referentiels;
           try {
             refs = JSON.parse(localStorage.getItem("dgrhas.referentiels") ?? "{}") as Referentiels;
@@ -171,7 +173,8 @@ export function Coquille({ children }: { children: ReactNode }) {
   const role = session?.profil.role;
   const derniersCompteurs = useRef(0);
   const lireCompteurs = useCallback(() => {
-    if (!role) return;
+    // Un recenseur n'a ni menu ni dossiers : rien à compter
+    if (!role || role === "RECENSEUR") return;
     derniersCompteurs.current = Date.now();
     if (role !== "STRUCTURE")
       api
@@ -228,6 +231,8 @@ export function Coquille({ children }: { children: ReactNode }) {
       chemin !== "/compte"
     )
       router.replace("/a-traiter");
+    // Un recenseur ne voit que le formulaire du terrain (DG, 22/11/2026)
+    if (session?.profil.role === "RECENSEUR" && !chemin.startsWith("/recensement/terrain")) router.replace("/recensement/terrain");
   }, [session, chemin, router]);
 
   if (erreur) return <div className="p-8"><Alerte>{erreur}</Alerte></div>;
@@ -242,6 +247,49 @@ export function Coquille({ children }: { children: ReactNode }) {
   };
   const p = session.profil;
   const espaceCourant = espaceDe(chemin);
+
+  // Recenseur de la mission (DG, 22/11/2026) : pas notre interface, seulement le formulaire du terrain
+  if (p.role === "RECENSEUR")
+    return (
+      <Contexte.Provider value={session}>
+        <div className="no-print sticky top-0 z-30 flex items-center gap-3 bg-nuit px-3 py-2 text-white sm:px-5">
+          <Image src="/armoiries.png" alt="" width={28} height={28} className="size-7 rounded-md bg-white object-contain p-0.5" priority />
+          <div className="min-w-0 flex-1 leading-tight">
+            <div className="truncate text-[13px] font-semibold">{p.nom}</div>
+            <div className="truncate text-[11px] text-or-400">{p.email.toUpperCase()} · Recensement SIGRHAS-MEPPSA</div>
+          </div>
+          <button type="button" onClick={() => setConfirmerSortie(true)} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] text-white/70 hover:bg-white/10 hover:text-white">
+            <LogOut className="size-4" /> Se déconnecter
+          </button>
+        </div>
+        <main className="min-w-0 px-3 py-4 sm:px-5 sm:py-6">{chemin.startsWith("/recensement/terrain") ? children : <SqueletteApplication />}</main>
+        {expiree !== null && (
+          <Reconnexion
+            profil={p}
+            message={expiree}
+            fermer={() => setExpiree(null)}
+            reussie={(nouveau) => {
+              if (nouveau.id !== p.id) return window.location.replace("/");
+              setSession((s) => (s ? { ...s, profil: nouveau } : s));
+              setExpiree(null);
+              window.dispatchEvent(new Event(SESSION_ROUVERTE));
+            }}
+            changerDeCompte={deconnexion}
+          />
+        )}
+        <Modale titre="Se déconnecter ?" ouverte={confirmerSortie} fermer={() => setConfirmerSortie(false)}>
+          <p className="text-[13px] leading-relaxed text-zinc-500">
+            Les données gardées sur cet appareil restent chiffrées : à la prochaine connexion, votre code (ou votre doigt) les rouvre. Pensez à envoyer ce qui attend quand vous avez du réseau.
+          </p>
+          <div className="mt-6 flex justify-end gap-2">
+            <Bouton onClick={() => setConfirmerSortie(false)}>Annuler</Bouton>
+            <Bouton variante="sombre" onClick={deconnexion}>
+              <LogOut /> Se déconnecter
+            </Bouton>
+          </div>
+        </Modale>
+      </Contexte.Provider>
+    );
 
   return (
     <Contexte.Provider value={session}>

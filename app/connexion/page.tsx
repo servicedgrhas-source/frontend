@@ -15,6 +15,8 @@ export default function Connexion() {
   const [code, setCode] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
+  // Un recenseur (RG-001-BZ) n'a pas de code personnel
+  const recenseur = /^rg-\d/i.test(email.trim());
 
   // Déjà connecté : directement à l'application (un jeton périmé y ramène ici)
   useEffect(() => {
@@ -28,7 +30,8 @@ export default function Connexion() {
     try {
       const r = await api.post<{ jeton: string; utilisateur: Profil }>("/auth/connexion", { email, motDePasse, code });
       ouvrirSession(r.jeton, r.utilisateur);
-      router.replace("/");
+      // Un recenseur va droit au formulaire du terrain
+      router.replace(r.utilisateur.role === "RECENSEUR" ? "/recensement/terrain" : "/");
     } catch (err) {
       setErreur((err as Error).message);
     } finally {
@@ -86,10 +89,10 @@ export default function Connexion() {
             <p className="mt-1 text-sm text-zinc-400">Accès réservé au personnel habilité.</p>
           </div>
           {erreur && <Alerte>{erreur}</Alerte>}
-          <Champ libelle="Adresse e-mail">
+          <Champ libelle="Adresse e-mail (ou identifiant de recenseur : RG-001-BZ)">
             <div className="relative">
               <Mail className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-400" />
-              <Saisie type="email" autoComplete="username" required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-9" />
+              <Saisie type="text" inputMode="email" autoCapitalize="none" spellCheck={false} autoComplete="username" required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-9" />
             </div>
           </Champ>
           <Champ libelle="Mot de passe">
@@ -98,7 +101,7 @@ export default function Connexion() {
               <SaisieMotDePasse autoComplete="current-password" required maxLength={128} value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} className="pl-9" />
             </div>
           </Champ>
-          <Champ libelle="Code personnel" aide="Les 12 caractères remis par l’administrateur (ex. T3G8-GH6J-FG3U). Laissez vide si vous n’en avez pas reçu.">
+          {!recenseur && <Champ libelle="Code personnel" aide="Les 12 caractères remis par l’administrateur (ex. T3G8-GH6J-FG3U). Laissez vide si vous n’en avez pas reçu.">
             <div className="relative">
               <KeyRound className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-400" />
               <Saisie
@@ -114,7 +117,7 @@ export default function Connexion() {
                 className="w-full pl-9 font-mono tracking-wider"
               />
             </div>
-          </Champ>
+          </Champ>}
           <Bouton variante="principal" type="submit" disabled={envoi} className="w-full py-2.5">
             {envoi ? "Connexion…" : "Se connecter"}
           </Bouton>

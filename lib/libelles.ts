@@ -14,6 +14,7 @@ export const ROLES: Record<Role, string> = {
   SECRETARIAT: "Chef du secrétariat du DG (impression des dossiers et des notes)",
   STRUCTURE: "Responsable de structure (école, inspection, service…)",
   VISITEUR: "Visiteur (consultation seule, sans impression)",
+  RECENSEUR: "Recenseur de la mission de terrain (se crée dans Recensement › Recenseurs)",
 };
 
 export const STATUT_NOTE: Record<StatutNote, { libelle: string; ton: Ton; aide: string }> = {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useReducer, useState, useSyncExternalStore } from "react";
+import { effacerTout, envoyerAvantEffacement, estOuvert, lireMeta, marquerEffacement } from "./coffre-terrain";
 
 /**
  * En ligne : NEXT_PUBLIC_API_URL (adresse de l'API sur Render, « …/api »).
@@ -23,7 +24,8 @@ export type Role =
   | "BUREAU_ETUDES"
   | "SECRETARIAT"
   | "STRUCTURE"
-  | "VISITEUR";
+  | "VISITEUR"
+  | "RECENSEUR";
 
 export interface Profil {
   id: string;
@@ -271,6 +273,8 @@ async function envoyer<T>(
   }
   if (!rep.ok) {
     if (corps?.code === "E423") suspendreAcces(corps);
+    // Mission arrêtée par la DGRHAS (appareil perdu, recenseur retiré) : l'appareil efface tout
+    if (rep.status === 410 && corps?.code === "EFFACER_APPAREIL") await effacerAppareil(jeton);
     const m = corps?.message;
     const message = Array.isArray(m) ? m.join(" ; ") : (m ?? `Erreur ${rep.status}`);
     if (rep.status === 401 && !chemin.startsWith("/auth/connexion")) sessionExpiree(message);
@@ -278,6 +282,38 @@ async function envoyer<T>(
   }
   return corps as T;
 }
+
+/** Événement : les données du terrain viennent d'être effacées à la demande de la DGRHAS. */
+export const APPAREIL_EFFACE = "dgrhas:appareil-efface";
+/** Événement : effacement demandé alors que le coffre est fermé (il se fera à l'ouverture). */
+export const APPAREIL_A_EFFACER = "dgrhas:appareil-a-effacer";
+
+let effacementEnCours = false;
+async function effacerAppareil(jeton: string | null) {
+  // (l'envoi qui précède l'effacement passe aussi par ici : pas d'effacement dans l'effacement)
+  if (effacementEnCours) return;
+  effacementEnCours = true;
+  try {
+    // Coffre fermé (code pas encore tapé) : rien n'est lisible, donc rien à envoyer. La demande est
+    // gardée : le vrai recenseur tape son code, ce qui attend part, puis tout s'efface
+    if (!estOuvert() && (await lireMeta())) {
+      await marquerEffacement();
+      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(APPAREIL_A_EFFACER));
+      return;
+    }
+    // Ce qui attend part d'abord (le serveur laisse encore passer l'envoi)
+    await envoyerAvantEffacement();
+    await effacerTout();
+    // L'appareil le dit au serveur, puis le compte se ferme
+    if (jeton)
+      await fetch(`${API_URL}/recensement/terrain/mission/efface`, { method: "POST", headers: { Authorization: `Bearer ${jeton}`, "X-App-State": etatApplication() } }).catch(() => undefined);
+    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(APPAREIL_EFFACE));
+  } finally {
+    effacementEnCours = false;
+  }
+}
+/** Coffre ouvert après une demande d'effacement gardée : envoyer, effacer, le dire au serveur. */
+export const effacerAppareilMaintenant = () => effacerAppareil(lireSession().jeton);
 
 /** Fichier téléchargé avec la session (mêmes règles que les autres appels : 401, nouveau jeton). */
 async function fichier(chemin: string, init: RequestInit = {}): Promise<Blob> {
