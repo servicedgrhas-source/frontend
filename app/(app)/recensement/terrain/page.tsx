@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, ChevronDown, CloudOff, MapPinned, Download, Globe2, LayoutGrid, Plus, RefreshCw, Search, Send, Smartphone, Trash2, UserPlus, Wifi } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, ChevronDown, CloudOff, MapPinned, Download, Globe2, LayoutGrid, Plus, RefreshCw, Search, Send, Smartphone, Trash2, UserPlus, Wifi } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlocLocalisation, preleverPosition, type Position } from "@/components/ecoles/localisation";
@@ -129,6 +129,18 @@ interface ConstatEcoleSaisi {
   observation?: string;
   /** « J'ai fini cette école » (true), ou rouverte (false). */
   terminee?: boolean;
+  /** La base se trompe sur l'école : ce qui est vu sur place (seulement ce qui diffère). */
+  correction?: CorrectionEcole;
+}
+/** Ce que la base a de faux sur une école, vu sur place, avec la position de l'équipe. */
+interface CorrectionEcole {
+  localite?: string;
+  departementId?: number;
+  inspectionId?: number;
+  cycle?: string;
+  latitude?: number;
+  longitude?: number;
+  precision?: number;
 }
 interface Ligne {
   cle: string;
@@ -170,6 +182,11 @@ interface Etat {
   nouvellesClasses?: NouvelleClasse[];
   /** Ce que l'équipe note sur l'école (état, nom sur place, responsable, « terminée »), à envoyer. */
   constatEcole?: ConstatEcoleSaisi;
+  /**
+   * L'équipe est devant cette école, que la base met dans un autre département : elle la recense
+   * dans ce département de sa mission (gardée dans la mission jusqu'à la décision du contrôle).
+   */
+  ici?: number;
 }
 type Presence = "PRESENT" | "ABSENT" | "PARTI" | "INCONNU" | "DECEDE" | "DOUBLON" | "AUSSI_ICI";
 interface Semblable {
@@ -606,9 +623,11 @@ let synchroEnCours: Promise<ResultatSynchro | null> | null = null;
 const idsBase = () => cles("base:").filter((k) => /^base:\d+$/.test(k));
 
 /** Ranger une école reçue : prête à compléter (mission) ou en lecture ; les lignes en attente restent. */
-function rangerPaquet(brut: PaquetBase, mission: boolean): boolean {
+function rangerPaquet(brut: PaquetBase, dansMission: boolean): boolean {
   const id = brut.ecole.id;
   if (id === ecoleOuverte) return false;
+  // (l'équipe est devant elle, la base la met ailleurs : elle reste dans la mission)
+  const mission = dansMission || !!lire<Etat>(`ecole:${id}`)?.ici;
   if (!mission) {
     // (une école qui quitte la mission mais attend encore l'envoi reste prête à compléter)
     const deja = lire<Etat>(`ecole:${id}`);
@@ -631,7 +650,7 @@ function rangerPaquet(brut: PaquetBase, mission: boolean): boolean {
   const parAgent = new Map(attente.filter((l) => l.agentId !== null).map((l) => [l.agentId as number, l]));
   const presents = new Set(p.agents.map((a) => a.id));
   const lignes = [...attente.filter((l) => l.agentId === null || !presents.has(l.agentId)), ...p.agents.map((a) => parAgent.get(a.id) ?? nouvelleLigne(p, a))];
-  ecrire(`ecole:${id}`, { paquet: p, lignes, positions: deja.positions, nouveauxBatiments: deja.nouveauxBatiments, nouvellesSalles: deja.nouvellesSalles, nouvellesClasses: deja.nouvellesClasses, constatEcole: deja.constatEcole } satisfies Etat);
+  ecrire(`ecole:${id}`, { paquet: p, lignes, positions: deja.positions, nouveauxBatiments: deja.nouveauxBatiments, nouvellesSalles: deja.nouvellesSalles, nouvellesClasses: deja.nouvellesClasses, constatEcole: deja.constatEcole, ici: deja.ici } satisfies Etat);
   return true;
 }
 
@@ -645,7 +664,7 @@ function appliquerMission(mission: number[]) {
   }
   for (const k of cles("ecole:")) {
     const e = lire<Etat>(k);
-    if (e && !mission.includes(e.paquet.ecole.departementId ?? -1)) {
+    if (e && !e.ici && !mission.includes(e.paquet.ecole.departementId ?? -1)) {
       const { colonnes: _c, statuts: _s, ...brut } = e.paquet;
       void _c;
       void _s;
@@ -716,7 +735,8 @@ async function envoyerEtat(e: Etat): Promise<{ etat: Etat; faites: number; refus
   let faites = 0;
   let refusees = 0;
   let etat = e;
-  const modifications = modificationsDe(e);
+  if (etat.constatEcole) etat = await envoyerConstatEcole(etat);
+  const modifications = modificationsDe(etat);
   if (modifications.length) {
     const { resultats } = await api.post<{ resultats: { cle: string; ok: boolean; id?: number; erreur?: string; semblables?: Semblable[] }[] }>("/recensement/terrain/envoyer", { modifications });
     const parCle = new Map(resultats.map((r) => [r.cle, r]));
@@ -739,7 +759,6 @@ async function envoyerEtat(e: Etat): Promise<{ etat: Etat; faites: number; refus
   for (const [b, pos] of Object.entries(e.positions.batiments)) await api.put(`/etablissements/${id}/batiments/${b}/localisation`, { ...pos, precision: pos.precisionGps });
   if (e.positions.ecole || Object.keys(e.positions.batiments).length) etat = { ...etat, positions: { batiments: {} } };
   etat = await envoyerBatiments(etat);
-  etat = await envoyerConstatEcole(etat);
   return { etat, faites, refusees };
 }
 
@@ -1165,7 +1184,35 @@ function ChoixEcole({ enLigne, ouvrir, recenseur, mission }: { enLigne: boolean;
       .map((e) => ({ item: e, prepare: preparer(`${e.nom} ${e.localite ?? ""}`, true) as Prepare }));
   }, [recenseur]);
   const ailleurs = recenseur && q.trim().length >= 3 && trouvees.length < 3 ? chercher(q, indexPays, 5, true).map((x) => x.item) : [];
-  const maMission = lire<MissionT>("mission");
+  // L'équipe est devant une école que la base met dans un autre département
+  const [ici, setIci] = useState<{ id: number; nom: string; localite: string | null; departementId: number | null } | null>(null);
+  const prendreIci = (id: number, dep: number) => {
+    setIci(null);
+    const brut = lire<PaquetBase>(`base:${id}`);
+    if (!brut || !rangerPaquet(brut, true)) return setErreur("Cette école n’est pas encore sur l’appareil : synchronisez une fois avec le réseau, puis réessayez.");
+    const e = lire<Etat>(`ecole:${id}`);
+    if (!e) return setErreur("Cette école n’a pas pu être préparée sur l’appareil : synchronisez avec le réseau, puis réessayez.");
+    const g = dernierePosition();
+    ecrire(`ecole:${id}`, {
+      ...e,
+      ici: dep,
+      constatEcole: {
+        ...e.constatEcole,
+        correction: { ...e.constatEcole?.correction, departementId: dep, ...(g?.latitude !== undefined && g.longitude !== undefined ? { latitude: g.latitude, longitude: g.longitude, precision: g.precision } : {}) },
+      },
+    } satisfies Etat);
+    setLocales(ecolesTelechargees());
+    ouvrir(id);
+  };
+  // Avant de signaler une école « absente » : est-ce une école déjà dans la base (autre nom, autre lieu) ?
+  const semblables = (nom: string) =>
+    nom.trim().length < 3
+      ? []
+      : [...chercher(nom, index.filter((x) => x.item.type === "ETABLISSEMENT"), 4, true).map((x) => x.item), ...(recenseur ? chercher(nom, indexPays, 4, true).map((x) => x.item) : [])].slice(0, 6).map((x) => ({ id: x.id, nom: x.nom, localite: x.localite, departementId: x.departementId }));
+  const cestElle = (x: { id: number; nom: string; localite: string | null; departementId: number | null }) => {
+    if (lire(`ecole:${x.id}`) || ecoles.some((e) => e.id === x.id)) return void telecharger(x.id);
+    setIci(x);
+  };
   const inspections = resultats.filter((x) => x.item.type === "INSPECTION").slice(0, 3).map((x) => x.item);
   const ecolesDe = (i: number) => ecoles.filter((e) => e.type === "ETABLISSEMENT" && e.parentId === i);
   const [zone, setZone] = useState<{ fait: number; total: number } | null>(null);
@@ -1237,13 +1284,17 @@ function ChoixEcole({ enLigne, ouvrir, recenseur, mission }: { enLigne: boolean;
           {q.trim().length >= 2 && !trouvees.length && !inspections.length && !ailleurs.length && <Vide>Aucune école ne ressemble à « {q.trim()} ». Essayez un autre mot du nom ou le village. Si elle n’existe vraiment pas dans la liste, signalez-la ci-dessous.</Vide>}
           {!!ailleurs.length && (
             <div className="space-y-1.5 rounded-xl bg-or-50 p-3 text-[13px] ring-1 ring-or-200">
-              <div className="font-medium text-or-800">Hors de votre mission ({(maMission?.departements ?? []).map((d) => d.nom).join(", ")}) :</div>
+              <div className="font-medium text-or-800">Notée dans un autre département :</div>
               {ailleurs.map((e) => (
-                <div key={e.id} className="text-zinc-700">
-                  <strong>{e.nom}</strong> · {[e.localite, e.departementId ? nomDepartement(e.departementId) : null].filter(Boolean).join(" · ")}
+                <div key={e.id} className="flex flex-col gap-1.5 text-zinc-700 sm:flex-row sm:items-center">
+                  <span className="min-w-0 flex-1">
+                    <strong>{e.nom}</strong> · {[e.localite, e.departementId ? nomDepartement(e.departementId) : null].filter(Boolean).join(" · ")}
+                  </span>
+                  <Bouton onClick={() => setIci(e)}>
+                    <MapPinned /> Je suis devant cette école
+                  </Bouton>
                 </div>
               ))}
-              <div className="text-[12px] text-or-800">Vous ne pouvez pas la recenser. Si vous y êtes vraiment envoyé, appelez la DGRHAS : elle ajoute ce département à votre mission.</div>
             </div>
           )}
           {!recenseur && inspections.map((i) => (
@@ -1280,9 +1331,17 @@ function ChoixEcole({ enLigne, ouvrir, recenseur, mission }: { enLigne: boolean;
           </ul>
         </div>
       </Carte>
-      <EcoleAbsente enLigne={enLigne} nom={q.trim().length >= 2 && !trouvees.length ? q.trim() : ""} />
-      {!recenseur && <Signalements enLigne={enLigne} />}
-      {!recenseur && <ConstatsEcoles enLigne={enLigne} />}
+      <EcoleAbsente enLigne={enLigne} nom={q.trim().length >= 2 && !trouvees.length ? q.trim() : ""} semblables={semblables} cestElle={cestElle} />
+      {!recenseur && (
+        <Alerte ton="bleu">
+          Ce que les équipes envoient (fiches modifiées, agents signalés, écoles) se contrôle dans la page{" "}
+          <Link href="/recensement" className="font-medium underline">
+            Recensement
+          </Link>
+          .
+        </Alerte>
+      )}
+      {ici && <ModaleIci ecole={ici} fermer={() => setIci(null)} oui={(dep) => prendreIci(ici.id, dep)} />}
       <Carte titre="Écoles sur cet appareil">
         {!locales.length ? (
           <p className="text-[13px] text-zinc-500">Aucune pour l’instant. Avant de partir en zone sans réseau, téléchargez les écoles de votre itinéraire.</p>
@@ -1332,7 +1391,10 @@ function ChoixEcole({ enLigne, ouvrir, recenseur, mission }: { enLigne: boolean;
  * Une école que l'équipe trouve sur place mais qui n'est pas dans la liste : elle la signale (nom,
  * cycle, localité, position, nombre d'agents) ; la DGRHAS la crée, elle arrive ensuite sur l'appareil.
  */
-function EcoleAbsente({ enLigne, nom }: { enLigne: boolean; nom: string }) {
+type EcoleCourte = { id: number; nom: string; localite: string | null; departementId: number | null };
+function EcoleAbsente({ enLigne, nom, semblables, cestElle }: { enLigne: boolean; nom: string; semblables: (nom: string) => EcoleCourte[]; cestElle: (e: EcoleCourte) => void }) {
+  // Avant d'envoyer : est-ce une école déjà dans la base (elle serait créée deux fois) ?
+  const [verifiees, setVerifiees] = useState<EcoleCourte[] | null>(null);
   const mission = lire<MissionT>("mission");
   const vide = (): PropositionEcole => ({ cle: `p${Date.now()}`, nom, cycle: "", localite: "", departementId: mission?.departements?.[0]?.id ?? null, agentsSurPlace: "", responsable: "", telephone: "", observation: "" });
   const [ouvert, setOuvert] = useState(false);
@@ -1354,9 +1416,14 @@ function EcoleAbsente({ enLigne, nom }: { enLigne: boolean; nom: string }) {
       setGps(false);
     }
   };
-  const garder = async () => {
+  const garder = async (sansVerifier = false) => {
     if (x.nom.trim().length < 3) return setErreur("Écrivez le nom de l’école tel qu’il est sur place.");
     setErreur(null);
+    if (!sansVerifier) {
+      const s = semblables(x.nom);
+      if (s.length) return setVerifiees(s);
+    }
+    setVerifiees(null);
     const liste = [...(lire<PropositionEcole[]>("propositions") ?? []), { ...x, nom: x.nom.trim().toUpperCase() }];
     ecrire("propositions", liste);
     setAttente(liste);
@@ -1442,92 +1509,29 @@ function EcoleAbsente({ enLigne, nom }: { enLigne: boolean; nom: string }) {
                 <Send /> Signaler cette école
               </Bouton>
             </div>
+            {verifiees && (
+              <div className="space-y-2 rounded-xl bg-or-50 p-3 text-[14px] ring-1 ring-or-200">
+                <p className="font-medium text-or-900">Cette école est peut-être déjà dans notre liste. Est-ce l’une de celles-ci ?</p>
+                <ul className="space-y-1.5">
+                  {verifiees.map((e) => (
+                    <li key={e.id} className="flex flex-col gap-1.5 rounded-lg bg-white px-3 py-2 sm:flex-row sm:items-center">
+                      <span className="min-w-0 flex-1">
+                        <strong>{e.nom}</strong>
+                        <span className="block text-[12px] text-zinc-500">{[e.localite, e.departementId ? nomDepartement(e.departementId) : null].filter(Boolean).join(" · ") || "lieu non noté"}</span>
+                      </span>
+                      <Bouton onClick={() => (setVerifiees(null), setOuvert(false), cestElle(e))}>Oui, c’est elle</Bouton>
+                    </li>
+                  ))}
+                </ul>
+                <Bouton variante="principal" onClick={() => void garder(true)}>
+                  Non, aucune : la signaler
+                </Bouton>
+              </div>
+            )}
           </div>
         </Carte>
       )}
     </div>
-  );
-}
-
-/** À la DGRHAS : ce que les équipes constatent sur les écoles, et les écoles qu'elles signalent. */
-function ConstatsEcoles({ enLigne }: { enLigne: boolean }) {
-  const [liste, setListe] = useState<
-    {
-      id: number;
-      structureId: number | null;
-      ecole: string | null;
-      etatLibelle: string | null;
-      nomSurPlace: string | null;
-      responsable: string | null;
-      telephone: string | null;
-      observation: string | null;
-      proposition: { nom?: string; cycle?: string | null; localite?: string | null; agentsSurPlace?: number | null; latitude?: number | null; longitude?: number | null } | null;
-      par: string | null;
-      le: string;
-    }[]
-  >([]);
-  const [vu, setVu] = useState(0);
-  const [erreur, setErreur] = useState<string | null>(null);
-  useEffect(() => {
-    if (!enLigne) return;
-    api
-      .get<typeof liste>("/recensement/terrain/constats-ecoles")
-      .then(setListe)
-      .catch(() => undefined);
-  }, [enLigne, vu]);
-  if (!liste.length) return null;
-  return (
-    <Carte titre={`Constats des équipes sur les écoles (${liste.length} à vérifier)`}>
-      <p className="mb-2 text-[12px] text-zinc-500">École fermée, introuvable, autre nom, autre responsable, ou école absente de la liste : vérifiez, corrigez la fiche de l’école (ou créez l’école), puis « Traité ».</p>
-      {erreur && <Alerte>{erreur}</Alerte>}
-      <ul className="divide-y divide-zinc-100">
-        {liste.map((g) => (
-          <li key={g.id} className="flex flex-wrap items-start gap-2 py-2 text-[13px]">
-            <AlertTriangle className="mt-0.5 size-4 text-or-600" />
-            <div className="min-w-0 flex-1">
-              {g.structureId ? (
-                <Link href={`/ecoles/${g.structureId}`} target="_blank" className="font-medium text-marque-700 hover:underline">
-                  {g.ecole}
-                </Link>
-              ) : (
-                <span className="font-medium">
-                  École absente de la liste : {g.proposition?.nom}
-                  {g.proposition?.cycle ? ` (${CYCLES[g.proposition.cycle as keyof typeof CYCLES] ?? g.proposition.cycle})` : ""}
-                </span>
-              )}
-              {g.etatLibelle && <Badge ton={g.etatLibelle.startsWith("L’école fonctionne") ? "vert" : "rouge"}>{g.etatLibelle}</Badge>}
-              <div className="text-zinc-600">
-                {[
-                  g.nomSurPlace ? `nom sur place : ${g.nomSurPlace}` : null,
-                  g.proposition?.localite ? `à ${g.proposition.localite}` : null,
-                  g.proposition?.agentsSurPlace ? `${g.proposition.agentsSurPlace} agent(s) sur place` : null,
-                  g.responsable ? `responsable : ${g.responsable}` : null,
-                  g.telephone ? `tél. ${g.telephone}` : null,
-                  g.proposition?.latitude ? `GPS ${g.proposition.latitude.toFixed(5)}, ${g.proposition.longitude?.toFixed(5)}` : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </div>
-              {g.observation && <div className="text-zinc-600">« {g.observation} »</div>}
-              <div className="text-[12px] text-zinc-400">
-                {g.par}, le {new Date(g.le).toLocaleDateString("fr-FR")}
-              </div>
-            </div>
-            <Bouton
-              variante="discret"
-              onClick={() =>
-                void api
-                  .post(`/recensement/terrain/constats-ecoles/${g.id}/traite`, {})
-                  .then(() => setVu((v) => v + 1))
-                  .catch((e) => setErreur((e as Error).message))
-              }
-            >
-              <CheckCircle2 /> Traité
-            </Bouton>
-          </li>
-        ))}
-      </ul>
-    </Carte>
   );
 }
 
@@ -1881,6 +1885,12 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
     try {
       let faites = 0;
       let erreurs: string[] = [];
+      // Ce que l'équipe a noté sur l'école (état, « terminée », ce que la base a de faux) : d'abord
+      if (etat.constatEcole) {
+        const envoye = etat.constatEcole;
+        const apres = await envoyerConstatEcole(etat);
+        setEtat((e) => ({ ...e, constatEcole: e.constatEcole === envoye ? undefined : e.constatEcole, paquet: { ...e.paquet, ecole: { ...e.paquet.ecole, constat: apres.paquet.ecole.constat } } }));
+      }
       if (enAttente.length) {
         const modifications = modificationsDe(etat);
         // Ce qui part : une saisie faite PENDANT l'envoi ne doit pas passer pour envoyée
@@ -1916,12 +1926,6 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
         }));
         const refus = [...(apres.nouveauxBatiments ?? []), ...(apres.nouvellesSalles ?? []), ...(apres.nouvellesClasses ?? [])].filter((x) => x.erreur);
         if (refus.length) erreurs = [...erreurs, ...refus.map((x) => `${x.nom} : ${x.erreur}`)];
-      }
-      // Ce que l'équipe a noté sur l'école (état, responsable, « terminée »)
-      if (etat.constatEcole) {
-        const envoye = etat.constatEcole;
-        const apres = await envoyerConstatEcole(etat);
-        setEtat((e) => ({ ...e, constatEcole: e.constatEcole === envoye ? undefined : e.constatEcole, paquet: { ...e.paquet, ecole: { ...e.paquet.ecole, constat: apres.paquet.ecole.constat } } }));
       }
       setMessage(
         erreurs.length
@@ -2089,6 +2093,7 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
         </>
       ) : (
         <div className="space-y-3">
+          <BienNotee etat={etat} setEtat={setEtat} />
           <ConstatSurEcole etat={etat} setEtat={setEtat} />
           <Carte titre="Localisation de l’école">
             <BlocLocalisation position={p.ecole} enregistrer={enregistrerPosition(null)} />
@@ -2170,6 +2175,163 @@ const ETATS_ECOLE: { code: string; libelle: string }[] = [
 ];
 
 /** Ce que l'équipe constate sur l'école elle-même : la DGRHAS vérifie et corrige la fiche de l'école. */
+/** Les départements du pays (copie des référentiels gardée par la coquille). */
+function tousDepartements(): { id: number; nom: string }[] {
+  try {
+    const r = JSON.parse(localStorage.getItem("dgrhas.referentiels") ?? "{}") as { departements?: { id: number; nom: string }[] };
+    return r.departements ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** « Vous êtes devant cette école ? » : une école que la base met dans un autre département. */
+function ModaleIci({ ecole, fermer, oui }: { ecole: { nom: string; localite: string | null; departementId: number | null }; fermer: () => void; oui: (dep: number) => void }) {
+  const deps = lire<MissionT>("mission")?.departements ?? [];
+  const [dep, setDep] = useState<number | null>(deps[0]?.id ?? null);
+  return (
+    <Modale titre={"Vous êtes devant cette école ?"} ouverte fermer={fermer}>
+      <div className="space-y-3 text-[15px]">
+        <p>
+          Notre base place <strong>{ecole.nom}</strong> à {[ecole.localite, ecole.departementId ? nomDepartement(ecole.departementId) : null].filter(Boolean).join(", ") || "un autre endroit"}.
+        </p>
+        <p>Si elle est ici, devant vous, recensez-la. La DGRHAS corrigera sa place dans la base.</p>
+        {deps.length > 1 && (
+          <label className="block text-[13px] font-medium text-zinc-600">
+            Dans quel département êtes-vous ?
+            <Liste className="mt-1 h-11 w-full text-[15px]" value={String(dep ?? "")} onChange={(e) => setDep(Number(e.target.value) || null)} options={deps.map((d) => ({ valeur: String(d.id), libelle: d.nom }))} />
+          </label>
+        )}
+        {!deps.length && <Alerte ton="jaune">Votre mission n’est pas encore sur l’appareil : connectez-vous une fois avec le réseau.</Alerte>}
+        <div className="grid grid-cols-2 gap-2">
+          <Bouton onClick={fermer}>Non</Bouton>
+          <Bouton variante="principal" disabled={!dep} onClick={() => dep && oui(dep)}>
+            Oui, je suis devant
+          </Bouton>
+        </div>
+      </div>
+    </Modale>
+  );
+}
+
+/**
+ * « L'école est-elle bien notée ? » (DG, 23/11/2026 : la base peut se tromper de localité, de
+ * département…) : ce que dit la base, une question simple ; s'il y a une erreur, l'équipe choisit ce
+ * qu'elle voit. Rien n'est changé avant le contrôle de la DGRHAS.
+ */
+function BienNotee({ etat, setEtat }: { etat: Etat; setEtat: (f: (e: Etat) => Etat) => void }) {
+  const e = etat.paquet.ecole;
+  const corr = etat.constatEcole?.correction;
+  const [mode, setMode] = useState<"question" | "juste" | "corriger">(corr ? "corriger" : "question");
+  const deps = tousDepartements();
+  const depVu = corr?.departementId ?? e.departementId;
+  const ecoles = lire<EcoleListe[]>("ecoles") ?? [];
+  const inspections = ecoles.filter((x) => x.type === "INSPECTION" && x.departementId === depVu);
+  // Les localités connues de ce département (écoles sur l'appareil)
+  const localites = useMemo(() => {
+    const l = new Set<string>();
+    for (const x of ecoles) if (x.departementId === depVu && x.localite) l.add(x.localite);
+    for (const k of idsBase()) {
+      const b = lire<PaquetBase>(k)?.ecole;
+      if (b?.departementId === depVu && b.localite) l.add(b.localite);
+    }
+    return [...l].sort((a, b) => a.localeCompare(b, "fr"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [depVu]);
+  const base = { localite: e.localite ?? "", departementId: e.departementId, cycle: e.cycle ?? "" };
+  const maj = (k: keyof CorrectionEcole, v: string | number | undefined) =>
+    setEtat((s) => {
+      const c: CorrectionEcole = { ...s.constatEcole?.correction };
+      const pareil = v === undefined || v === "" || (k === "localite" && String(v).trim().toUpperCase() === base.localite.trim().toUpperCase()) || (k === "departementId" && v === base.departementId) || (k === "cycle" && v === base.cycle);
+      if (pareil) delete c[k];
+      else (c as Record<string, unknown>)[k] = v;
+      // Le département change : l'inspection choisie n'en est plus forcément
+      if (k === "departementId") delete c.inspectionId;
+      // (une école « ici » garde le département de la mission)
+      if (s.ici) c.departementId = c.departementId ?? s.ici;
+      const g = dernierePosition();
+      if (g?.latitude !== undefined && g.longitude !== undefined) Object.assign(c, { latitude: g.latitude, longitude: g.longitude, precision: g.precision });
+      const reste = c.localite !== undefined || c.departementId !== undefined || c.inspectionId !== undefined || c.cycle !== undefined;
+      return { ...s, constatEcole: { ...s.constatEcole, correction: reste ? c : undefined } };
+    });
+  const lignes: [string, string][] = [
+    ["Localité", e.localite || "non notée"],
+    ["Département", e.departementId ? nomDepartement(e.departementId) : "non noté"],
+    ["Inspection", e.inspection || "non notée"],
+    ["Cycle", e.cycle ? (CYCLES[e.cycle as keyof typeof CYCLES] ?? e.cycle) : "non noté"],
+  ];
+  return (
+    <Carte titre="L’école est-elle bien notée ?">
+      <div className="space-y-3 text-[14px]">
+        <div>
+          <p className="mb-1 text-[13px] text-zinc-500">Notre base dit :</p>
+          <ul className="space-y-0.5">
+            {lignes.map(([k, v]) => (
+              <li key={k}>
+                <span className="text-zinc-500">{k} :</span> <strong>{v}</strong>
+              </li>
+            ))}
+          </ul>
+        </div>
+        {mode === "question" && (
+          <div className="grid grid-cols-2 gap-2">
+            <Bouton onClick={() => setMode("juste")}>
+              <CheckCircle2 /> Oui, c’est juste
+            </Bouton>
+            <Bouton onClick={() => setMode("corriger")}>Non, il y a une erreur</Bouton>
+          </div>
+        )}
+        {mode === "juste" && (
+          <p className="flex items-center gap-2 text-marque-700">
+            <CheckCircle2 className="size-4" /> Merci, rien à corriger.{" "}
+            <button type="button" className="cursor-pointer text-[13px] text-zinc-500 underline" onClick={() => setMode("corriger")}>
+              En fait, il y a une erreur
+            </button>
+          </p>
+        )}
+        {mode === "corriger" && (
+          <div className="space-y-3">
+            <p className="text-[13px] text-zinc-600">Changez seulement ce qui est faux. La DGRHAS vérifiera, puis corrigera la base.</p>
+            <label className="block text-[13px] font-medium text-zinc-700">
+              Dans quelle localité est l’école ?
+              <TypeAvecAutre className="mt-1 h-11 w-full text-[15px]" valeur={corr?.localite ?? e.localite ?? ""} changer={(v) => maj("localite", v.trim())} types={localites} vide="— Choisir —" nom="Localité de l’école" />
+            </label>
+            <label className="block text-[13px] font-medium text-zinc-700">
+              Dans quel département ?
+              <Liste className="mt-1 h-11 w-full text-[15px]" disabled={!!etat.ici} value={String(depVu ?? "")} onChange={(x) => maj("departementId", Number(x.target.value) || undefined)} options={[{ valeur: "", libelle: "— Choisir —" }, ...deps.map((d) => ({ valeur: String(d.id), libelle: d.nom }))]} />
+            </label>
+            <label className="block text-[13px] font-medium text-zinc-700">
+              De quelle inspection dépend-elle ?
+              <Liste className="mt-1 h-11 w-full text-[15px]" value={String(corr?.inspectionId ?? "")} onChange={(x) => maj("inspectionId", Number(x.target.value) || undefined)} options={[{ valeur: "", libelle: inspections.length ? "— Je ne sais pas / pas de changement —" : "— Je ne sais pas —" }, ...inspections.map((i) => ({ valeur: String(i.id), libelle: i.nom }))]} />
+            </label>
+            <label className="block text-[13px] font-medium text-zinc-700">
+              Quel cycle ?
+              <Liste className="mt-1 h-11 w-full text-[15px]" value={corr?.cycle ?? e.cycle ?? ""} onChange={(x) => maj("cycle", x.target.value)} options={[{ valeur: "", libelle: "— Je ne sais pas —" }, ...Object.entries(CYCLES).map(([valeur, libelle]) => ({ valeur, libelle }))]} />
+            </label>
+            {corr ? (
+              <p className="text-[13px] text-or-800">Correction gardée : elle partira avec « Envoyer ».</p>
+            ) : (
+              <p className="text-[13px] text-zinc-500">Rien de changé pour l’instant.</p>
+            )}
+            {!etat.ici && (
+              <button
+                type="button"
+                className="cursor-pointer text-[13px] text-zinc-500 underline"
+                onClick={() => {
+                  setEtat((s) => ({ ...s, constatEcole: { ...s.constatEcole, correction: undefined } }));
+                  setMode("juste");
+                }}
+              >
+                Finalement, tout est juste
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </Carte>
+  );
+}
+
 function ConstatSurEcole({ etat, setEtat }: { etat: Etat; setEtat: (f: (e: Etat) => Etat) => void }) {
   const serveur = etat.paquet.ecole.constat;
   const saisi = etat.constatEcole;
@@ -2543,52 +2705,6 @@ function BadgeVu({ ligne }: { ligne: Ligne }) {
 }
 
 /** À la DGRHAS : ce que les équipes ont signalé (absent, parti, inconnu ici), à vérifier puis traiter. */
-function Signalements({ enLigne }: { enLigne: boolean }) {
-  const [liste, setListe] = useState<{ id: number; agentId: number; nomComplet: string; ecole: string; etat: string; observation: string | null; par: string | null; le: string }[]>([]);
-  const [vu, setVu] = useState(0);
-  useEffect(() => {
-    if (!enLigne) return;
-    api
-      .get<typeof liste>("/recensement/terrain/signalements")
-      .then(setListe)
-      .catch(() => undefined);
-  }, [enLigne, vu]);
-  if (!liste.length) return null;
-  const libelle = libellePresence;
-  return (
-    <Carte titre={`Signalements des équipes (${liste.length} à traiter)`}>
-      <p className="mb-2 text-[12px] text-zinc-500">Rien n’est effacé : vérifiez, corrigez la fiche (mutation, sortie, école) si besoin, puis marquez « Traité ».</p>
-      <ul className="divide-y divide-zinc-100">
-        {liste.map((g) => (
-          <li key={g.id} className="flex flex-wrap items-center gap-2 py-2 text-[13px]">
-            <AlertTriangle className="size-4 text-or-600" />
-            <Link href={`/personnel/agents/${g.agentId}`} target="_blank" className="font-medium text-marque-700 hover:underline">
-              {g.nomComplet}
-            </Link>
-            <Badge ton={g.etat === "ABSENT" ? "jaune" : "rouge"}>{libelle(g.etat)}</Badge>
-            <span className="text-zinc-500">
-              {g.ecole} · {g.par ?? ""}, le {new Date(g.le).toLocaleDateString("fr-FR")}
-              {g.observation ? ` · « ${g.observation} »` : ""}
-            </span>
-            <Bouton
-              variante="discret"
-              className="ml-auto"
-              onClick={() =>
-                void api
-                  .post(`/recensement/terrain/signalements/${g.id}/traite`, {})
-                  .then(() => setVu((v) => v + 1))
-                  .catch((e) => alert((e as Error).message))
-              }
-            >
-              <CheckCircle2 /> Traité
-            </Bouton>
-          </li>
-        ))}
-      </ul>
-    </Carte>
-  );
-}
-
 /**
  * Le service hors ligne : la page et ses fichiers sont gardés sur l'appareil, l'application
  * s'ouvre ensuite même sans réseau (et s'installe sur l'écran d'accueil).

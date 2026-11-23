@@ -103,7 +103,7 @@ export function useCampagne() {
 }
 
 /** Choix de la campagne en tête de chaque page de l'enrôlement. */
-export function SelecteurCampagne({ liste, campagne, choisir }: { liste: Campagne[]; campagne: Campagne | null; choisir: (id: number) => void }) {
+export function SelecteurCampagne({ liste, campagne, choisir, saisieSeule }: { liste: Campagne[]; campagne: Campagne | null; choisir: (id: number) => void; /** Compte de saisie seule : seulement le nombre « à contrôler ». */ saisieSeule?: boolean }) {
   if (!liste.length)
     return (
       <Alerte ton="jaune">
@@ -118,7 +118,8 @@ export function SelecteurCampagne({ liste, campagne, choisir }: { liste: Campagn
     <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-white px-4 py-3 text-[13px] shadow-doux">
       <span className="font-medium text-zinc-600">Campagne</span>
       <Liste className="w-80" value={String(campagne?.id ?? "")} onChange={(e) => choisir(Number(e.target.value))} options={liste.map((c) => ({ valeur: c.id, libelle: `Enrôlement ${c.annee} (${c.anneeScolaire})${c.ouverte ? "" : " · fermée"}` }))} />
-      {campagne && (
+      {campagne && saisieSeule && <span className="text-[12px] text-zinc-600">{campagne.aControler} à contrôler</span>}
+      {campagne && !saisieSeule && (
         <span className="flex flex-wrap items-center gap-2 text-[12px] text-zinc-600">
           <Badge ton={campagne.quota && campagne.retenus >= campagne.quota ? "jaune" : "vert"}>
             {campagne.retenus} retenu(s){campagne.quota ? ` sur un quota de ${campagne.quota}` : " · quota pas encore fixé"}

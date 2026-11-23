@@ -298,6 +298,8 @@ export default function SaisieEnrolement() {
   const { profil } = useSession();
   const controleur = peut.controler(profil.role);
   const dg = peut.valider(profil.role);
+  // Compte de saisie seule (opérateur de saisie) : seulement « À contrôler » (DG, 23/11/2026)
+  const saisieSeule = !!profil.compteVide && !controleur && !dg;
   const { campagnes, liste, campagne, choisir } = useCampagne();
   const conf = useConfigEnrolement().donnees?.configuration;
   const limites = conf ? { min: conf.ageMinimum, max: conf.ageMaximum } : null;
@@ -305,7 +307,7 @@ export default function SaisieEnrolement() {
   const [recherche, setRecherche] = useState("");
   const dossiers = useApi<Enrole[]>(campagne ? `/enrolement/dossiers${qs({ campagne: campagne.id, etat, recherche })}` : null);
   // La recherche ne regarde que l'étape ouverte : on dit aussi combien sont trouvés dans les autres étapes
-  const rechercheAilleurs = recherche.trim().length >= 2;
+  const rechercheAilleurs = !saisieSeule && recherche.trim().length >= 2;
   const ailleurs = useApi<Enrole[]>(campagne && rechercheAilleurs ? `/enrolement/dossiers${qs({ campagne: campagne.id, recherche })}` : null);
   // Non retenus : le motif détaillé, comme dans l'Excel (où chacun est déjà connu, observation corrigée)
   const situations = useApi<{ lignes: { id: string; motif: string; observation: string | null }[] }>(
@@ -319,7 +321,7 @@ export default function SaisieEnrolement() {
   /** Ouvrir un dossier signalé par la saisie : sa bonne étape, son nom dans la recherche. */
   const voirDossier = (d: Doublon) => {
     if (!d.dossier) return;
-    setEtat(d.dossier.etat);
+    if (!saisieSeule) setEtat(d.dossier.etat);
     setRecherche(d.nom);
     setTimeout(() => document.getElementById("liste-dossiers")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   };
@@ -382,7 +384,7 @@ export default function SaisieEnrolement() {
         titre="Saisie des enrôlements"
         sousTitre="Chaque dossier déposé est saisi (ou importé) ; le contrôleur le compare au dossier papier ; la DGRHAS décide : retenu ou non. Les retenus forment la base des enrôlés et entrent dans la note de service des volontaires."
       />
-      {!campagnes.donnees ? <Chargement /> : <SelecteurCampagne liste={liste} campagne={campagne} choisir={choisir} />}
+      {!campagnes.donnees ? <Chargement /> : <SelecteurCampagne saisieSeule={saisieSeule} liste={liste} campagne={campagne} choisir={choisir} />}
       <Annonce ton={message?.ton} fermer={() => setMessage(null)}>
         {message?.texte}
       </Annonce>
@@ -407,7 +409,7 @@ export default function SaisieEnrolement() {
           )}
 
           {/* Doublons probables et déjà connus : à trancher par la DGRHAS (06/11/2026) */}
-          <ATrancher campagneId={campagne.id} apres={(t, ton = "vert") => { setMessage({ ton, texte: t }); recharger(); }} />
+          {!saisieSeule && <ATrancher campagneId={campagne.id} apres={(t, ton = "vert") => { setMessage({ ton, texte: t }); recharger(); }} />}
 
           <div id="liste-dossiers" className="scroll-mt-4" />
           <Carte titre="Dossiers" actions={<Saisie className="w-64" placeholder="Rechercher un nom…" value={recherche} onChange={(e) => setRecherche(e.target.value)} />}>
@@ -420,9 +422,13 @@ export default function SaisieEnrolement() {
                 }}
                 options={[
                   { valeur: "A_CONTROLER" as Etat, libelle: `1. À contrôler (${campagne.aControler})` },
-                  { valeur: "CONTROLE" as Etat, libelle: `2. À décider par la DGRHAS (${campagne.aDecider})` },
-                  { valeur: "RETENU" as Etat, libelle: `3. Retenus (${campagne.retenus})` },
-                  { valeur: "NON_RETENU" as Etat, libelle: `Non retenus (${campagne.nonRetenus})` },
+                  ...(saisieSeule
+                    ? []
+                    : [
+                        { valeur: "CONTROLE" as Etat, libelle: `2. À décider par la DGRHAS (${campagne.aDecider})` },
+                        { valeur: "RETENU" as Etat, libelle: `3. Retenus (${campagne.retenus})` },
+                        { valeur: "NON_RETENU" as Etat, libelle: `Non retenus (${campagne.nonRetenus})` },
+                      ]),
                 ]}
               />
               <span className="text-[12px] text-zinc-500">{coches.size ? `${coches.size} coché(s)` : ""}</span>

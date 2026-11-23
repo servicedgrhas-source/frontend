@@ -8,6 +8,7 @@ import { ETAT_AJOUT, libelleStatut, type Manques, peutControlerAjout, peutRecens
 import { ApercuFiche } from "@/components/recensement/apercu-fiche";
 import { PropositionsAgents } from "@/components/banque-mondiale/propositions";
 import { ControleModifications } from "@/components/recensement/controle-modifications";
+import { AgentsSignales, EcolesAuControle } from "@/components/recensement/controle-terrain";
 import { ImportFichier } from "@/components/recensement/import-fichier";
 import { BandeauRecensementOuvert, PagesDuRecensement } from "@/components/recensement/recensement-ouvert";
 import { useSession } from "@/components/session";
@@ -269,6 +270,8 @@ function Recensement() {
         </div>
       </Carte>
       <ControleModifications />
+      <AgentsSignales />
+      <EcolesAuControle />
       <PropositionsAgents />
       {apercu !== null && (
         <ApercuFiche
