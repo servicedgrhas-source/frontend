@@ -31,6 +31,8 @@ interface Doublon {
   probable: boolean;
   /** Dossier d'enrôlement trouvé : on peut l'ouvrir à sa bonne étape. */
   dossier?: { id: string; campagneId: number; etat: Etat };
+  /** Retenu ou non, et pourquoi (en clair). */
+  situation?: { libelle: string; motif: string | null; decision: string | null };
 }
 
 const ETAPES: Record<Etat, string> = {
@@ -85,7 +87,7 @@ const valeursDe = (e?: Enrole): Valeurs =>
     : vide;
 
 /** Formulaire d'un dossier d'enrôlement (création ou correction). */
-function FormulaireEnrole({ campagneId, dossier, apres, annuler, voir }: { campagneId: number; dossier?: Enrole; apres: (texte: string) => void; annuler?: () => void; voir?: (d: Doublon) => void }) {
+function FormulaireEnrole({ campagneId, dossier, apres, annuler, voir, saisieSeule }: { campagneId: number; dossier?: Enrole; apres: (texte: string) => void; annuler?: () => void; voir?: (d: Doublon) => void; /** Compte de saisie seule : il n'ouvre que les dossiers « à contrôler ». */ saisieSeule?: boolean }) {
   const { refs } = useSession();
   const diplomes = useApi<Diplome[]>("/enrolement/diplomes");
   const referentiel = useApi<{ cycles: string[]; specialites: string[] }>("/enrolement/referentiel");
@@ -248,7 +250,14 @@ function FormulaireEnrole({ campagneId, dossier, apres, annuler, voir }: { campa
                 <span>
                   {d.nom} · {d.naissance ? d.naissance.split("-").reverse().join("/") : "date ?"} — {d.source} ({d.detail})
                 </span>
-                {voir && d.dossier && d.dossier.campagneId === campagneId && (
+                {d.situation && (
+                  <span className="block w-full rounded-lg bg-white/80 px-2.5 py-1.5 text-[12.5px] font-normal text-zinc-800 ring-1 ring-current/20">
+                    <strong className={d.situation.libelle === "Non retenu" ? "text-rouge-700" : d.situation.libelle === "Retenu" ? "text-marque-700" : "text-zinc-700"}>{d.situation.libelle}</strong>
+                    {d.situation.motif ? <> · Pourquoi : {d.situation.motif}</> : null}
+                    {d.situation.decision ? <span className="text-zinc-500"> · décidé par {d.situation.decision}</span> : null}
+                  </span>
+                )}
+                {voir && d.dossier && d.dossier.campagneId === campagneId && (!saisieSeule || d.dossier.etat === "A_CONTROLER") && (
                   <button type="button" className="rounded-full bg-white/70 px-2 py-0.5 font-medium underline-offset-2 ring-1 ring-current/30 hover:bg-white" onClick={() => voir(d)}>
                     Voir ce dossier ({ETAPES[d.dossier.etat]})
                   </button>
@@ -393,7 +402,7 @@ export default function SaisieEnrolement() {
         <>
           {campagne.ouverte ? (
             <Carte titre="Nouveau dossier">
-              <FormulaireEnrole campagneId={campagne.id} voir={voirDossier} apres={(t) => { setMessage({ ton: "vert", texte: t }); recharger(); }} />
+              <FormulaireEnrole campagneId={campagne.id} voir={voirDossier} saisieSeule={saisieSeule} apres={(t) => { setMessage({ ton: "vert", texte: t }); recharger(); }} />
             </Carte>
           ) : (
             <Alerte ton="jaune">La campagne {campagne.annee} est fermée : on ne saisit plus de nouveaux dossiers (le DG peut la rouvrir).</Alerte>

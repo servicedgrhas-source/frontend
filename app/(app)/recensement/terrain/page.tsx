@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, CheckCircle2, ChevronDown, CloudOff, MapPinned, Download, Globe2, LayoutGrid, Plus, RefreshCw, Search, Send, Smartphone, Trash2, UserPlus, Wifi } from "lucide-react";
+import { ArrowLeft, ArrowRight, BellRing, Camera, CheckCircle2, ChevronDown, CloudOff, MapPinned, Download, Globe2, Plus, RefreshCw, Search, Send, Smartphone, Trash2, UserPlus, Wifi } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlocLocalisation, preleverPosition, type Position } from "@/components/ecoles/localisation";
@@ -56,6 +56,8 @@ interface Paquet {
   listeClasses?: ClasseT[];
   /** Ce que proposent les formulaires de l'école (niveaux par cycle, types, états, année). */
   referentiels?: RefsEcole;
+  /** Les pièces qu'on peut photographier sur place (diplôme, acte de naissance…). */
+  pieces?: TypePiece[];
   colonnes: Colonne[];
   statuts: { code: string; libelle: string }[];
   /** aControler : ajouté par une équipe, effectif tout de suite, en attente de la décision du DG. */
@@ -142,9 +144,26 @@ interface CorrectionEcole {
   longitude?: number;
   precision?: number;
 }
+/** Un type de pièce du dossier d'un agent. */
+interface TypePiece {
+  code: string;
+  libelle: string;
+}
+/** La photo d'une pièce prise sur place, chiffrée sur l'appareil jusqu'à l'envoi. */
+interface PhotoPiece {
+  cle: string;
+  type: string;
+  /** L'image réduite (JPEG), en texte. */
+  image: string;
+  le: string;
+  /** Refusée par le serveur : le motif. */
+  erreur?: string;
+}
 interface Ligne {
   cle: string;
   agentId: number | null;
+  /** Photos des pièces prises sur place, en attente d'envoi. */
+  photos?: PhotoPiece[];
   statut: string;
   statutOrigine: string;
   valeurs: Record<string, string>;
@@ -306,7 +325,7 @@ const ecolesTelechargees = (): { id: number; nom: string; enAttente: number; le:
     const e = lire<Etat>(k);
     if (e) {
       const agents = e.lignes.filter((x) => !x.aussi);
-      l.push({ id: e.paquet.ecole.id, nom: e.paquet.ecole.nom, enAttente: aEnvoyer(e).length, le: e.paquet.telechargeLe, terminee: ecoleTerminee(e), aCorriger: e.lignes.filter((x) => x.erreur).length, vus: agents.filter(vu).length, agents: agents.length });
+      l.push({ id: e.paquet.ecole.id, nom: e.paquet.ecole.nom, enAttente: aEnvoyer(e).length + photosEnAttente(e), le: e.paquet.telechargeLe, terminee: ecoleTerminee(e), aCorriger: e.lignes.filter((x) => x.erreur).length, vus: agents.filter(vu).length, agents: agents.length });
     }
   }
   // D'abord celles à corriger ou à envoyer, puis les commencées, puis les autres ; les terminées à la fin
@@ -454,7 +473,11 @@ export interface ResultatSynchro {
   refusees: number;
   majEcoles: number;
 }
-const enAttenteEcole = (e: Etat) => aEnvoyer(e).length > 0 || !!e.positions.ecole || Object.keys(e.positions.batiments).length > 0 || infraEnAttente(e) > 0 || !!e.constatEcole;
+/** Les photos de pièces qui attendent l'envoi (pas celles refusées par le serveur). */
+const photosEnAttente = (e: Etat) => e.lignes.reduce((n, l) => n + (l.photos?.filter((x) => !x.erreur).length ?? 0), 0);
+/** Les lignes à garder telles quelles à la mise à jour de l'école : à envoyer, ou avec des photos. */
+const aGarder = (e: Etat) => e.lignes.filter((l) => aEnvoyer(e).includes(l) || !!l.photos?.length);
+const enAttenteEcole = (e: Etat) => aEnvoyer(e).length > 0 || photosEnAttente(e) > 0 || !!e.positions.ecole || Object.keys(e.positions.batiments).length > 0 || infraEnAttente(e) > 0 || !!e.constatEcole;
 /** L'école est terminée (par cette équipe, en attente d'envoi, ou par une équipe déjà) . */
 const ecoleTerminee = (e: Etat) => (e.constatEcole?.terminee !== undefined ? e.constatEcole.terminee : !!e.paquet.ecole.constat?.termineeLe);
 
@@ -580,6 +603,61 @@ async function envoyerBatiments(e: Etat): Promise<Etat> {
   if (coupure) throw coupure;
   return etat;
 }
+/** L'image gardée en texte (data:…;base64,…) redevient un fichier (sans fetch : la page l'interdit). */
+function enOctets(image: string): Uint8Array<ArrayBuffer> {
+  const b = atob(image.slice(image.indexOf(",") + 1));
+  const o = new Uint8Array(b.length);
+  for (let i = 0; i < b.length; i++) o[i] = b.charCodeAt(i);
+  return o;
+}
+
+/** Réduire une photo (1 600 px au plus, JPEG) : légère pour la mémoire et le forfait. */
+async function reduireImage(f: File): Promise<string> {
+  const img = await createImageBitmap(f);
+  const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(img.width * k);
+  c.height = Math.round(img.height * k);
+  c.getContext("2d")?.drawImage(img, 0, 0, c.width, c.height);
+  img.close();
+  return c.toDataURL("image/jpeg", 0.72);
+}
+
+/**
+ * Envoyer les photos des pièces (6 à la fois), une fois l'agent connu du serveur (un nouvel agent :
+ * après sa création). Rend ce qui est parti, ce qui est refusé (avec le motif), et une coupure.
+ */
+async function envoyerPhotos(e: Etat, ids?: Map<string, number>) {
+  const travail = e.lignes.flatMap((l) => {
+    const id = l.agentId ?? ids?.get(l.cle) ?? null;
+    return id ? (l.photos ?? []).filter((x) => !x.erreur).map((ph) => ({ ph, id })) : [];
+  });
+  const faites = new Set<string>();
+  const refus = new Map<string, string>();
+  let coupure: unknown = null;
+  if (!travail.length) return { faites, refus, coupure };
+  const r = await parSix(travail, async ({ ph, id }) => {
+    const fd = new FormData();
+    fd.append("type", ph.type);
+    fd.append("cle", ph.cle);
+    fd.append("ecoleId", String(e.paquet.ecole.id));
+    fd.append("fichier", new File([enOctets(ph.image)], `piece-${ph.cle}.jpg`, { type: "image/jpeg" }));
+    return api.post(`/recensement/terrain/agent/${id}/piece`, fd);
+  });
+  travail.forEach((t, k) => {
+    const x = r[k];
+    if (x.ok) faites.add(t.ph.cle);
+    else if (refusParServeur(x.erreur)) refus.set(t.ph.cle, (x.erreur as Error).message);
+    else coupure ??= x.erreur;
+  });
+  return { faites, refus, coupure };
+}
+/** Les photos parties quittent l'appareil ; les refusées restent, avec le motif. */
+const apresPhotos = (e: Etat, r: { faites: Set<string>; refus: Map<string, string> }): Etat => ({
+  ...e,
+  lignes: e.lignes.map((l) => (l.photos?.length ? { ...l, photos: l.photos.filter((x) => !r.faites.has(x.cle)).map((x) => (r.refus.has(x.cle) ? { ...x, erreur: r.refus.get(x.cle) } : x)) } : l)),
+});
+
 /** Ajouts sur l'école (bâtiments, salles, classes) en attente d'envoi. */
 const infraEnAttente = (e: Etat) => (e.nouveauxBatiments?.length ?? 0) + (e.nouvellesSalles?.length ?? 0) + (e.nouvellesClasses?.length ?? 0);
 /** Une école trouvée sur place mais absente de la liste : gardée sur l'appareil jusqu'à l'envoi. */
@@ -636,9 +714,9 @@ function rangerPaquet(brut: PaquetBase, dansMission: boolean): boolean {
     ecrire(`base:${id}`, brut);
     return true;
   }
-  const champs = lire<{ colonnes: Colonne[]; statuts: Paquet["statuts"]; referentiels?: RefsEcole }>("base:colonnes");
+  const champs = lire<{ colonnes: Colonne[]; statuts: Paquet["statuts"]; referentiels?: RefsEcole; pieces?: TypePiece[] }>("base:colonnes");
   if (!champs) return false;
-  const p: Paquet = { ...brut, colonnes: champs.colonnes, statuts: champs.statuts, referentiels: champs.referentiels };
+  const p: Paquet = { ...brut, colonnes: champs.colonnes, statuts: champs.statuts, referentiels: champs.referentiels, pieces: champs.pieces };
   const deja = lire<Etat>(`ecole:${id}`);
   ecrire(`base:${id}`, null);
   if (!deja) {
@@ -646,7 +724,7 @@ function rangerPaquet(brut: PaquetBase, dansMission: boolean): boolean {
     return true;
   }
   // Les lignes en attente gardent ce qu'a saisi l'équipe ; les autres prennent la base à jour
-  const attente = aEnvoyer(deja);
+  const attente = aGarder(deja);
   const parAgent = new Map(attente.filter((l) => l.agentId !== null).map((l) => [l.agentId as number, l]));
   const presents = new Set(p.agents.map((a) => a.id));
   const lignes = [...attente.filter((l) => l.agentId === null || !presents.has(l.agentId)), ...p.agents.map((a) => parAgent.get(a.id) ?? nouvelleLigne(p, a))];
@@ -703,7 +781,7 @@ async function telechargerBase(suivre: (p: ProgresBase) => void, toutReprendre =
     if (mission) {
       // Les colonnes du formulaire, les écoles et inspections du département (recherche d'une école)
       const r = await api.get<Departement>(`/recensement/terrain/departement/${d.id}`);
-      ecrire("base:colonnes", { colonnes: r.colonnes, statuts: r.statuts, referentiels: r.referentiels });
+      ecrire("base:colonnes", { colonnes: r.colonnes, statuts: r.statuts, referentiels: r.referentiels, pieces: (r as { pieces?: TypePiece[] }).pieces });
       ecrire("ecoles", [...(lire<EcoleListe[]>("ecoles") ?? []).filter((e) => e.departementId !== d.id), ...r.structures]);
       for (const p of r.paquets) rangerPaquet(p, true);
       ecrire(`departement:${d.id}`, { le: r.telechargeLe, ecoles: r.paquets.length, agents: r.paquets.reduce((n, p) => n + p.agents.length, 0), gardees: 0 });
@@ -712,8 +790,8 @@ async function telechargerBase(suivre: (p: ProgresBase) => void, toutReprendre =
     } else {
       // Les colonnes sont nécessaires avant tout (une mission sans département ? on les prend ici)
       if (!lire("base:colonnes")) {
-        const c = await api.get<{ colonnes: Colonne[]; statuts: Paquet["statuts"]; referentiels?: RefsEcole }>("/recensement/terrain/colonnes");
-        ecrire("base:colonnes", { colonnes: c.colonnes, statuts: c.statuts, referentiels: c.referentiels });
+        const c = await api.get<{ colonnes: Colonne[]; statuts: Paquet["statuts"]; referentiels?: RefsEcole; pieces?: TypePiece[] }>("/recensement/terrain/colonnes");
+        ecrire("base:colonnes", { colonnes: c.colonnes, statuts: c.statuts, referentiels: c.referentiels, pieces: c.pieces });
       }
       await prendreEcoles(reste, plan.mission, (paquets) => {
         paquets.forEach((p) => faites.add(p.ecole.id));
@@ -759,6 +837,11 @@ async function envoyerEtat(e: Etat): Promise<{ etat: Etat; faites: number; refus
   for (const [b, pos] of Object.entries(e.positions.batiments)) await api.put(`/etablissements/${id}/batiments/${b}/localisation`, { ...pos, precision: pos.precisionGps });
   if (e.positions.ecole || Object.keys(e.positions.batiments).length) etat = { ...etat, positions: { batiments: {} } };
   etat = await envoyerBatiments(etat);
+  if (photosEnAttente(etat)) {
+    const r = await envoyerPhotos(etat);
+    etat = apresPhotos(etat, r);
+    if (r.coupure) throw r.coupure;
+  }
   return { etat, faites, refusees };
 }
 
@@ -774,8 +857,8 @@ function synchroniserBase(): Promise<ResultatSynchro | null> {
     await envoyerPositions().catch(() => undefined);
     await envoyerPropositions().catch(() => undefined);
     try {
-      const c = await api.get<{ colonnes: Colonne[]; statuts: Paquet["statuts"]; referentiels?: RefsEcole }>("/recensement/terrain/colonnes");
-      ecrire("base:colonnes", { colonnes: c.colonnes, statuts: c.statuts, referentiels: c.referentiels });
+      const c = await api.get<{ colonnes: Colonne[]; statuts: Paquet["statuts"]; referentiels?: RefsEcole; pieces?: TypePiece[] }>("/recensement/terrain/colonnes");
+      ecrire("base:colonnes", { colonnes: c.colonnes, statuts: c.statuts, referentiels: c.referentiels, pieces: c.pieces });
     } catch {
       /* gardées telles quelles */
     }
@@ -1072,6 +1155,7 @@ function CarteMission({
             </div>
           </div>
         )}
+        <RetoursControle enLigne={enLigne} />
         {aCorriger > 0 && <Alerte>{aCorriger} ligne(s) refusée(s) à l’envoi : ouvrez les écoles marquées « à corriger ».</Alerte>}
         {erreur && <Alerte>{erreur}</Alerte>}
         {m.effacerApres && aujourdhui > m.effacerApres && (
@@ -1125,6 +1209,86 @@ function CarteMission({
         )}
       </div>
     </Carte>
+  );
+}
+
+interface RetourControle {
+  cle: string;
+  quoi: string;
+  sujet: string;
+  ecole: string | null;
+  detail: string | null;
+  motif: string | null;
+  par: string | null;
+  le: string | null;
+}
+
+/**
+ * Ce que le contrôle a refusé ou rejeté du travail de l'équipe, avec le motif (DG, 23/11/2026) :
+ * gardé sur l'appareil (lisible sans réseau), les nouveaux d'abord ; « J'ai lu » les range.
+ */
+function RetoursControle({ enLigne }: { enLigne: boolean }) {
+  const [retours, setRetours] = useState<RetourControle[]>(() => lire<{ lignes: RetourControle[] }>("retours")?.lignes ?? []);
+  const [vus, setVus] = useState<string[]>(() => lire<string[]>("retours:vus") ?? []);
+  const [ouvert, setOuvert] = useState(false);
+  useEffect(() => {
+    if (!enLigne) return;
+    const lireRetours = () =>
+      api
+        .get<{ le: string; lignes: RetourControle[] }>("/recensement/terrain/retours")
+        .then((r) => {
+          ecrire("retours", r);
+          setRetours(r.lignes);
+        })
+        .catch(() => undefined);
+    void lireRetours();
+    window.addEventListener(SYNCHRO_FAITE, lireRetours);
+    return () => window.removeEventListener(SYNCHRO_FAITE, lireRetours);
+  }, [enLigne]);
+  if (!retours.length) return null;
+  const nouveaux = retours.filter((r) => !vus.includes(r.cle));
+  const liste = [...nouveaux, ...retours.filter((r) => vus.includes(r.cle))];
+  const lu = () => {
+    const tous = retours.map((r) => r.cle);
+    ecrire("retours:vus", tous);
+    setVus(tous);
+    setOuvert(false);
+  };
+  return (
+    <div className={cx("rounded-xl p-3 ring-1", nouveaux.length ? "bg-or-50 ring-or-200" : "bg-zinc-50 ring-zinc-200")}>
+      <button type="button" onClick={() => setOuvert((o) => !o)} aria-expanded={ouvert} className="flex w-full cursor-pointer items-center gap-2 text-left">
+        <BellRing className={cx("size-4 shrink-0", nouveaux.length ? "text-or-700" : "text-zinc-400")} />
+        <span className={cx("min-w-0 flex-1 text-[14px] font-medium", nouveaux.length ? "text-or-900" : "text-zinc-600")}>
+          {nouveaux.length ? `${nouveaux.length} retour(s) du contrôle à lire` : `Retours du contrôle (${retours.length})`}
+        </span>
+        <ChevronDown className={cx("size-4 text-zinc-500 transition-transform", ouvert && "rotate-180")} />
+      </button>
+      {ouvert && (
+        <div className="mt-2 space-y-2">
+          <ul className="space-y-2">
+            {liste.map((r) => (
+              <li key={r.cle} className={cx("rounded-lg bg-white px-3 py-2 text-[13px] ring-1", vus.includes(r.cle) ? "ring-zinc-100" : "ring-or-200")}>
+                <div className="font-medium text-rouge-700">{r.quoi}</div>
+                <div className="font-medium text-zinc-800">
+                  {r.sujet}
+                  {r.ecole ? <span className="font-normal text-zinc-500"> · {r.ecole}</span> : null}
+                </div>
+                {r.detail && <div className="text-zinc-600">Ce qui était corrigé : {r.detail}</div>}
+                <div className="text-zinc-700">{r.motif ? `Motif : « ${r.motif} »` : "Sans motif écrit."}</div>
+                <div className="text-[12px] text-zinc-400">
+                  {[r.par, r.le ? `le ${new Date(r.le).toLocaleDateString("fr-FR")}` : null].filter(Boolean).join(", ")}
+                </div>
+              </li>
+            ))}
+          </ul>
+          {nouveaux.length > 0 && (
+            <Bouton variante="principal" onClick={lu}>
+              <CheckCircle2 /> J’ai lu
+            </Bouton>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1227,7 +1391,7 @@ function ChoixEcole({ enLigne, ouvrir, recenseur, mission }: { enLigne: boolean;
     for (const e of liste) {
       setZone({ fait, total: liste.length });
       const deja = lire<Etat>(`ecole:${e.id}`);
-      if (deja && aEnvoyer(deja).length) {
+      if (deja && enAttenteEcole(deja)) {
         fait++;
         continue;
       }
@@ -1248,7 +1412,7 @@ function ChoixEcole({ enLigne, ouvrir, recenseur, mission }: { enLigne: boolean;
   const telecharger = async (id: number) => {
     const deja = lire<Etat>(`ecole:${id}`);
     if (deja && !enLigne) return ouvrir(id);
-    if (deja && aEnvoyer(deja).length) return ouvrir(id);
+    if (deja && enAttenteEcole(deja)) return ouvrir(id);
     if (!enLigne) return setErreur("Sans connexion : seules les écoles déjà téléchargées s’ouvrent.");
     setCharge(id);
     setErreur(null);
@@ -1872,7 +2036,7 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
   if (!etat) return <Alerte>Cette école n’est plus sur l’appareil.</Alerte>;
   const p = etat.paquet;
   const enAttente = aEnvoyer(etat);
-  const positionsEnAttente = (etat.positions.ecole ? 1 : 0) + Object.keys(etat.positions.batiments).length + infraEnAttente(etat) + (etat.constatEcole ? 1 : 0);
+  const positionsEnAttente = (etat.positions.ecole ? 1 : 0) + Object.keys(etat.positions.batiments).length + infraEnAttente(etat) + (etat.constatEcole ? 1 : 0) + photosEnAttente(etat);
   // Les agents de l'école (pas ceux qui viennent seulement « aussi ») : combien ont été vus
   const agentsEcole = etat.lignes.filter((l) => !l.aussi);
   const nVus = agentsEcole.filter(vu).length;
@@ -1885,6 +2049,8 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
     try {
       let faites = 0;
       let erreurs: string[] = [];
+      // (le numéro d'un agent créé à cet envoi : ses photos partent ensuite dans sa fiche)
+      const nouveauxIds = new Map<string, number>();
       // Ce que l'équipe a noté sur l'école (état, « terminée », ce que la base a de faux) : d'abord
       if (etat.constatEcole) {
         const envoye = etat.constatEcole;
@@ -1897,6 +2063,7 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
         const parties = new Map(enAttente.map((l) => [l.cle, { valeurs: { ...l.valeurs }, statut: l.statut, presence: l.presence ?? "", observation: l.observation ?? "", nom: l.valeurs.NOMS_PRENOMS }]));
         const { resultats } = await api.post<{ resultats: { cle: string; ok: boolean; id?: number; erreur?: string; semblables?: Semblable[] }[] }>("/recensement/terrain/envoyer", { modifications });
         const parCle = new Map(resultats.map((r) => [r.cle, r]));
+        for (const r of resultats) if (r.ok && r.id) nouveauxIds.set(r.cle, r.id);
         // (compté ici, sur la réponse : le message dit ce qui est vraiment parti)
         faites = resultats.filter((r) => r.ok).length;
         erreurs = resultats.filter((r) => !r.ok).map((r) => `${parties.get(r.cle)?.nom || "Ligne"} : ${r.erreur}`);
@@ -1927,6 +2094,13 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
         const refus = [...(apres.nouveauxBatiments ?? []), ...(apres.nouvellesSalles ?? []), ...(apres.nouvellesClasses ?? [])].filter((x) => x.erreur);
         if (refus.length) erreurs = [...erreurs, ...refus.map((x) => `${x.nom} : ${x.erreur}`)];
       }
+      // Les photos des pièces, dans la fiche de chaque agent
+      if (photosEnAttente(etat)) {
+        const r = await envoyerPhotos(etat, nouveauxIds);
+        setEtat((e) => apresPhotos(e, r));
+        if (r.refus.size) erreurs = [...erreurs, ...[...r.refus.values()].map((m) => `Photo : ${m}`)];
+        if (r.coupure) throw r.coupure;
+      }
       setMessage(
         erreurs.length
           ? { ton: "jaune", texte: `${faites} ligne(s) envoyée(s). ${erreurs.length} à corriger (en rouge) : ${erreurs.slice(0, 3).join(" ; ")}${erreurs.length > 3 ? "…" : ""}` }
@@ -1949,7 +2123,7 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
   };
 
   const recharger = async () => {
-    if (enAttente.length && !confirm("Des lignes ne sont pas envoyées : elles seront perdues si vous rechargez l’école. Continuer ?")) return;
+    if ((enAttente.length || photosEnAttente(etat)) && !confirm("Des lignes ou des photos ne sont pas envoyées : elles seront perdues si vous rechargez l’école. Continuer ?")) return;
     try {
       const n = await api.get<Paquet>(`/recensement/terrain/ecole/${id}`);
       setEtatBrut(() => {
@@ -2845,12 +3019,22 @@ const ecrireCase = (setEtat: (f: (e: Etat) => Etat) => void, cle: string, code: 
 const ecrireStatut = (setEtat: (f: (e: Etat) => Etat) => void, cle: string, v: string) => setEtat((e) => ({ ...e, lignes: e.lignes.map((l) => (l.cle === cle ? { ...l, statut: v } : l)) }));
 const retirer = (setEtat: (f: (e: Etat) => Etat) => void, cle: string) => setEtat((e) => ({ ...e, lignes: e.lignes.filter((l) => l.cle !== cle) }));
 const manquantes = (p: Paquet, l: Ligne) => p.colonnes.filter((c) => obligatoire(c, l.statut) && !l.valeurs[c.code]).length;
+/** Ce qui manque, en mots (« téléphone, diplôme »). */
+const ceQuiManque = (p: Paquet, l: Ligne) =>
+  p.colonnes
+    .filter((c) => obligatoire(c, l.statut) && !l.valeurs[c.code])
+    .map((c) => c.libelle.toLowerCase())
+    .join(", ");
 
 /* ------------------------------ Vue grille (comme Excel) ------------------------------ */
 
 function Grille({ etat, lignes, setEtat, manques }: { etat: Etat; lignes: Ligne[]; setEtat: (f: (e: Etat) => Etat) => void; manques: boolean }) {
   const p = etat.paquet;
   const table = useRef<HTMLTableElement>(null);
+  // Photos des pièces d'une ligne (dans une fenêtre, la grille reste en place)
+  const [photosDe, setPhotosDe] = useState<string | null>(null);
+  const pieces = p.pieces ?? lire<{ pieces?: TypePiece[] }>("base:colonnes")?.pieces ?? [];
+  const lignePhotos = photosDe ? etat.lignes.find((x) => x.cle === photosDe) : undefined;
   // Entrée : la même colonne, ligne suivante (Maj+Entrée : au-dessus) ; Tab avance naturellement
   const auClavier = (r: number, k: number) => (e: React.KeyboardEvent<HTMLElement>) => {
     if (e.key !== "Enter") return;
@@ -2936,17 +3120,94 @@ function Grille({ etat, lignes, setEtat, manques }: { etat: Etat; lignes: Ligne[
                       <Trash2 className="inline size-3.5" />
                     </button>
                   )}
+                  {pieces.length > 0 && (
+                    <button type="button" title="Photographier une pièce (diplôme, acte…)" aria-label="Photographier une pièce" className="ml-2 cursor-pointer text-zinc-500 hover:text-marque-700" onClick={() => setPhotosDe(l.cle)}>
+                      <Camera className="inline size-4" />
+                      {l.photos?.length ? <span className="ml-0.5 text-[11px] font-medium text-or-700">{l.photos.length}</span> : null}
+                    </button>
+                  )}
                 </td>
               </tr>
             );
           })}
         </tbody>
       </table>
+      {lignePhotos && (
+        <Modale titre={`Pièces : ${lignePhotos.valeurs.NOMS_PRENOMS || "agent"}`} ouverte fermer={() => setPhotosDe(null)}>
+          <PhotosPieces ligne={lignePhotos} setEtat={setEtat} pieces={pieces} />
+        </Modale>
+      )}
     </div>
   );
 }
 
 /* ------------------------------ Vue « une personne à la fois » (téléphone) ------------------------------ */
+
+/** Photographier une pièce (diplôme, acte…) : gardée chiffrée sur l'appareil, envoyée avec la fiche. */
+function PhotosPieces({ ligne, setEtat, pieces }: { ligne: Ligne; setEtat: (f: (e: Etat) => Etat) => void; pieces: TypePiece[] }) {
+  const [type, setType] = useState(pieces[0]?.code ?? "");
+  const [encours, setEncours] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const entree = useRef<HTMLInputElement>(null);
+  if (!pieces.length) return null;
+  const photos = ligne.photos ?? [];
+  const libelle = (c: string) => pieces.find((x) => x.code === c)?.libelle ?? c;
+  const majPhotos = (f: (l: PhotoPiece[]) => PhotoPiece[]) => setEtat((e) => ({ ...e, lignes: e.lignes.map((l) => (l.cle === ligne.cle ? { ...l, photos: f(l.photos ?? []) } : l)) }));
+  const prendre = async (f: File) => {
+    setEncours(true);
+    setErreur(null);
+    try {
+      const image = await reduireImage(f);
+      majPhotos((l) => [...l, { cle: `ph${Date.now()}`, type: type || pieces[0].code, image, le: new Date().toISOString() }]);
+    } catch {
+      setErreur("Cette photo n’a pas pu être lue : reprenez-la.");
+    } finally {
+      setEncours(false);
+    }
+  };
+  return (
+    <div className="space-y-2 rounded-xl bg-zinc-50 p-3">
+      <div className="text-[12px] font-medium text-zinc-600">Photo d’une pièce</div>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Liste className="h-11 w-full text-[14px] sm:flex-1" value={type} onChange={(e) => setType(e.target.value)} aria-label="Quelle pièce ?" options={pieces.map((x) => ({ valeur: x.code, libelle: x.libelle }))} />
+        <Bouton chargement={encours} disabled={photos.length >= 6} onClick={() => entree.current?.click()}>
+          <Camera /> Photographier
+        </Bouton>
+      </div>
+      <input
+        ref={entree}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        aria-label="Photo de la pièce"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (f) void prendre(f);
+        }}
+      />
+      {erreur && <p className="text-[13px] text-rouge-700">{erreur}</p>}
+      {photos.length > 0 && (
+        <ul className="flex flex-wrap gap-3">
+          {photos.map((x) => (
+            <li key={x.cle} className="w-24 space-y-1 text-[11px]">
+              {/* (photo gardée sur l'appareil, pas une image du site : la balise simple suffit) */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={x.image} alt={libelle(x.type)} className="h-20 w-24 rounded-lg object-cover ring-1 ring-zinc-200" />
+              <div className="leading-tight text-zinc-600">{libelle(x.type)}</div>
+              {x.erreur ? <div className="text-rouge-700">{x.erreur}</div> : <div className="text-or-700">à envoyer</div>}
+              <button type="button" className="cursor-pointer text-rouge-600 underline" onClick={() => majPhotos((l) => l.filter((y) => y.cle !== x.cle))}>
+                Retirer
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {photos.length >= 6 && <p className="text-[12px] text-zinc-500">6 photos au plus par agent : envoyez avant d’en prendre d’autres.</p>}
+    </div>
+  );
+}
 
 function UnePersonne({ etat, lignes, setEtat, manques }: { etat: Etat; lignes: Ligne[]; setEtat: (f: (e: Etat) => Etat) => void; manques: boolean }) {
   const p = etat.paquet;
@@ -2972,23 +3233,22 @@ function UnePersonne({ etat, lignes, setEtat, manques }: { etat: Etat; lignes: L
         </Bouton>
       </div>
       <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-zinc-600">
-        <input type="checkbox" checked={seulementIncomplets} onChange={(e) => (setSeulementIncomplets(e.target.checked), setI(0))} /> Seulement ceux à qui il manque quelque chose
+        <input type="checkbox" checked={seulementIncomplets} onChange={(e) => (setSeulementIncomplets(e.target.checked), setI(0))} /> Ne montrer que les fiches incomplètes
       </label>
       <div key={l.cle} data-ligne={l.cle} data-agent={l.agentId ?? ""} className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4">
         <div className="flex flex-wrap items-center gap-2">
           {l.nouveau && <Badge ton="bleu">nouveau</Badge>}
-          {l.aControler && <Badge ton="jaune" titre="Ajouté par une équipe : il est dans la base, en attente de la décision du DG (rejeté, il disparaîtra des tablettes)">ajouté, en contrôle</Badge>}
-          {l.rattacher && !l.aussi && <Badge ton="bleu">arrive ici</Badge>}
+          {l.aControler && <Badge ton="jaune">ajouté, en attente de la DGRHAS</Badge>}
+          {l.rattacher && !l.aussi && <Badge ton="bleu">vient d’une autre école</Badge>}
           {l.aussi && <Badge ton="bleu">travaille aussi ici (2 écoles)</Badge>}
           <BadgeVu ligne={l} />
-          {memes.has(nomCle(l.valeurs.NOMS_PRENOMS)) && (
-            <Badge ton="rouge" titre={MARQUE_HOMONYME}>
-              même nom qu’une autre ligne
-            </Badge>
-          )}
-          {m ? <Badge ton="rouge">manque {m}</Badge> : <Badge ton="vert">complet</Badge>}
-          {l.erreur && !l.semblables?.length && <span className="text-[12px] text-rouge-700">{l.erreur}</span>}
         </div>
+        {/* Ce qu'il faut savoir sur cette fiche, en une phrase */}
+        <p className={cx("text-[13px]", m ? "text-or-800" : "text-marque-700")}>{m ? `Il manque : ${ceQuiManque(p, l)}.` : "Fiche complète."}</p>
+        {memes.has(nomCle(l.valeurs.NOMS_PRENOMS)) && (
+          <p className="rounded-lg bg-rouge-50 px-3 py-2 text-[13px] text-rouge-800">Une autre personne de cette école a le même nom. Si c’est la même, choisissez « Même personne qu’une autre ligne ».</p>
+        )}
+        {l.erreur && !l.semblables?.length && <p className="text-[13px] text-rouge-700">{l.erreur}</p>}
         {!!l.semblables?.length && <Semblables ligne={l} setEtat={setEtat} />}
         {!l.nouveau && (
           <div className="space-y-1">
@@ -3018,6 +3278,7 @@ function UnePersonne({ etat, lignes, setEtat, manques }: { etat: Etat; lignes: L
             <Case c={c} ligne={l} grande maj={(v) => ecrireCase(setEtat, l.cle, c.code, v)} manques={manques} />
           </label>
         ))}
+        <PhotosPieces ligne={l} setEtat={setEtat} pieces={p.pieces ?? lire<{ pieces?: TypePiece[] }>("base:colonnes")?.pieces ?? []} />
         <div className="flex flex-wrap gap-4">
           {modifiee(l) && (
             <button type="button" className="cursor-pointer text-[13px] text-zinc-600 underline hover:text-rouge-600" onClick={() => annulerLigne(setEtat, l.cle)}>
@@ -3033,7 +3294,7 @@ function UnePersonne({ etat, lignes, setEtat, manques }: { etat: Etat; lignes: L
       </div>
       <div className="flex justify-end">
         {n >= liste.length - 1 ? (
-          <span className="text-[13px] text-zinc-500">Dernier agent de la liste. Quand tout le monde est vu : « J’ai fini cette école » ci-dessous.</span>
+          <span className="text-[13px] text-zinc-500">C’était le dernier agent de la liste.</span>
         ) : (
           <Bouton variante="principal" onClick={() => setI(n + 1)}>
             Suivant <ArrowRight />
@@ -3041,7 +3302,7 @@ function UnePersonne({ etat, lignes, setEtat, manques }: { etat: Etat; lignes: L
         )}
       </div>
       <p className="flex items-center gap-1.5 text-[12px] text-zinc-500">
-        <Smartphone className="size-3.5" /> Tout est enregistré sur l’appareil à chaque frappe. <LayoutGrid className="ml-2 size-3.5" /> Sur une tablette, la grille va plus vite.
+        <Smartphone className="size-3.5" /> Tout est gardé sur l’appareil à chaque frappe, même sans réseau.
       </p>
     </div>
   );
