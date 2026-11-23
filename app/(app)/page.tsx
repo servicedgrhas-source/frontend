@@ -35,7 +35,7 @@ interface TableauBord {
   /** Mutations et autres prestations (congés, attestations…), hors demandes retirées. */
   demandes: { total: number; enCours: number; accordees: number; anomalies: number; autres: number; autresEnCours: number; enRetard: number };
   /** Base du personnel : seules les fiches acceptées comptent (pas celles en contrôle ou rejetées). */
-  personnel: { total: number; complets: number; incomplets: number; aControler: number; aDecider: number; sansStructure: number; doublons: number; parStatut: Record<string, number> };
+  personnel: { total: number; complets: number; incomplets: number; aControler: number; aDecider: number; sansStructure: number; doublons: number; parStatut: Record<string, number>; retraits?: number };
   registre: { volontaires: number; communautaires: number; sansCategorie: number; sansDepartement: number };
   /** Structures à compléter (organigramme). */
   structures?: { sansCycle: number; ecolesSansInspection: number; sansSuperieure: number };
@@ -134,7 +134,8 @@ function TableauDeBordDgrhas() {
               ]
                 .filter(([k]) => t.personnel.parStatut[k])
                 .map(([k, l]) => `${nf.format(t.personnel.parStatut[k])} ${l}`)
-                .join(" · ") || "Aucun agent pour l’instant"
+                .join(" · ") +
+                (t.personnel.retraits ? ` · hors effectifs : ${nf.format(t.personnel.retraits)} dans la base des retraits` : "") || "Aucun agent pour l’instant"
             }
           />
           <Chiffre href="/recrutement" icone={<Users />} libelle="Recrutés en cours (base des recrutés)" valeur={nf.format(t.agents.total)} detail={`Candidats suivis jusqu’à leur affectation · ${nf.format(t.agents.textesRecus)} textes reçus de la FP`} />

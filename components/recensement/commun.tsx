@@ -137,7 +137,18 @@ export interface ContentieuxAgent {
   decideLe?: string | null;
   note?: string | null;
 }
+/** Pourquoi une fiche est dans la base des retraits (23/11/2026). */
+export const MOTIFS_RETRAIT: Record<string, string> = {
+  RETIRE_DDEPPSA: "sortie de la bourse : retirée par la DDEPPSA",
+  DOUBLON_REGISTRE: "sortie de la bourse : en double dans le registre",
+  SORTI_AUTRE: "sortie de la bourse",
+  DOUBLON_BOURSIER: "en double d’un boursier qui a déjà sa fiche",
+  ABSENT_REGISTRE: "absente du registre de la bourse (pas payée en bourse)",
+};
+
 export interface AgentRecense {
+  /** Dans la base des retraits : hors des effectifs (réintégrable). */
+  retrait?: { motif: string; le: string; par: string | null } | null;
   id: number;
   numeroFiche: string | null;
   statut: string;

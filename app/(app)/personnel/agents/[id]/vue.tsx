@@ -12,6 +12,7 @@ import {
   type EtapeStatut,
   estVide,
   libelleStatut,
+  MOTIFS_RETRAIT,
   obligatoire,
   peutControlerAjout,
   peutRecenser,
@@ -262,6 +263,14 @@ function Formulaire({
       />
       <Annonce fermer={() => setMessage(null)}>{message}</Annonce>
       {precedente && <Alerte ton="vert">Fiche de {precedente} enregistrée. Saisissez l’agent suivant.</Alerte>}
+      {a?.retrait && (
+        <Alerte ton="jaune">
+          <strong>Cette fiche est dans la base des retraits</strong> ({MOTIFS_RETRAIT[a.retrait.motif] ?? a.retrait.motif}) : elle ne compte plus dans les effectifs.{" "}
+          <Link href="/personnel/retraits" className="font-medium underline">
+            Base des retraits
+          </Link>
+        </Alerte>
+      )}
       {viaRecensement && a && !a.contentieux && (
         <Alerte ton="bleu">
           <strong>Complément au recensement.</strong> Ce que vous changez est appliqué tout de suite et part au <strong>bureau du contrôle</strong>, avec l’ancienne et la nouvelle

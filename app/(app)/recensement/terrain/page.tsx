@@ -2389,7 +2389,7 @@ function ModaleIci({ ecole, fermer, oui }: { ecole: { nom: string; localite: str
 }
 
 /**
- * « L'école est-elle bien notée ? » (DG, 23/11/2026 : la base peut se tromper de localité, de
+ * « Les informations sur l'école sont-elles exactes ? » (DG, 23/11/2026 : la base peut se tromper de localité, de
  * département…) : ce que dit la base, une question simple ; s'il y a une erreur, l'équipe choisit ce
  * qu'elle voit. Rien n'est changé avant le contrôle de la DGRHAS.
  */
@@ -2435,7 +2435,7 @@ function BienNotee({ etat, setEtat }: { etat: Etat; setEtat: (f: (e: Etat) => Et
     ["Cycle", e.cycle ? (CYCLES[e.cycle as keyof typeof CYCLES] ?? e.cycle) : "non noté"],
   ];
   return (
-    <Carte titre="L’école est-elle bien notée ?">
+    <Carte titre={"Les informations sur l’école sont-elles exactes ?"}>
       <div className="space-y-3 text-[14px]">
         <div>
           <p className="mb-1 text-[13px] text-zinc-500">Notre base dit :</p>
@@ -2450,14 +2450,14 @@ function BienNotee({ etat, setEtat }: { etat: Etat; setEtat: (f: (e: Etat) => Et
         {mode === "question" && (
           <div className="grid grid-cols-2 gap-2">
             <Bouton onClick={() => setMode("juste")}>
-              <CheckCircle2 /> Oui, c’est juste
+              <CheckCircle2 /> Oui, c’est exact
             </Bouton>
             <Bouton onClick={() => setMode("corriger")}>Non, il y a une erreur</Bouton>
           </div>
         )}
         {mode === "juste" && (
           <p className="flex items-center gap-2 text-marque-700">
-            <CheckCircle2 className="size-4" /> Merci, rien à corriger.{" "}
+            <CheckCircle2 className="size-4" /> Merci, tout est exact.{" "}
             <button type="button" className="cursor-pointer text-[13px] text-zinc-500 underline" onClick={() => setMode("corriger")}>
               En fait, il y a une erreur
             </button>
@@ -2496,7 +2496,7 @@ function BienNotee({ etat, setEtat }: { etat: Etat; setEtat: (f: (e: Etat) => Et
                   setMode("juste");
                 }}
               >
-                Finalement, tout est juste
+                Finalement, tout est exact
               </button>
             )}
           </div>

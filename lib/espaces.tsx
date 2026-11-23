@@ -1,4 +1,5 @@
 import {
+  Archive,
   ArrowLeftRight,
   DatabaseBackup,
   Award,
@@ -427,6 +428,14 @@ export const ESPACES: Espace[] = [
         icone: MapPinned,
         visible: traiter,
         explication: "Les agents dont la fiche dit où ils travaillent mais qu’aucune école ne compte : les rattacher à leur école, d’un coup par lieu écrit. Et les fiches dont le lieu écrit contredit l’école.",
+      },
+      {
+        groupe: "La base du personnel",
+        href: "/personnel/retraits",
+        libelle: "Base des retraits",
+        icone: Archive,
+        visible: traiter,
+        explication: "Les volontaires et communautaires qui ne sont pas payés en bourse : hors des effectifs, consultables, et réintégrables.",
       },
       {
         groupe: "Suivi des agents",
