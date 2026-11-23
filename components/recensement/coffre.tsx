@@ -43,10 +43,22 @@ export function CoffreTerrain({ utilisateur, identifiant, children }: { utilisat
   const [occupe, setOccupe] = useState(false);
   const [proposerEmpreinte, setProposerEmpreinte] = useState(false);
 
+  // Coffre ouvert : si la DGRHAS a arrêté la mission entre-temps, ce qui attend part, puis tout s'efface
+  const apresOuverture = async () => {
+    if ((await coffre.lireMeta())?.effacementDemande) {
+      await effacerAppareilMaintenant();
+      return setEtat({ e: "efface", pourquoi: "La DGRHAS a arrêté la mission de ce compte : ce qui attendait a été envoyé (s’il y avait du réseau), puis les données de cet appareil ont été effacées." });
+    }
+    void assurerSecours();
+    setEtat({ e: "ouvert" });
+  };
+
   const relire = async () => {
     const fin = await coffre.effacerSiMissionFinie();
     if (fin === true) return setEtat({ e: "efface", pourquoi: "La mission est terminée et tout avait été envoyé : les données gardées sur cet appareil ont été effacées." });
     if (coffre.estOuvert()) return setEtat({ e: "ouvert" });
+    // Revenu en moins de 5 minutes (page actualisée, application quittée un instant) : pas de code
+    if (await coffre.reprendre(utilisateur)) return apresOuverture();
     const m = await coffre.lireMeta();
     if (!m) return setEtat({ e: "nouveau" });
     if (m.utilisateur !== utilisateur) return setEtat({ e: "autre", identifiant: m.identifiant });
@@ -68,33 +80,33 @@ export function CoffreTerrain({ utilisateur, identifiant, children }: { utilisat
     // Mission arrêtée pendant que le coffre est fermé : l'écran le dit
     const aEffacer = () => void relire();
     window.addEventListener(APPAREIL_A_EFFACER, aEffacer);
-    // Verrouillé après 10 minutes sans être regardé (appareil posé, oublié, pris)
+    // Verrouillé après 5 minutes sans être regardé (appareil posé, oublié, pris) ; moins : rien à retaper
     let cache = 0;
     const vu = () => {
-      if (document.visibilityState === "hidden") cache = Date.now();
-      else if (cache && Date.now() - cache > 10 * 60_000 && coffre.estOuvert()) void coffre.verrouiller().then(relire);
+      if (document.visibilityState === "hidden") {
+        cache = Date.now();
+        void coffre.noterVu();
+      } else if (cache && Date.now() - cache > coffre.REPRISE_MS && coffre.estOuvert()) void coffre.verrouiller().then(relire);
+      else void coffre.noterVu();
     };
     document.addEventListener("visibilitychange", vu);
-    const auRevoir = () => void coffre.vider();
+    const regarde = setInterval(() => {
+      if (document.visibilityState === "visible") void coffre.noterVu();
+    }, 30_000);
+    const auRevoir = () => {
+      void coffre.noterVu();
+      void coffre.vider();
+    };
     window.addEventListener("pagehide", auRevoir);
     return () => {
       window.removeEventListener(APPAREIL_EFFACE, efface);
       window.removeEventListener(APPAREIL_A_EFFACER, aEffacer);
       document.removeEventListener("visibilitychange", vu);
+      clearInterval(regarde);
       window.removeEventListener("pagehide", auRevoir);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [utilisateur]);
-
-  // Coffre ouvert : si la DGRHAS a arrêté la mission entre-temps, ce qui attend part, puis tout s'efface
-  const apresOuverture = async () => {
-    if ((await coffre.lireMeta())?.effacementDemande) {
-      await effacerAppareilMaintenant();
-      return setEtat({ e: "efface", pourquoi: "La DGRHAS a arrêté la mission de ce compte : ce qui attendait a été envoyé (s’il y avait du réseau), puis les données de cet appareil ont été effacées." });
-    }
-    void assurerSecours();
-    setEtat({ e: "ouvert" });
-  };
 
   const agir = async (f: () => Promise<void>) => {
     setOccupe(true);
@@ -441,7 +453,7 @@ export function ReglagesAppareil() {
       <div className="space-y-3 text-[13px]">
         <p className="text-zinc-600">
           <ShieldCheck className="mr-1 inline size-4 text-marque-600" />
-          Tout ce qui est gardé ici est chiffré : il faut votre code{empreinte ? " ou votre empreinte" : ""} pour l’ouvrir. Après 10 minutes sans regarder l’appareil, il se verrouille.
+          Tout ce qui est gardé ici est chiffré : il faut votre code{empreinte ? " ou votre empreinte" : ""} pour l’ouvrir. Page actualisée ou application quittée moins de 5 minutes : rien à retaper. Au-delà, il se verrouille.
         </p>
         {message && <Alerte ton={message.ton}>{message.texte}</Alerte>}
         <div className="flex flex-wrap gap-2">

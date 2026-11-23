@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, CloudOff, MapPinned, Download, Globe2, LayoutGrid, Plus, RefreshCw, Search, Send, Smartphone, Trash2, UserPlus, Wifi } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, ChevronDown, CloudOff, MapPinned, Download, Globe2, LayoutGrid, Plus, RefreshCw, Search, Send, Smartphone, Trash2, UserPlus, Wifi } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlocLocalisation, preleverPosition, type Position } from "@/components/ecoles/localisation";
@@ -256,8 +256,8 @@ const PRESENCES: { code: Presence; libelle: string; ton: string }[] = [
   { code: "DECEDE", libelle: "Décédé", ton: "text-rouge-700" },
   { code: "DOUBLON", libelle: "Même personne qu’une autre ligne", ton: "text-rouge-700" },
 ];
-/** « Vient aussi ici » : seulement pour un agent d'une autre école ajouté comme tel. */
-const AUSSI_ICI = { code: "AUSSI_ICI" as const, libelle: "Vient aussi ici (garde son école)", ton: "text-sky-700" };
+/** « Travaille aussi ici » : seulement pour un agent d'une autre école ajouté comme tel. */
+const AUSSI_ICI = { code: "AUSSI_ICI" as const, libelle: "Travaille aussi ici (2 écoles)", ton: "text-sky-700" };
 const libellePresence = (c: string) => (c === "AUSSI_ICI" ? AUSSI_ICI.libelle : (PRESENCES.find((x) => x.code === c)?.libelle ?? c));
 /** Les motifs les plus fréquents, en un toucher (on peut aussi écrire autre chose). */
 const MOTIFS: Partial<Record<Presence, string[]>> = {
@@ -966,98 +966,106 @@ function CarteMission({
   const terminees = mesEcoles.filter((e) => e.terminee).length;
   const aCorriger = mesEcoles.reduce((n, e) => n + e.aCorriger, 0);
   const heure = (d: string) => new Date(d).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(" ", " à ");
+  const [details, setDetails] = useState(false);
+  const pct = mesEcoles.length ? Math.round((terminees / mesEcoles.length) * 100) : 0;
   return (
-    <Carte titre={`Ma mission : ${m.code}`}>
+    <Carte>
       {progres && <ChargementBase p={progres} />}
       <div className="space-y-2.5 text-[13px]">
-        <div>
-          <strong>{m.nom}</strong> · {(m.departements ?? []).map((d) => d.nom).join(", ")}
-          {m.fin ? ` · jusqu’au ${jour(m.fin)}` : ""}
-          {m.campagne && <div className="text-zinc-500">Pour le recensement : {m.campagne}</div>}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {info?.complete ? (
-            <>
-              <Badge ton="vert">
-                <Globe2 className="mr-1 inline size-3" />
-                Base du pays sur l’appareil
-              </Badge>
-              <span className="text-zinc-500">
-                {new Intl.NumberFormat("fr-FR").format(info.ecoles)} écoles, {new Intl.NumberFormat("fr-FR").format(info.agents)} agents · {cles("ecole:").length} école(s) de votre mission à compléter
+        {/* L'essentiel, toujours visible : l'avancement et l'état de l'envoi */}
+        <button type="button" onClick={() => setDetails((d) => !d)} aria-expanded={details} className="flex w-full cursor-pointer items-center gap-2 text-left">
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px] font-semibold text-encre">Ma mission · {(m.departements ?? []).map((d) => d.nom).join(", ") || m.code}</span>
+            {info?.complete && mesEcoles.length > 0 && (
+              <span className="block text-zinc-600">
+                <strong>{terminees}</strong> école(s) terminée(s) sur {mesEcoles.length} · {pct} %
               </span>
-            </>
-          ) : (
-            <Badge ton="jaune">Base du pays pas encore complète</Badge>
-          )}
-        </div>
+            )}
+          </span>
+          <span className="flex shrink-0 items-center gap-1 text-[12px] font-medium text-marque-700">
+            {details ? "Moins" : "Détails"}
+            <ChevronDown className={cx("size-4 transition-transform", details && "rotate-180")} />
+          </span>
+        </button>
+        {info?.complete && mesEcoles.length > 0 && (
+          <div className="h-2 overflow-hidden rounded-full bg-zinc-100">
+            <div className="h-full rounded-full bg-marque-500" style={{ width: `${pct}%` }} />
+          </div>
+        )}
         {info?.complete && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
             {enSynchro ? (
               <span className="text-marque-700">
-                <RefreshCw className="mr-1 inline size-4 animate-spin" />
+                <RefreshCw className="mr-1 inline size-3.5 animate-spin" />
                 Synchronisation…
               </span>
             ) : (
-              <span className="text-zinc-600">
-                {info.synchro ? `Synchronisée le ${heure(info.synchro)}` : "Pas encore synchronisée"}
-                {synchro && (synchro.envoyees || synchro.majEcoles) ? ` · ${synchro.envoyees} ligne(s) envoyée(s), ${synchro.majEcoles} école(s) mise(s) à jour` : ""}
-              </span>
+              <span className="text-zinc-500">{info.synchro ? `À jour le ${heure(info.synchro)}` : "Pas encore synchronisée"}</span>
             )}
-            {!!synchro?.refusees && <Badge ton="rouge">{synchro.refusees} ligne(s) refusée(s) : à corriger (en rouge dans l’école)</Badge>}
+            {enAttente > 0 && <Badge ton="jaune">{enAttente} ligne(s) à envoyer</Badge>}
+            {!!synchro?.refusees && <Badge ton="rouge">{synchro.refusees} refusée(s) : à corriger</Badge>}
           </div>
         )}
-        {info?.complete && mesEcoles.length > 0 && (
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-[13px]">
-              <span>
-                <strong>{terminees}</strong> école(s) terminée(s) sur {mesEcoles.length}
-              </span>
-              <span className="text-zinc-500">{Math.round((terminees / mesEcoles.length) * 100)} %</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-zinc-100">
-              <div className="h-full rounded-full bg-marque-500" style={{ width: `${(terminees / mesEcoles.length) * 100}%` }} />
+        {!info?.complete && (
+          <div className="space-y-2">
+            <Badge ton="jaune">Base du pays pas encore sur l’appareil</Badge>
+            <div>
+              <Bouton variante="principal" disabled={!enLigne || !!progres} onClick={() => void charger(false)}>
+                <Globe2 /> {info?.faites.length ? "Reprendre le téléchargement" : "Télécharger la base du pays"}
+              </Bouton>
             </div>
           </div>
         )}
-        {aCorriger > 0 && <Alerte>{aCorriger} ligne(s) refusée(s) à l’envoi : ouvrez les écoles marquées « à corriger » ci-dessous.</Alerte>}
+        {aCorriger > 0 && <Alerte>{aCorriger} ligne(s) refusée(s) à l’envoi : ouvrez les écoles marquées « à corriger ».</Alerte>}
         {erreur && <Alerte>{erreur}</Alerte>}
-        <p className="text-[12px] text-zinc-500">
-          <MapPinned className="mr-1 inline size-3.5" />
-          Pendant la mission, votre position est relevée toutes les 5 minutes tant que cette page est ouverte, pour le suivi de la DGRHAS. Laissez la localisation activée.
-        </p>
-        {m.effacerApres &&
-          (aujourdhui > m.effacerApres ? (
-            <Alerte>
-              Votre mission est terminée.{" "}
-              {enAttente ? `${enAttente} ligne(s) ne sont pas encore envoyées : restez connecté au réseau, elles partent seules ; ensuite l’appareil s’effacera.` : "Tout est envoyé : l’appareil va s’effacer."}
-            </Alerte>
-          ) : (
-            <p className={cx(aujourdhui >= (m.fin ?? "") ? "font-medium text-rouge-700" : "text-zinc-500")}>
-              Après le {jour(m.effacerApres)}, cet appareil s’effacera de lui-même, une fois tout envoyé.
-              {enAttente ? ` ${enAttente} ligne(s) restent à envoyer.` : ""}
+        {m.effacerApres && aujourdhui > m.effacerApres && (
+          <Alerte>
+            Votre mission est terminée.{" "}
+            {enAttente ? `${enAttente} ligne(s) ne sont pas encore envoyées : restez connecté au réseau, elles partent seules ; ensuite l’appareil s’effacera.` : "Tout est envoyé : l’appareil va s’effacer."}
+          </Alerte>
+        )}
+
+        {/* Le reste, à la demande */}
+        {details && (
+          <div className="space-y-2.5 border-t border-zinc-100 pt-2.5">
+            <div>
+              <strong>{m.nom}</strong> · {m.code}
+              {m.fin ? ` · jusqu’au ${jour(m.fin)}` : ""}
+              {m.campagne && <div className="text-zinc-500">Recensement : {m.campagne}</div>}
+            </div>
+            {info?.complete && (
+              <div className="text-zinc-600">
+                <Globe2 className="mr-1 inline size-3.5 text-marque-600" />
+                Sur l’appareil : {new Intl.NumberFormat("fr-FR").format(info.ecoles)} écoles, {new Intl.NumberFormat("fr-FR").format(info.agents)} agents (tout le pays)
+                {synchro && (synchro.envoyees || synchro.majEcoles) ? ` · dernière synchro : ${synchro.envoyees} ligne(s) envoyée(s), ${synchro.majEcoles} école(s) mise(s) à jour` : ""}
+              </div>
+            )}
+            <p className="text-[12px] text-zinc-500">
+              <MapPinned className="mr-1 inline size-3.5" />
+              Votre position est relevée toutes les 5 minutes pendant la mission : laissez la localisation activée.
             </p>
-          ))}
-        <div className="flex flex-wrap gap-2">
-          {info?.complete ? (
-            <Bouton disabled={!enLigne || enSynchro} onClick={() => void synchroniser()} title="Envoyer ce qui attend et reprendre ce qui a changé (cela se fait aussi tout seul toutes les 5 minutes)">
-              <RefreshCw /> Synchroniser maintenant
-            </Bouton>
-          ) : (
-            <Bouton variante="principal" disabled={!enLigne || !!progres} onClick={() => void charger(false)}>
-              <Globe2 /> {info?.faites.length ? "Reprendre le téléchargement" : "Télécharger la base du pays"}
-            </Bouton>
-          )}
-          {info?.complete && (
-            <Bouton
-              variante="discret"
-              disabled={!enLigne || !!progres || enSynchro}
-              onClick={() => confirm("Tout retélécharger ? Les lignes qui attendent l’envoi sont gardées.") && void charger(true)}
-              title="Si la base de l’appareil semble fausse : tout reprendre (les lignes en attente ne sont pas touchées)"
-            >
-              Tout retélécharger
-            </Bouton>
-          )}
-        </div>
+            {m.effacerApres && aujourdhui <= m.effacerApres && (
+              <p className={cx("text-[12px]", aujourdhui >= (m.fin ?? "") ? "font-medium text-rouge-700" : "text-zinc-500")}>
+                Après le {jour(m.effacerApres)}, cet appareil s’effacera de lui-même, une fois tout envoyé.
+              </p>
+            )}
+            {info?.complete && (
+              <div className="flex flex-wrap gap-2">
+                <Bouton disabled={!enLigne || enSynchro} onClick={() => void synchroniser()} title="Envoyer ce qui attend et reprendre ce qui a changé (cela se fait aussi tout seul toutes les 5 minutes)">
+                  <RefreshCw /> Synchroniser maintenant
+                </Bouton>
+                <Bouton
+                  variante="discret"
+                  disabled={!enLigne || !!progres || enSynchro}
+                  onClick={() => confirm("Tout retélécharger ? Les lignes qui attendent l’envoi sont gardées.") && void charger(true)}
+                  title="Si la base de l’appareil semble fausse : tout reprendre (les lignes en attente ne sont pas touchées)"
+                >
+                  Tout retélécharger
+                </Bouton>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </Carte>
   );
@@ -1176,7 +1184,6 @@ function ChoixEcole({ enLigne, ouvrir, recenseur, mission }: { enLigne: boolean;
     <div className="mx-auto max-w-3xl space-y-4">
       <EnTete
         titre="Recensement sur le terrain"
-        sousTitre="École par école, ou toute une inspection : on télécharge (avec la connexion), on complète sur place, même sans réseau, puis on envoie. Conseil : « Ajouter à l’écran d’accueil » (menu du navigateur) pour l’ouvrir comme une application, même hors réseau."
         actions={<Reseau enLigne={enLigne} />}
       />
       {erreur && <Alerte>{erreur}</Alerte>}
@@ -1920,16 +1927,19 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
     <div className="space-y-3">
       <div className="sticky top-[var(--barre-haut,0px)] z-10 -mx-1 space-y-2 rounded-b-2xl bg-white/95 px-1 pt-1 pb-2 shadow-sm backdrop-blur">
         <div className="flex flex-wrap items-center gap-2">
-          <Bouton variante="discret" onClick={retour}>
-            <ArrowLeft /> Écoles
+          <Bouton variante="discret" onClick={retour} aria-label="Écoles" title="Revenir à la liste des écoles">
+            <ArrowLeft /> <span className="hidden sm:inline">Écoles</span>
           </Bouton>
-          <div className="min-w-[60%] flex-1">
-            <div className="text-[16px] leading-tight font-semibold sm:truncate sm:text-[17px]">{p.ecole.nom}</div>
+          <div className="min-w-0 flex-1">
+            <div className="line-clamp-2 text-[15px] leading-tight font-semibold sm:truncate sm:text-[17px]">{p.ecole.nom}</div>
             <div className="truncate text-[12px] text-zinc-500">
               {[p.ecole.inspection, p.ecole.localite, `${p.ecole.posteResponsable} : ${p.ecole.responsable ?? "poste vacant"}`].filter(Boolean).join(" · ")}
             </div>
           </div>
-          <Reseau enLigne={enLigne} />
+          {/* (sur téléphone : seulement quand il n'y a pas de réseau) */}
+          <span className={cx(enLigne && "hidden sm:inline-flex")}>
+            <Reseau enLigne={enLigne} />
+          </span>
           <Bouton variante="principal" chargement={envoi} disabled={!enLigne || (!enAttente.length && !positionsEnAttente)} onClick={envoyer} title={enLigne ? "Envoyer ce qui a été complété" : "Envoi possible au retour de la connexion"}>
             <Send /> Envoyer{enAttente.length + positionsEnAttente ? ` (${enAttente.length + positionsEnAttente})` : ""}
           </Bouton>
@@ -1940,7 +1950,7 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
             changer={setOnglet}
             options={[
               { valeur: "personnel", libelle: `Personnel (${etat.lignes.length})` },
-              { valeur: "ecole", libelle: "L’école : bâtiments, salles, classes" },
+              { valeur: "ecole", libelle: <><span className="sm:hidden">L’école</span><span className="hidden sm:inline">L’école : bâtiments, salles, classes</span></> },
             ]}
           />
           {onglet === "personnel" && (
@@ -1956,15 +1966,18 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
               >
                 {nonVusSeulement ? `Seulement les ${agentsEcole.length - nVus} pas encore vus · tout montrer` : `Vus : ${nVus} / ${agentsEcole.length}`}
               </button>
-              <Segments
-                valeur={vue}
-                changer={setVue}
-                options={[
-                  { valeur: "grille", libelle: "Grille" },
-                  { valeur: "fiche", libelle: "Une personne à la fois" },
-                ]}
-              />
-              <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-zinc-600">
+              {/* (sur téléphone : une personne à la fois, la grille ne tient pas) */}
+              <span className="hidden sm:inline-flex">
+                <Segments
+                  valeur={vue}
+                  changer={setVue}
+                  options={[
+                    { valeur: "grille", libelle: "Grille" },
+                    { valeur: "fiche", libelle: "Une personne à la fois" },
+                  ]}
+                />
+              </span>
+              <label className="hidden cursor-pointer items-center gap-1.5 text-[12px] text-zinc-600 sm:flex">
                 <input type="checkbox" checked={manques} onChange={(e) => setManques(e.target.checked)} /> Montrer ce qui manque
               </label>
             </>
@@ -2269,7 +2282,7 @@ function AjoutAgent({ etat, setEtat, enLigne }: { etat: Etat; setEtat: (f: (e: E
           ))}
           {/* L'annuaire du département (même sans réseau) */}
           {dansAnnuaire.map((l) => (
-            <div key={`an${l[0]}`} data-resultat={l[0]} className="flex flex-wrap items-center gap-2 rounded-lg bg-zinc-50 px-3 py-1.5">
+            <div key={`an${l[0]}`} data-resultat={l[0]} className="flex flex-col gap-2 rounded-xl bg-zinc-50 px-3 py-2 sm:flex-row sm:items-center">
               <span className="min-w-0 flex-1">
                 <strong>{l[1]}</strong>{" "}
                 <span className="text-zinc-500">
@@ -2281,25 +2294,15 @@ function AjoutAgent({ etat, setEtat, enLigne }: { etat: Etat; setEtat: (f: (e: E
                   {l[3] ? ` · ${l[3]}` : ""}
                 </span>
               </span>
-              <Bouton onClick={() => void rattacher(l[0], l)} title="Il travaille dans cette école : sa fiche y sera rattachée à l’envoi (pas de nouvelle fiche)">
-                <Plus /> Il travaille ici
-              </Bouton>
-              <Bouton variante="discret" onClick={() => void rattacher(l[0], l, true)} title="Il travaille dans son école ET vient aussi ici (vacations, deux écoles) : son école ne change pas">
-                Vient aussi ici
-              </Bouton>
+              <ChoixRattachement ici={() => void rattacher(l[0], l)} aussi={() => void rattacher(l[0], l, true)} />
             </div>
           ))}
           {(enLigne && q.trim().length >= 3 ? resultats.filter((r) => !dansAnnuaire.some((l) => l[0] === r.id)) : []).map((r) => (
-            <div key={r.id} data-resultat={r.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-zinc-50 px-3 py-1.5">
+            <div key={r.id} data-resultat={r.id} className="flex flex-col gap-2 rounded-xl bg-zinc-50 px-3 py-2 sm:flex-row sm:items-center">
               <span className="min-w-0 flex-1">
                 <strong>{r.nomComplet}</strong> <span className="text-zinc-500">· {r.structureNom ?? "sans école"}{r.matricule ? ` · ${r.matricule}` : ""}</span>
               </span>
-              <Bouton onClick={() => void rattacher(r.id)} title="Il travaille dans cette école : sa fiche y sera rattachée à l’envoi">
-                <Plus /> Il travaille ici
-              </Bouton>
-              <Bouton variante="discret" onClick={() => void rattacher(r.id, undefined, true)} title="Il travaille dans son école ET vient aussi ici (vacations, deux écoles) : son école ne change pas">
-                Vient aussi ici
-              </Bouton>
+              <ChoixRattachement ici={() => void rattacher(r.id)} aussi={() => void rattacher(r.id, undefined, true)} />
             </div>
           ))}
           {cherche && <p className="text-zinc-500">Recherche dans la base…</p>}
@@ -2310,6 +2313,23 @@ function AjoutAgent({ etat, setEtat, enLigne }: { etat: Etat; setEtat: (f: (e: E
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Un agent d'ailleurs trouvé dans cette école : il y est passé (sa fiche vient ici), ou il partage
+ * son temps entre son école et celle-ci (sa fiche ne bouge pas).
+ */
+function ChoixRattachement({ ici, aussi }: { ici: () => void; aussi: () => void }) {
+  return (
+    <span className="grid shrink-0 grid-cols-2 gap-2 sm:flex">
+      <Bouton onClick={ici} title="Il a quitté son ancienne école : sa fiche sera rattachée à celle-ci à l’envoi (pas de nouvelle fiche)">
+        <Plus /> Travaille ici
+      </Bouton>
+      <Bouton variante="discret" onClick={aussi} title="Il travaille dans deux écoles (la sienne et celle-ci, par exemple des heures de cours ici) : son école ne change pas">
+        Aussi ici (2 écoles)
+      </Bouton>
+    </span>
   );
 }
 
@@ -2695,7 +2715,7 @@ function Grille({ etat, lignes, setEtat, manques }: { etat: Etat; lignes: Ligne[
                     {l.nouveau && <Badge ton="bleu">nouveau</Badge>}
                     {l.aControler && <Badge ton="jaune" titre="Ajouté par une équipe : il est dans la base, en attente de la décision du DG (rejeté, il disparaîtra des tablettes)">ajouté, en contrôle</Badge>}
                     {l.rattacher && !l.aussi && <Badge ton="bleu">arrive ici</Badge>}
-                    {l.aussi && <Badge ton="bleu">vient aussi ici</Badge>}
+                    {l.aussi && <Badge ton="bleu">travaille aussi ici (2 écoles)</Badge>}
                     <BadgeVu ligne={l} />
                     {memes.has(nomCle(l.valeurs.NOMS_PRENOMS)) && (
                       <Badge ton="rouge" titre={MARQUE_HOMONYME}>
@@ -2780,7 +2800,7 @@ function UnePersonne({ etat, lignes, setEtat, manques }: { etat: Etat; lignes: L
           {l.nouveau && <Badge ton="bleu">nouveau</Badge>}
           {l.aControler && <Badge ton="jaune" titre="Ajouté par une équipe : il est dans la base, en attente de la décision du DG (rejeté, il disparaîtra des tablettes)">ajouté, en contrôle</Badge>}
           {l.rattacher && !l.aussi && <Badge ton="bleu">arrive ici</Badge>}
-          {l.aussi && <Badge ton="bleu">vient aussi ici</Badge>}
+          {l.aussi && <Badge ton="bleu">travaille aussi ici (2 écoles)</Badge>}
           <BadgeVu ligne={l} />
           {memes.has(nomCle(l.valeurs.NOMS_PRENOMS)) && (
             <Badge ton="rouge" titre={MARQUE_HOMONYME}>

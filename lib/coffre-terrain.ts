@@ -250,6 +250,7 @@ export async function creer(code: string, utilisateur: string, identifiant: stri
   memoire.clear();
   reprendreAnciennes();
   prevenir();
+  void preparerReprise();
 }
 
 /** Ouvrir avec le code. Un code faux compte un essai ; au 10e, tout est effacé. */
@@ -274,6 +275,7 @@ export async function ouvrirAvecCode(code: string): Promise<{ ok: true } | { ok:
   reprendreAnciennes();
   void garderDurablement();
   prevenir();
+  void preparerReprise();
   return { ok: true };
 }
 
@@ -315,6 +317,7 @@ export async function ouvrirAvecSecours(cleB64: string) {
   await chargerTout(cleDonnees);
   void garderDurablement();
   prevenir();
+  void preparerReprise();
 }
 
 /** Le nombre de lignes qui attendent l'envoi (gardé à part : lu même coffre fermé). */
@@ -338,8 +341,72 @@ export async function changerCode(code: string) {
   await ecrireMeta({ ...m, sel, tours: TOURS, parCode: await chiffrer(await cleDuCode(code.trim(), sel, TOURS), brute), essais: 0 });
 }
 
+/* ------------------------------ Reprise sans code (moins de 5 minutes) ------------------------------ */
+
+/**
+ * Page actualisée, application quittée un instant, mauvais geste : pas de code à retaper si l'on
+ * revient en moins de 5 minutes. La clé des données est alors enfermée avec une clé propre à
+ * l'appareil (impossible à extraire du navigateur), à côté de l'heure où l'appareil a été vu
+ * ouvert pour la dernière fois. Plus de 5 minutes dehors, ou « Verrouiller » : la reprise est
+ * oubliée, il faut le code ou le doigt.
+ */
+export const REPRISE_MS = 5 * 60_000;
+interface Reprise {
+  cle: CryptoKey;
+  enferme: Chiffre;
+  utilisateur: string;
+  vu: number;
+}
+const lireReprise = () => requete<Reprise | undefined>(META, "readonly", (s) => s.get("reprise")).catch(() => undefined);
+const oublierReprise = () => requete(META, "readwrite", (s) => s.delete("reprise")).catch(() => undefined);
+
+async function preparerReprise() {
+  try {
+    const m = await lireMeta();
+    if (!m || !brute) return;
+    const cle = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+    const r: Reprise = { cle, enferme: await chiffrer(cle, brute), utilisateur: m.utilisateur, vu: Date.now() };
+    await requete(META, "readwrite", (s) => s.put(r, "reprise"));
+  } catch {
+    /* pas de reprise : le code sera demandé */
+  }
+}
+
+/** L'appareil est ouvert et regardé maintenant (appelé régulièrement, et en quittant la page). */
+export async function noterVu() {
+  if (!cleDonnees) return;
+  const r = await lireReprise();
+  if (!r) return void preparerReprise();
+  await requete(META, "readwrite", (s) => s.put({ ...r, vu: Date.now() }, "reprise")).catch(() => undefined);
+}
+
+/** Rouvrir sans code si l'appareil a été quitté il y a moins de 5 minutes. */
+export async function reprendre(utilisateur: string): Promise<boolean> {
+  if (cleDonnees) return true;
+  const r = await lireReprise();
+  if (!r) return false;
+  const ecart = Date.now() - r.vu;
+  if (r.utilisateur !== utilisateur || ecart > REPRISE_MS || ecart < -60_000) {
+    await oublierReprise();
+    return false;
+  }
+  try {
+    brute = new Uint8Array(await dechiffrer(r.cle, r.enferme));
+  } catch {
+    await oublierReprise();
+    return false;
+  }
+  cleDonnees = await cleBrute(brute);
+  await chargerTout(cleDonnees);
+  reprendreAnciennes();
+  prevenir();
+  await noterVu();
+  return true;
+}
+
 /** Fermer (verrouiller) : la mémoire est vidée, il faudra le code ou le doigt. */
 export async function verrouiller() {
+  await oublierReprise();
   await vider();
   cleDonnees = null;
   brute = null;
@@ -549,4 +616,5 @@ export async function ouvrirAvecEmpreinte() {
   await chargerTout(cleDonnees);
   reprendreAnciennes();
   prevenir();
+  void preparerReprise();
 }
