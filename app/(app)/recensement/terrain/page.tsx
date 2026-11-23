@@ -479,60 +479,88 @@ const nombreOuNull = (v: string) => (v.trim() && Number.isFinite(Number(v)) ? Nu
  * être dans un bâtiment ajouté ici), puis les classes (qui peuvent être dans une salle ajoutée
  * ici). Ce qui part rejoint les listes de l'école ; ce que le serveur refuse reste, avec le motif.
  */
+/**
+ * Envoyer une liste, 6 à la fois (et non une par une : 25 salles = 25 attentes du réseau). Rend,
+ * dans l'ordre, la réponse ou l'erreur de chacune.
+ */
+async function parSix<T, R>(liste: T[], f: (x: T) => Promise<R>): Promise<({ ok: true; r: R } | { ok: false; erreur: unknown })[]> {
+  const res: ({ ok: true; r: R } | { ok: false; erreur: unknown })[] = new Array(liste.length);
+  let suivant = 0;
+  const ouvrier = async () => {
+    while (suivant < liste.length) {
+      const k = suivant++;
+      try {
+        res[k] = { ok: true, r: await f(liste[k]) };
+      } catch (erreur) {
+        res[k] = { ok: false, erreur };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(6, liste.length) }, ouvrier));
+  return res;
+}
+
 async function envoyerBatiments(e: Etat): Promise<Etat> {
   let etat = e;
   const ecole = e.paquet.ecole.id;
-  for (const b of e.nouveauxBatiments ?? []) {
-    try {
-      const r = await api.post<{ id: number; nom: string }>(`/recensement/terrain/ecole/${ecole}/batiments`, {
-        cle: b.cle,
-        nom: b.nom,
-        type: b.type || null,
-        etat: b.etat || "BON",
-        ...(b.position ? { latitude: b.position.latitude, longitude: b.position.longitude, precision: b.position.precisionGps } : {}),
-      });
+  // Une coupure du réseau : ce qui est parti est gardé ; le reste repartira (le serveur
+  // reconnaît un renvoi : pas de doublon)
+  let coupure: unknown = null;
+  const batiments = e.nouveauxBatiments ?? [];
+  const rb = await parSix(batiments, (b) =>
+    api.post<{ id: number; nom: string }>(`/recensement/terrain/ecole/${ecole}/batiments`, {
+      cle: b.cle,
+      nom: b.nom,
+      type: b.type || null,
+      etat: b.etat || "BON",
+      ...(b.position ? { latitude: b.position.latitude, longitude: b.position.longitude, precision: b.position.precisionGps } : {}),
+    }),
+  );
+  batiments.forEach((b, k) => {
+    const x = rb[k];
+    if (x.ok) {
+      const r = x.r;
       etat = {
         ...etat,
-        nouveauxBatiments: (etat.nouveauxBatiments ?? []).filter((x) => x.cle !== b.cle),
+        nouveauxBatiments: (etat.nouveauxBatiments ?? []).filter((y) => y.cle !== b.cle),
         // (les salles mises dans ce bâtiment le désignent maintenant par son numéro)
-        nouvellesSalles: (etat.nouvellesSalles ?? []).map((x) => (x.batiment === `cle:${b.cle}` ? { ...x, batiment: `id:${r.id}` } : x)),
+        nouvellesSalles: (etat.nouvellesSalles ?? []).map((y) => (y.batiment === `cle:${b.cle}` ? { ...y, batiment: `id:${r.id}` } : y)),
         paquet: { ...etat.paquet, batiments: [...etat.paquet.batiments, { id: r.id, nom: b.nom, type: b.type || null, etat: b.etat || "BON", latitude: b.position?.latitude ?? null, longitude: b.position?.longitude ?? null, precisionGps: b.position?.precisionGps ?? null, localiseLe: b.position?.localiseLe ?? null }] },
       };
-    } catch (x) {
-      if (!refusParServeur(x)) throw x;
-      etat = { ...etat, nouveauxBatiments: (etat.nouveauxBatiments ?? []).map((y) => (y.cle === b.cle ? { ...y, erreur: (x as Error).message } : y)) };
-    }
-  }
-  for (const x of etat.nouvellesSalles ?? []) {
-    // (dans un bâtiment ajouté ici et pas encore parti : elle attend avec lui)
-    if (x.batiment.startsWith("cle:")) continue;
-    try {
-      const r = await api.post<{ id: number }>(`/recensement/terrain/ecole/${ecole}/salles`, { cle: x.cle, nom: x.nom, batimentId: x.batiment ? Number(x.batiment.slice(3)) : null, type: x.type || null, capacite: nombreOuNull(x.capacite), etat: x.etat || "BON" });
+    } else if (refusParServeur(x.erreur)) etat = { ...etat, nouveauxBatiments: (etat.nouveauxBatiments ?? []).map((y) => (y.cle === b.cle ? { ...y, erreur: (x.erreur as Error).message } : y)) };
+    else coupure ??= x.erreur;
+  });
+  // (dans un bâtiment ajouté ici et pas encore parti : la salle attend avec lui)
+  const salles = (etat.nouvellesSalles ?? []).filter((x) => !x.batiment.startsWith("cle:"));
+  const rs = await parSix(salles, (x) => api.post<{ id: number }>(`/recensement/terrain/ecole/${ecole}/salles`, { cle: x.cle, nom: x.nom, batimentId: x.batiment ? Number(x.batiment.slice(3)) : null, type: x.type || null, capacite: nombreOuNull(x.capacite), etat: x.etat || "BON" }));
+  salles.forEach((x, k) => {
+    const y = rs[k];
+    if (y.ok) {
+      const r = y.r;
       etat = {
         ...etat,
-        nouvellesSalles: (etat.nouvellesSalles ?? []).filter((y) => y.cle !== x.cle),
+        nouvellesSalles: (etat.nouvellesSalles ?? []).filter((z) => z.cle !== x.cle),
         nouvellesClasses: (etat.nouvellesClasses ?? []).map((c) => (c.salle === `cle:${x.cle}` ? { ...c, salle: `id:${r.id}` } : c)),
         paquet: { ...etat.paquet, listeSalles: [...(etat.paquet.listeSalles ?? []), { id: r.id, nom: x.nom, batimentId: x.batiment ? Number(x.batiment.slice(3)) : null, type: x.type || null, capacite: nombreOuNull(x.capacite), etat: x.etat || "BON" }] },
       };
-    } catch (err) {
-      if (!refusParServeur(err)) throw err;
-      etat = { ...etat, nouvellesSalles: (etat.nouvellesSalles ?? []).map((y) => (y.cle === x.cle ? { ...y, erreur: (err as Error).message } : y)) };
-    }
-  }
-  for (const c of etat.nouvellesClasses ?? []) {
-    if (c.salle.startsWith("cle:")) continue;
-    try {
-      const r = await api.post<{ id: number }>(`/recensement/terrain/ecole/${ecole}/classes`, { cle: c.cle, niveau: c.niveau, nom: c.nom, salleId: c.salle ? Number(c.salle.slice(3)) : null, effectif: nombreOuNull(c.effectif), effectifFilles: nombreOuNull(c.effectifFilles) });
+    } else if (refusParServeur(y.erreur)) etat = { ...etat, nouvellesSalles: (etat.nouvellesSalles ?? []).map((z) => (z.cle === x.cle ? { ...z, erreur: (y.erreur as Error).message } : z)) };
+    else coupure ??= y.erreur;
+  });
+  const classes = (etat.nouvellesClasses ?? []).filter((c) => !c.salle.startsWith("cle:"));
+  const rc = await parSix(classes, (c) => api.post<{ id: number }>(`/recensement/terrain/ecole/${ecole}/classes`, { cle: c.cle, niveau: c.niveau, nom: c.nom, salleId: c.salle ? Number(c.salle.slice(3)) : null, effectif: nombreOuNull(c.effectif), effectifFilles: nombreOuNull(c.effectifFilles) }));
+  classes.forEach((c, k) => {
+    const y = rc[k];
+    if (y.ok) {
+      const r = y.r;
       etat = {
         ...etat,
-        nouvellesClasses: (etat.nouvellesClasses ?? []).filter((y) => y.cle !== c.cle),
+        nouvellesClasses: (etat.nouvellesClasses ?? []).filter((z) => z.cle !== c.cle),
         paquet: { ...etat.paquet, listeClasses: [...(etat.paquet.listeClasses ?? []), { id: r.id, niveau: c.niveau, nom: c.nom, salleId: c.salle ? Number(c.salle.slice(3)) : null, effectif: nombreOuNull(c.effectif), effectifFilles: nombreOuNull(c.effectifFilles) }] },
       };
-    } catch (err) {
-      if (!refusParServeur(err)) throw err;
-      etat = { ...etat, nouvellesClasses: (etat.nouvellesClasses ?? []).map((y) => (y.cle === c.cle ? { ...y, erreur: (err as Error).message } : y)) };
-    }
-  }
+    } else if (refusParServeur(y.erreur)) etat = { ...etat, nouvellesClasses: (etat.nouvellesClasses ?? []).map((z) => (z.cle === c.cle ? { ...z, erreur: (y.erreur as Error).message } : z)) };
+    else coupure ??= y.erreur;
+  });
+  if (coupure) throw coupure;
   return etat;
 }
 /** Ajouts sur l'école (bâtiments, salles, classes) en attente d'envoi. */
@@ -726,6 +754,12 @@ function synchroniserBase(): Promise<ResultatSynchro | null> {
     // Les positions relevées sans réseau partent d'abord (suivi depuis Brazzaville)
     await envoyerPositions().catch(() => undefined);
     await envoyerPropositions().catch(() => undefined);
+    try {
+      const c = await api.get<{ colonnes: Colonne[]; statuts: Paquet["statuts"]; referentiels?: RefsEcole }>("/recensement/terrain/colonnes");
+      ecrire("base:colonnes", { colonnes: c.colonnes, statuts: c.statuts, referentiels: c.referentiels });
+    } catch {
+      /* gardées telles quelles */
+    }
     let envoyees = 0;
     let refusees = 0;
     for (const k of cles("ecole:")) {
@@ -967,6 +1001,9 @@ function CarteMission({
   const aCorriger = mesEcoles.reduce((n, e) => n + e.aCorriger, 0);
   const heure = (d: string) => new Date(d).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(" ", " à ");
   const [details, setDetails] = useState(false);
+  const nf = (n: number) => new Intl.NumberFormat("fr-FR").format(n);
+  const national = lire<Annuaire>("annuaire:national");
+  const sansEcole = national?.lignes.filter((l) => !l[2]).length ?? 0;
   const pct = mesEcoles.length ? Math.round((terminees / mesEcoles.length) * 100) : 0;
   return (
     <Carte>
@@ -1036,7 +1073,8 @@ function CarteMission({
             {info?.complete && (
               <div className="text-zinc-600">
                 <Globe2 className="mr-1 inline size-3.5 text-marque-600" />
-                Sur l’appareil : {new Intl.NumberFormat("fr-FR").format(info.ecoles)} écoles, {new Intl.NumberFormat("fr-FR").format(info.agents)} agents (tout le pays)
+                Sur l’appareil : {nf(info.ecoles)} écoles, {nf(national?.lignes.length ?? info.agents)} agents (tout le pays)
+                {sansEcole ? `, dont ${nf(sansEcole)} sans école dans la base : on les trouve en tapant leur nom` : ""}
                 {synchro && (synchro.envoyees || synchro.majEcoles) ? ` · dernière synchro : ${synchro.envoyees} ligne(s) envoyée(s), ${synchro.majEcoles} école(s) mise(s) à jour` : ""}
               </div>
             )}
@@ -1572,7 +1610,7 @@ function AjoutBatiment({ refs, ajouter }: { refs?: RefsEcole; ajouter: (b: { cle
  */
 function Infrastructure({ etat, setEtat, enregistrerPosition }: { etat: Etat; setEtat: (f: (e: Etat) => Etat) => void; enregistrerPosition: (batiment: number | null) => (pos: { latitude: number | null; longitude: number | null; precision?: number | null }) => Promise<void> }) {
   const p = etat.paquet;
-  const refs = p.referentiels ?? lire<{ referentiels?: RefsEcole }>("base:colonnes")?.referentiels;
+  const refs = lire<{ referentiels?: RefsEcole }>("base:colonnes")?.referentiels ?? p.referentiels;
   const etats = refs?.etats ?? [{ code: "BON", libelle: "Bon état" }];
   const libelleEtat = (c: string) => etats.find((x) => x.code === c)?.libelle ?? c;
   const salles = p.listeSalles ?? [];
@@ -1719,7 +1757,7 @@ function Infrastructure({ etat, setEtat, enregistrerPosition }: { etat: Etat; se
 
       <Carte titre={`Classes ${refs?.annee ?? ""} (${classes.length + nc.length})${eleves ? ` · ${eleves} élèves dont ${filles} filles` : ""}`}>
         {!niveaux.length ? (
-          <Alerte ton="jaune">Le cycle de cette école n’est pas connu (ou ses niveaux ne sont pas réglés) : les classes ne peuvent pas être ajoutées ici. Dites-le dans « Ce que vous constatez sur l’école » ; la DGRHAS corrigera.</Alerte>
+          <Alerte ton="jaune">{!refs?.niveaux || !Object.keys(refs.niveaux).length ? "La liste des niveaux n’est pas encore sur cet appareil : avec le réseau, revenez aux écoles et touchez « Synchroniser maintenant » (dans « Détails »), puis rouvrez l’école." : "Le cycle de cette école n’est pas connu dans la base : les classes ne peuvent pas être ajoutées ici. Dites-le dans « Ce que vous constatez sur l’école » (ex. « c’est un collège ») ; la DGRHAS corrigera."}</Alerte>
         ) : (
           <div className="space-y-2">
             {erreurClasse && <Alerte>{erreurClasse}</Alerte>}
@@ -1802,6 +1840,8 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
   const [manques, setManques] = useState(true);
   const [nonVusSeulement, setNonVusSeulement] = useState(false);
   const [fin, setFin] = useState(false);
+  // Terminer l'école l'envoie aussitôt (avec le réseau), une fois l'état mis à jour
+  const [envoyerApres, setEnvoyerApres] = useState(false);
   const [envoi, setEnvoi] = useState(false);
   const [message, setMessage] = useState<{ ton: "vert" | "rouge" | "jaune"; texte: string } | null>(null);
   // « Envoyé » s'efface seul (le bandeau reste court) ; un refus ou une erreur reste jusqu'au prochain envoi
@@ -1811,6 +1851,20 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
     return () => clearTimeout(t);
   }, [message]);
 
+  // « Terminer et envoyer » : l'envoi part une fois l'école marquée terminée (état à jour)
+  const envoyerDernier = useRef<() => Promise<void>>(async () => undefined);
+  // Oublié de toucher « Envoyer » : l'école ouverte part toute seule toutes les 2 minutes
+  const envoiAuto = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    const t = setInterval(() => envoiAuto.current(), 2 * 60_000);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => {
+    if (!envoyerApres) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setEnvoyerApres(false);
+    void envoyerDernier.current();
+  }, [envoyerApres]);
   if (!etat) return <Alerte>Cette école n’est plus sur l’appareil.</Alerte>;
   const p = etat.paquet;
   const enAttente = aEnvoyer(etat);
@@ -1879,6 +1933,15 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
     } finally {
       setEnvoi(false);
     }
+  };
+
+  // (la dernière version d'« envoyer », pour l'envoi demandé par « Terminer et envoyer », et
+  // pour l'envoi automatique : seulement s'il y a quelque chose à envoyer et pas d'envoi en cours)
+  // eslint-disable-next-line react-hooks/refs
+  envoyerDernier.current = envoyer;
+  // eslint-disable-next-line react-hooks/refs
+  envoiAuto.current = () => {
+    if (navigator.onLine && !envoi && (enAttente.length || positionsEnAttente)) void envoyer();
   };
 
   const recharger = async () => {
@@ -2018,8 +2081,7 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
           )}
           {!terminee && (
             <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
-              <span className="text-[12px] text-zinc-500">Quand vous avez vu tout le monde et l’école :</span>
-              <Bouton variante="principal" onClick={() => setFin(true)}>
+              <Bouton onClick={() => setFin(true)}>
                 <CheckCircle2 /> J’ai fini cette école
               </Bouton>
             </div>
@@ -2034,8 +2096,8 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
           </Carte>
           <Infrastructure etat={etat} setEtat={setEtat} enregistrerPosition={enregistrerPosition} />
           {!terminee && (
-            <div className="flex justify-end">
-              <Bouton variante="principal" onClick={() => setFin(true)}>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Bouton onClick={() => setFin(true)}>
                 <CheckCircle2 /> J’ai fini cette école
               </Bouton>
             </div>
@@ -2062,7 +2124,8 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
           terminer={(etatEcole) => {
             setFin(false);
             setEtat((e) => ({ ...e, constatEcole: { ...e.constatEcole, etat: e.constatEcole?.etat ?? e.paquet.ecole.constat?.etat ?? etatEcole, terminee: true } }));
-            setMessage({ ton: "vert", texte: enLigne ? "École terminée. Appuyez sur « Envoyer » pour l’envoyer maintenant." : "École terminée : elle partira avec « Envoyer », au retour du réseau." });
+            if (enLigne) setEnvoyerApres(true);
+            else setMessage({ ton: "jaune", texte: "École terminée et gardée sur l’appareil : elle partira toute seule au retour du réseau (ou avec « Envoyer »)." });
           }}
         />
       )}
@@ -2183,7 +2246,7 @@ function FinEcole({ etat, fermer, voirNonVus, terminer }: { etat: Etat; fermer: 
         <div className="flex flex-wrap justify-end gap-2 pt-1">
           <Bouton onClick={fermer}>Revenir compléter</Bouton>
           <Bouton variante="principal" onClick={() => terminer(etatEcole)}>
-            <CheckCircle2 /> {nonVus.length ? "Terminer quand même" : "Terminer l’école"}
+            <CheckCircle2 /> {nonVus.length ? "Terminer quand même et envoyer" : "Terminer et envoyer"}
           </Bouton>
         </div>
       </div>

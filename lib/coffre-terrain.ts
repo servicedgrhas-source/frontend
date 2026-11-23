@@ -366,6 +366,8 @@ async function preparerReprise() {
     if (!m || !brute) return;
     const cle = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
     const r: Reprise = { cle, enferme: await chiffrer(cle, brute), utilisateur: m.utilisateur, vu: Date.now() };
+    // (verrouillé entre-temps : pas de reprise)
+    if (!cleDonnees) return;
     await requete(META, "readwrite", (s) => s.put(r, "reprise"));
   } catch {
     /* pas de reprise : le code sera demandé */
@@ -377,6 +379,7 @@ export async function noterVu() {
   if (!cleDonnees) return;
   const r = await lireReprise();
   if (!r) return void preparerReprise();
+  if (!cleDonnees) return;
   await requete(META, "readwrite", (s) => s.put({ ...r, vu: Date.now() }, "reprise")).catch(() => undefined);
 }
 
@@ -406,11 +409,12 @@ export async function reprendre(utilisateur: string): Promise<boolean> {
 
 /** Fermer (verrouiller) : la mémoire est vidée, il faudra le code ou le doigt. */
 export async function verrouiller() {
-  await oublierReprise();
   await vider();
   cleDonnees = null;
   brute = null;
   memoire.clear();
+  // (après : plus rien ne peut la recréer, la clé n'est plus en mémoire)
+  await oublierReprise();
   prevenir();
 }
 
