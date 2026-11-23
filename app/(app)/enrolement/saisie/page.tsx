@@ -493,7 +493,7 @@ export default function SaisieEnrolement() {
                   />
                 )}
                 {etat === "NON_RETENU" && <BarreExport chemin="/enrolement/listes/non-retenus" impression="/impression/enrolement-non-retenus" nom={`Liste des non retenus ${campagne.annee}`} filtres={{ campagne: campagne.id }} erreur={(m) => setMessage({ ton: "rouge", texte: m })} />}
-                {etat !== "NON_RETENU" && (
+                {etat !== "NON_RETENU" && !saisieSeule && (
                   <Bouton disabled={!choisis.length} onClick={() => setChangerNote(lignes.filter((l) => coches.has(l.id)))}>
                     <ArrowRightLeft /> Changer de note ({choisis.length})
                   </Bouton>
@@ -576,7 +576,7 @@ export default function SaisieEnrolement() {
                         {e.diplomeLibelle}
                         <div className="text-zinc-400">{[e.promotion, e.specialite].filter(Boolean).join(" · ")}</div>
                         {e.noteAutre && <div className="mt-0.5 inline-flex rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 ring-1 ring-sky-200" title={e.noteAutre}>→ {e.noteAutre.split(" (")[0]}</div>}
-                        {!e.noteId && (
+                        {!e.noteId && !saisieSeule && (
                           <button type="button" className="ml-1 mt-0.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-marque-700 ring-1 ring-marque-200 hover:bg-marque-50" onClick={() => setChangerNote([e])}>
                             <ArrowRightLeft className="size-3" aria-hidden /> Changer de note
                           </button>
