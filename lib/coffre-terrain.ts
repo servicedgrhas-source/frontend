@@ -39,8 +39,14 @@ export interface MetaCoffre {
   tours: number;
   /** La clé des données, enfermée avec la clé tirée du code. */
   parCode: Chiffre;
-  /** La même, enfermée avec le secret de l'empreinte (si activée). */
-  parEmpreinte?: Chiffre & { credential: Uint8Array; selPrf: Uint8Array };
+  /**
+   * La même, ouverte par l'empreinte (si activée). Deux façons, selon le téléphone :
+   * - « secret » : le lecteur donne un secret tiré du doigt (WebAuthn PRF), qui l'enferme ;
+   * - « verrou » : le lecteur ne sait pas donner de secret (beaucoup d'Android) : une clé propre à
+   *   l'appareil, impossible à extraire, l'enferme, et ne sert qu'après que le téléphone a vérifié
+   *   le doigt.
+   */
+  parEmpreinte?: Chiffre & { credential: Uint8Array; selPrf: Uint8Array; mode?: "secret" | "verrou"; cleAppareil?: CryptoKey };
   essais: number;
   /** Compte à qui appartient ce coffre (un autre compte ne l'ouvre pas). */
   utilisateur: string;
@@ -439,7 +445,17 @@ interface ResultatPrf {
   prf?: { enabled?: boolean; results?: { first?: ArrayBuffer } };
 }
 
-async function secretEmpreinte(credential: Uint8Array, selPrf: Uint8Array): Promise<ArrayBuffer> {
+/** Les refus du lecteur (doigt annulé, délai dépassé…) : en français, jamais le message du navigateur. */
+function enFrancais(e: unknown): Error {
+  const nom = (e as DOMException)?.name;
+  if (nom === "NotAllowedError" || nom === "AbortError") return new Error("Empreinte annulée ou non reconnue : réessayez, ou tapez votre code.");
+  if (nom === "InvalidStateError") return new Error("Cette empreinte est déjà enregistrée pour ce site : retirez-la, puis réactivez-la.");
+  if (nom === "NotSupportedError" || nom === "SecurityError") return new Error("Ce téléphone ne permet pas l’empreinte pour ce site : le code suffit.");
+  return e instanceof Error && /[éèàù’]/.test(e.message) ? e : new Error("L’empreinte n’a pas fonctionné : tapez votre code.");
+}
+
+/** Le téléphone vérifie le doigt (et donne le secret, s'il sait). */
+async function verifierDoigt(credential: Uint8Array, selPrf: Uint8Array): Promise<ArrayBuffer | null> {
   const a = (await navigator.credentials.get({
     publicKey: {
       challenge: aleatoire(32),
@@ -449,43 +465,61 @@ async function secretEmpreinte(credential: Uint8Array, selPrf: Uint8Array): Prom
       timeout: 60_000,
       extensions: { prf: { eval: { first: selPrf as BufferSource } } } as AuthenticationExtensionsClientInputs,
     },
+  }).catch((e: unknown) => {
+    throw enFrancais(e);
   })) as PublicKeyCredential | null;
-  const r = a?.getClientExtensionResults() as ResultatPrf | undefined;
-  const s = r?.prf?.results?.first;
-  if (!s) throw new Error("Ce lecteur d’empreinte ne sait pas ouvrir les données chiffrées : le code reste demandé.");
-  return s;
+  if (!a) throw new Error("Empreinte non reconnue : réessayez, ou tapez votre code.");
+  const r = a.getClientExtensionResults() as ResultatPrf | undefined;
+  return r?.prf?.results?.first ?? null;
 }
 
 /**
- * Activer l'empreinte (coffre ouvert) : l'appareil crée une clé d'accès liée au doigt, puis en
- * tire un secret qui enferme la clé des données. Rien ne part au serveur.
+ * Activer l'empreinte (coffre ouvert). L'appareil crée une clé d'accès liée au doigt. S'il sait en
+ * tirer un secret, ce secret enferme la clé des données ; sinon, une clé propre à l'appareil
+ * (impossible à extraire) l'enferme, et ne sert qu'après la vérification du doigt. Rien ne part
+ * au serveur.
  */
 export async function activerEmpreinte() {
   const m = await lireMeta();
   if (!m || !brute) throw new Error("Ouvrez d’abord les données de l’appareil.");
   if (!(await lecteurDisponible())) throw new Error("Cet appareil n’a pas de lecteur d’empreinte utilisable : le code suffit.");
+  const selPrf = aleatoire(32);
   const c = (await navigator.credentials.create({
     publicKey: {
       challenge: aleatoire(32),
-      rp: { name: "SIGRHAS-MEPPSA — recensement", id: location.hostname },
+      rp: { name: "SIGRHAS-MEPPSA", id: location.hostname },
       user: { id: aleatoire(16) as BufferSource, name: m.identifiant, displayName: m.identifiant },
       pubKeyCredParams: [
         { type: "public-key", alg: -7 },
         { type: "public-key", alg: -257 },
       ],
-      authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required", residentKey: "discouraged" },
+      // (une « clé d'accès » : c'est elle qui sait donner un secret sur la plupart des téléphones)
+      authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required", residentKey: "preferred" },
       timeout: 60_000,
-      extensions: { prf: {} } as AuthenticationExtensionsClientInputs,
+      extensions: { prf: { eval: { first: selPrf as BufferSource } } } as AuthenticationExtensionsClientInputs,
     },
+  }).catch((e: unknown) => {
+    throw enFrancais(e);
   })) as PublicKeyCredential | null;
   if (!c) throw new Error("Empreinte non enregistrée.");
-  const r = c.getClientExtensionResults() as ResultatPrf;
-  if (r.prf && r.prf.enabled === false) throw new Error("Ce lecteur d’empreinte ne sait pas ouvrir les données chiffrées : le code reste demandé.");
   const credential = new Uint8Array(c.rawId);
-  const selPrf = aleatoire(32);
-  const secret = await secretEmpreinte(credential, selPrf);
-  const k = await cleBrute(secret);
-  await ecrireMeta({ ...m, parEmpreinte: { ...(await chiffrer(k, brute)), credential, selPrf } });
+  const r = c.getClientExtensionResults() as ResultatPrf;
+  // Le secret tout de suite (certains téléphones), sinon en demandant le doigt une fois
+  let secret: ArrayBuffer | null = r.prf?.results?.first ?? null;
+  if (!secret && r.prf?.enabled !== false) {
+    try {
+      secret = await verifierDoigt(credential, selPrf);
+    } catch {
+      secret = null;
+    }
+  }
+  if (secret) {
+    await ecrireMeta({ ...m, parEmpreinte: { ...(await chiffrer(await cleBrute(secret), brute)), credential, selPrf, mode: "secret" } });
+    return;
+  }
+  // Pas de secret : le verrou de l'appareil
+  const cleAppareil = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+  await ecrireMeta({ ...m, parEmpreinte: { ...(await chiffrer(cleAppareil, brute)), credential, selPrf, mode: "verrou", cleAppareil } });
 }
 
 export async function retirerEmpreinte() {
@@ -501,8 +535,15 @@ export async function retirerEmpreinte() {
 export async function ouvrirAvecEmpreinte() {
   const m = await lireMeta();
   if (!m?.parEmpreinte) throw new Error("L’empreinte n’est pas activée sur cet appareil.");
-  const secret = await secretEmpreinte(m.parEmpreinte.credential, m.parEmpreinte.selPrf);
-  brute = new Uint8Array(await dechiffrer(await cleBrute(secret), m.parEmpreinte));
+  const e = m.parEmpreinte;
+  const secret = await verifierDoigt(e.credential, e.selPrf);
+  if (e.mode === "verrou") {
+    if (!e.cleAppareil) throw new Error("L’empreinte doit être activée de nouveau : tapez votre code.");
+    brute = new Uint8Array(await dechiffrer(e.cleAppareil, e));
+  } else {
+    if (!secret) throw new Error("Ce téléphone n’a pas donné le secret de l’empreinte : tapez votre code, puis réactivez l’empreinte.");
+    brute = new Uint8Array(await dechiffrer(await cleBrute(secret), e));
+  }
   if (m.essais) await ecrireMeta({ ...m, essais: 0 });
   cleDonnees = await cleBrute(brute);
   await chargerTout(cleDonnees);

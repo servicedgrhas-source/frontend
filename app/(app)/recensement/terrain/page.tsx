@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, CloudOff, MapPinned, Download, ExternalLink, Globe2, LayoutGrid, Plus, RefreshCw, Search, Send, Smartphone, Trash2, UserPlus, Wifi } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, CloudOff, MapPinned, Download, Globe2, LayoutGrid, Plus, RefreshCw, Search, Send, Smartphone, Trash2, UserPlus, Wifi } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlocLocalisation, preleverPosition, type Position } from "@/components/ecoles/localisation";
@@ -50,11 +50,58 @@ interface Paquet {
     /** Ce qu'une équipe a déjà constaté sur l'école pendant ce recensement (terminée…). */
     constat?: ConstatEcoleServeur | null;
   };
-  batiments: (Position & { id: number; nom: string })[];
+  batiments: (Position & { id: number; nom: string; type?: string | null; etat?: string })[];
+  /** Les salles de l'école, et les classes ouvertes cette année. */
+  listeSalles?: SalleT[];
+  listeClasses?: ClasseT[];
+  /** Ce que proposent les formulaires de l'école (niveaux par cycle, types, états, année). */
+  referentiels?: RefsEcole;
   colonnes: Colonne[];
   statuts: { code: string; libelle: string }[];
   /** aControler : ajouté par une équipe, effectif tout de suite, en attente de la décision du DG. */
   agents: { id: number; nomComplet: string; statut: string; matricule: string | null; donnees: Record<string, unknown>; aControler?: boolean; constat?: ConstatAgent | null }[];
+}
+interface SalleT {
+  id: number;
+  nom: string;
+  batimentId: number | null;
+  type: string | null;
+  capacite: number | null;
+  etat: string;
+}
+interface ClasseT {
+  id: number;
+  niveau: string;
+  nom: string;
+  salleId: number | null;
+  effectif: number | null;
+  effectifFilles: number | null;
+}
+interface RefsEcole {
+  annee: string;
+  niveaux: Record<string, { code: string; libelle: string }[]>;
+  typesSalle: string[];
+  typesBatiment: string[];
+  etats: { code: string; libelle: string }[];
+}
+/** Une salle vue sur place, en attente d'envoi ; son bâtiment : « id:12 » (déjà en base) ou « cle:b… » (ajouté ici). */
+interface NouvelleSalle {
+  cle: string;
+  nom: string;
+  batiment: string;
+  type: string;
+  capacite: string;
+  etat: string;
+  erreur?: string;
+}
+interface NouvelleClasse {
+  cle: string;
+  niveau: string;
+  nom: string;
+  salle: string;
+  effectif: string;
+  effectifFilles: string;
+  erreur?: string;
 }
 /** Le constat déjà envoyé pour un agent dans cette école, pendant ce recensement. */
 interface ConstatAgent {
@@ -118,7 +165,9 @@ interface Etat {
   /** Positions prélevées sans connexion, envoyées avec le reste. */
   positions: { ecole?: Position; batiments: Record<string, Position> };
   /** Bâtiments ou annexes ajoutés sur place, en attente d'envoi (avec leur position si prélevée). */
-  nouveauxBatiments?: { cle: string; nom: string; position?: Position }[];
+  nouveauxBatiments?: { cle: string; nom: string; type?: string; etat?: string; position?: Position; erreur?: string }[];
+  nouvellesSalles?: NouvelleSalle[];
+  nouvellesClasses?: NouvelleClasse[];
   /** Ce que l'équipe note sur l'école (état, nom sur place, responsable, « terminée »), à envoyer. */
   constatEcole?: ConstatEcoleSaisi;
 }
@@ -266,6 +315,7 @@ interface Departement {
   departementId: number;
   colonnes: Colonne[];
   statuts: { code: string; libelle: string }[];
+  referentiels?: RefsEcole;
   structures: EcoleListe[];
   paquets: Omit<Paquet, "colonnes" | "statuts">[];
 }
@@ -387,7 +437,7 @@ export interface ResultatSynchro {
   refusees: number;
   majEcoles: number;
 }
-const enAttenteEcole = (e: Etat) => aEnvoyer(e).length > 0 || !!e.positions.ecole || Object.keys(e.positions.batiments).length > 0 || !!e.nouveauxBatiments?.length || !!e.constatEcole;
+const enAttenteEcole = (e: Etat) => aEnvoyer(e).length > 0 || !!e.positions.ecole || Object.keys(e.positions.batiments).length > 0 || infraEnAttente(e) > 0 || !!e.constatEcole;
 /** L'école est terminée (par cette équipe, en attente d'envoi, ou par une équipe déjà) . */
 const ecoleTerminee = (e: Etat) => (e.constatEcole?.terminee !== undefined ? e.constatEcole.terminee : !!e.paquet.ecole.constat?.termineeLe);
 
@@ -420,22 +470,73 @@ async function envoyerConstatEcole(e: Etat): Promise<Etat> {
   };
 }
 
-/** Envoyer les bâtiments ajoutés sur place : ceux qui partent rejoignent la liste de l'école. */
+/** Une erreur du serveur sur un ajout (valeur refusée) : gardée sur la ligne ; sans réseau : on arrête. */
+const refusParServeur = (e: unknown) => e instanceof ErreurApi && e.statut !== 0;
+const nombreOuNull = (v: string) => (v.trim() && Number.isFinite(Number(v)) ? Number(v) : null);
+
+/**
+ * Envoyer ce qui a été ajouté sur place dans l'école : les bâtiments, puis les salles (qui peuvent
+ * être dans un bâtiment ajouté ici), puis les classes (qui peuvent être dans une salle ajoutée
+ * ici). Ce qui part rejoint les listes de l'école ; ce que le serveur refuse reste, avec le motif.
+ */
 async function envoyerBatiments(e: Etat): Promise<Etat> {
   let etat = e;
+  const ecole = e.paquet.ecole.id;
   for (const b of e.nouveauxBatiments ?? []) {
-    const r = await api.post<{ id: number; nom: string }>(`/recensement/terrain/ecole/${e.paquet.ecole.id}/batiments`, {
-      nom: b.nom,
-      ...(b.position ? { latitude: b.position.latitude, longitude: b.position.longitude, precision: b.position.precisionGps } : {}),
-    });
-    etat = {
-      ...etat,
-      nouveauxBatiments: (etat.nouveauxBatiments ?? []).filter((x) => x.cle !== b.cle),
-      paquet: { ...etat.paquet, batiments: [...etat.paquet.batiments, { id: r.id, nom: r.nom, latitude: b.position?.latitude ?? null, longitude: b.position?.longitude ?? null, precisionGps: b.position?.precisionGps ?? null, localiseLe: b.position?.localiseLe ?? null }] },
-    };
+    try {
+      const r = await api.post<{ id: number; nom: string }>(`/recensement/terrain/ecole/${ecole}/batiments`, {
+        cle: b.cle,
+        nom: b.nom,
+        type: b.type || null,
+        etat: b.etat || "BON",
+        ...(b.position ? { latitude: b.position.latitude, longitude: b.position.longitude, precision: b.position.precisionGps } : {}),
+      });
+      etat = {
+        ...etat,
+        nouveauxBatiments: (etat.nouveauxBatiments ?? []).filter((x) => x.cle !== b.cle),
+        // (les salles mises dans ce bâtiment le désignent maintenant par son numéro)
+        nouvellesSalles: (etat.nouvellesSalles ?? []).map((x) => (x.batiment === `cle:${b.cle}` ? { ...x, batiment: `id:${r.id}` } : x)),
+        paquet: { ...etat.paquet, batiments: [...etat.paquet.batiments, { id: r.id, nom: b.nom, type: b.type || null, etat: b.etat || "BON", latitude: b.position?.latitude ?? null, longitude: b.position?.longitude ?? null, precisionGps: b.position?.precisionGps ?? null, localiseLe: b.position?.localiseLe ?? null }] },
+      };
+    } catch (x) {
+      if (!refusParServeur(x)) throw x;
+      etat = { ...etat, nouveauxBatiments: (etat.nouveauxBatiments ?? []).map((y) => (y.cle === b.cle ? { ...y, erreur: (x as Error).message } : y)) };
+    }
+  }
+  for (const x of etat.nouvellesSalles ?? []) {
+    // (dans un bâtiment ajouté ici et pas encore parti : elle attend avec lui)
+    if (x.batiment.startsWith("cle:")) continue;
+    try {
+      const r = await api.post<{ id: number }>(`/recensement/terrain/ecole/${ecole}/salles`, { cle: x.cle, nom: x.nom, batimentId: x.batiment ? Number(x.batiment.slice(3)) : null, type: x.type || null, capacite: nombreOuNull(x.capacite), etat: x.etat || "BON" });
+      etat = {
+        ...etat,
+        nouvellesSalles: (etat.nouvellesSalles ?? []).filter((y) => y.cle !== x.cle),
+        nouvellesClasses: (etat.nouvellesClasses ?? []).map((c) => (c.salle === `cle:${x.cle}` ? { ...c, salle: `id:${r.id}` } : c)),
+        paquet: { ...etat.paquet, listeSalles: [...(etat.paquet.listeSalles ?? []), { id: r.id, nom: x.nom, batimentId: x.batiment ? Number(x.batiment.slice(3)) : null, type: x.type || null, capacite: nombreOuNull(x.capacite), etat: x.etat || "BON" }] },
+      };
+    } catch (err) {
+      if (!refusParServeur(err)) throw err;
+      etat = { ...etat, nouvellesSalles: (etat.nouvellesSalles ?? []).map((y) => (y.cle === x.cle ? { ...y, erreur: (err as Error).message } : y)) };
+    }
+  }
+  for (const c of etat.nouvellesClasses ?? []) {
+    if (c.salle.startsWith("cle:")) continue;
+    try {
+      const r = await api.post<{ id: number }>(`/recensement/terrain/ecole/${ecole}/classes`, { cle: c.cle, niveau: c.niveau, nom: c.nom, salleId: c.salle ? Number(c.salle.slice(3)) : null, effectif: nombreOuNull(c.effectif), effectifFilles: nombreOuNull(c.effectifFilles) });
+      etat = {
+        ...etat,
+        nouvellesClasses: (etat.nouvellesClasses ?? []).filter((y) => y.cle !== c.cle),
+        paquet: { ...etat.paquet, listeClasses: [...(etat.paquet.listeClasses ?? []), { id: r.id, niveau: c.niveau, nom: c.nom, salleId: c.salle ? Number(c.salle.slice(3)) : null, effectif: nombreOuNull(c.effectif), effectifFilles: nombreOuNull(c.effectifFilles) }] },
+      };
+    } catch (err) {
+      if (!refusParServeur(err)) throw err;
+      etat = { ...etat, nouvellesClasses: (etat.nouvellesClasses ?? []).map((y) => (y.cle === c.cle ? { ...y, erreur: (err as Error).message } : y)) };
+    }
   }
   return etat;
 }
+/** Ajouts sur l'école (bâtiments, salles, classes) en attente d'envoi. */
+const infraEnAttente = (e: Etat) => (e.nouveauxBatiments?.length ?? 0) + (e.nouvellesSalles?.length ?? 0) + (e.nouvellesClasses?.length ?? 0);
 /** Une école trouvée sur place mais absente de la liste : gardée sur l'appareil jusqu'à l'envoi. */
 interface PropositionEcole {
   cle: string;
@@ -488,9 +589,9 @@ function rangerPaquet(brut: PaquetBase, mission: boolean): boolean {
     ecrire(`base:${id}`, brut);
     return true;
   }
-  const champs = lire<{ colonnes: Colonne[]; statuts: Paquet["statuts"] }>("base:colonnes");
+  const champs = lire<{ colonnes: Colonne[]; statuts: Paquet["statuts"]; referentiels?: RefsEcole }>("base:colonnes");
   if (!champs) return false;
-  const p: Paquet = { ...brut, colonnes: champs.colonnes, statuts: champs.statuts };
+  const p: Paquet = { ...brut, colonnes: champs.colonnes, statuts: champs.statuts, referentiels: champs.referentiels };
   const deja = lire<Etat>(`ecole:${id}`);
   ecrire(`base:${id}`, null);
   if (!deja) {
@@ -502,7 +603,7 @@ function rangerPaquet(brut: PaquetBase, mission: boolean): boolean {
   const parAgent = new Map(attente.filter((l) => l.agentId !== null).map((l) => [l.agentId as number, l]));
   const presents = new Set(p.agents.map((a) => a.id));
   const lignes = [...attente.filter((l) => l.agentId === null || !presents.has(l.agentId)), ...p.agents.map((a) => parAgent.get(a.id) ?? nouvelleLigne(p, a))];
-  ecrire(`ecole:${id}`, { paquet: p, lignes, positions: deja.positions, nouveauxBatiments: deja.nouveauxBatiments, constatEcole: deja.constatEcole } satisfies Etat);
+  ecrire(`ecole:${id}`, { paquet: p, lignes, positions: deja.positions, nouveauxBatiments: deja.nouveauxBatiments, nouvellesSalles: deja.nouvellesSalles, nouvellesClasses: deja.nouvellesClasses, constatEcole: deja.constatEcole } satisfies Etat);
   return true;
 }
 
@@ -555,7 +656,7 @@ async function telechargerBase(suivre: (p: ProgresBase) => void, toutReprendre =
     if (mission) {
       // Les colonnes du formulaire, les écoles et inspections du département (recherche d'une école)
       const r = await api.get<Departement>(`/recensement/terrain/departement/${d.id}`);
-      ecrire("base:colonnes", { colonnes: r.colonnes, statuts: r.statuts });
+      ecrire("base:colonnes", { colonnes: r.colonnes, statuts: r.statuts, referentiels: r.referentiels });
       ecrire("ecoles", [...(lire<EcoleListe[]>("ecoles") ?? []).filter((e) => e.departementId !== d.id), ...r.structures]);
       for (const p of r.paquets) rangerPaquet(p, true);
       ecrire(`departement:${d.id}`, { le: r.telechargeLe, ecoles: r.paquets.length, agents: r.paquets.reduce((n, p) => n + p.agents.length, 0), gardees: 0 });
@@ -564,8 +665,8 @@ async function telechargerBase(suivre: (p: ProgresBase) => void, toutReprendre =
     } else {
       // Les colonnes sont nécessaires avant tout (une mission sans département ? on les prend ici)
       if (!lire("base:colonnes")) {
-        const c = await api.get<{ colonnes: Colonne[]; statuts: Paquet["statuts"] }>("/recensement/terrain/colonnes");
-        ecrire("base:colonnes", { colonnes: c.colonnes, statuts: c.statuts });
+        const c = await api.get<{ colonnes: Colonne[]; statuts: Paquet["statuts"]; referentiels?: RefsEcole }>("/recensement/terrain/colonnes");
+        ecrire("base:colonnes", { colonnes: c.colonnes, statuts: c.statuts, referentiels: c.referentiels });
       }
       await prendreEcoles(reste, plan.mission, (paquets) => {
         paquets.forEach((p) => faites.add(p.ecole.id));
@@ -1009,6 +1110,16 @@ function ChoixEcole({ enLigne, ouvrir, recenseur, mission }: { enLigne: boolean;
   const index = useMemo(() => ecoles.map((e) => ({ item: e, prepare: preparer(`${e.nom} ${e.localite ?? ""}`, true) as Prepare })), [ecoles]);
   const resultats = q.trim().length >= 2 ? chercher(q, index.filter((x) => !cycle || x.item.type === "INSPECTION" || x.item.cycle === cycle), 40, true) : [];
   const trouvees = resultats.filter((x) => x.item.type === "ETABLISSEMENT").slice(0, 25).map((x) => x.item);
+  // Recenseur : une école du pays hors de sa mission (base sur l'appareil) ; on dit où elle est
+  const indexPays = useMemo(() => {
+    if (!recenseur) return [];
+    return idsBase()
+      .map((k) => lire<PaquetBase>(k)?.ecole)
+      .filter((e): e is NonNullable<typeof e> => !!e)
+      .map((e) => ({ item: e, prepare: preparer(`${e.nom} ${e.localite ?? ""}`, true) as Prepare }));
+  }, [recenseur]);
+  const ailleurs = recenseur && q.trim().length >= 3 && trouvees.length < 3 ? chercher(q, indexPays, 5, true).map((x) => x.item) : [];
+  const maMission = lire<MissionT>("mission");
   const inspections = resultats.filter((x) => x.item.type === "INSPECTION").slice(0, 3).map((x) => x.item);
   const ecolesDe = (i: number) => ecoles.filter((e) => e.type === "ETABLISSEMENT" && e.parentId === i);
   const [zone, setZone] = useState<{ fait: number; total: number } | null>(null);
@@ -1078,7 +1189,18 @@ function ChoixEcole({ enLigne, ouvrir, recenseur, mission }: { enLigne: boolean;
           </div>
           <Segments valeur={cycle} changer={setCycle} options={[{ valeur: "", libelle: "Tous les cycles" }, ...Object.entries(CYCLES).map(([valeur, libelle]) => ({ valeur, libelle }))]} />
           {!ecoles.length && <p className="text-[13px] text-zinc-500">{enLigne ? "Chargement des écoles…" : "La liste des écoles n’a pas encore été chargée sur cet appareil : connectez-vous une première fois."}</p>}
-          {q.trim().length >= 2 && !trouvees.length && !inspections.length && <Vide>Aucune école ne ressemble à « {q.trim()} ». Essayez un autre mot du nom ou le village. Si elle n’existe vraiment pas dans la liste, signalez-la ci-dessous.</Vide>}
+          {q.trim().length >= 2 && !trouvees.length && !inspections.length && !ailleurs.length && <Vide>Aucune école ne ressemble à « {q.trim()} ». Essayez un autre mot du nom ou le village. Si elle n’existe vraiment pas dans la liste, signalez-la ci-dessous.</Vide>}
+          {!!ailleurs.length && (
+            <div className="space-y-1.5 rounded-xl bg-or-50 p-3 text-[13px] ring-1 ring-or-200">
+              <div className="font-medium text-or-800">Hors de votre mission ({(maMission?.departements ?? []).map((d) => d.nom).join(", ")}) :</div>
+              {ailleurs.map((e) => (
+                <div key={e.id} className="text-zinc-700">
+                  <strong>{e.nom}</strong> · {[e.localite, e.departementId ? nomDepartement(e.departementId) : null].filter(Boolean).join(" · ")}
+                </div>
+              ))}
+              <div className="text-[12px] text-or-800">Vous ne pouvez pas la recenser. Si vous y êtes vraiment envoyé, appelez la DGRHAS : elle ajoute ce département à votre mission.</div>
+            </div>
+          )}
           {!recenseur && inspections.map((i) => (
             <div key={i.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-marque-200 bg-marque-50/60 px-3 py-2.5">
               <MapPinned className="size-5 text-marque-600" />
@@ -1366,9 +1488,35 @@ function ConstatsEcoles({ enLigne }: { enLigne: boolean }) {
 
 /* ------------------------------ 2. Travailler dans l'école ------------------------------ */
 
-/** Un bâtiment ou une annexe découvert sur place : son nom, et sa position prélevée ici (facultatif). */
-function AjoutBatiment({ ajouter }: { ajouter: (b: { cle: string; nom: string; position?: Position }) => void }) {
+/** Un bâtiment ou une annexe découvert sur place : son nom, son type, son état, et sa position prélevée ici. */
+/**
+ * Un type pris dans la liste de la DGRHAS, ou « Autre (préciser) » : le recenseur écrit ce qu'il
+ * voit, rien n'est refusé faute d'être dans la liste.
+ */
+function TypeAvecAutre({ valeur, changer, types, vide, nom, className }: { valeur: string; changer: (v: string) => void; types: string[]; vide: string; nom: string; className?: string }) {
+  const [autre, setAutre] = useState(() => !!valeur && !types.includes(valeur));
+  return (
+    <div className="space-y-2">
+      <Liste
+        className={className}
+        aria-label={nom}
+        value={autre ? "__autre" : valeur}
+        onChange={(e) => {
+          const v = e.target.value;
+          setAutre(v === "__autre");
+          changer(v === "__autre" ? "" : v);
+        }}
+        options={[{ valeur: "", libelle: vide }, ...types.map((t) => ({ valeur: t, libelle: t })), { valeur: "__autre", libelle: "Autre (préciser)…" }]}
+      />
+      {autre && <Saisie autoFocus className={className} value={valeur} onChange={(e) => changer(e.target.value)} placeholder="Écrivez le type vu sur place" aria-label={`${nom} : préciser`} />}
+    </div>
+  );
+}
+
+function AjoutBatiment({ refs, ajouter }: { refs?: RefsEcole; ajouter: (b: { cle: string; nom: string; type?: string; etat?: string; position?: Position }) => void }) {
   const [nom, setNom] = useState("");
+  const [type, setType] = useState("");
+  const [etatB, setEtatB] = useState("BON");
   const [encours, setEncours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const valider = async (avecPosition: boolean) => {
@@ -1386,13 +1534,17 @@ function AjoutBatiment({ ajouter }: { ajouter: (b: { cle: string; nom: string; p
       }
       setEncours(false);
     }
-    ajouter({ cle: `b${Date.now()}`, nom: nom.trim(), position });
+    ajouter({ cle: `b${Date.now()}`, nom: nom.trim(), type: type || undefined, etat: etatB, position });
     setNom("");
   };
   return (
     <div className="mb-3 space-y-2">
+      <Saisie value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nom : Bâtiment B, Annexe…" className="h-11 w-full text-[15px]" aria-label="Nom du nouveau bâtiment" />
+      <div className="grid gap-2 sm:grid-cols-2">
+        <TypeAvecAutre className="h-11 w-full text-[14px]" valeur={type} changer={setType} types={refs?.typesBatiment ?? []} vide="Type (facultatif)" nom="Type de bâtiment" />
+        <Liste className="h-11 w-full text-[14px]" value={etatB} onChange={(e) => setEtatB(e.target.value)} aria-label="État du bâtiment" options={(refs?.etats ?? [{ code: "BON", libelle: "Bon état" }]).map((x) => ({ valeur: x.code, libelle: x.libelle }))} />
+      </div>
       <div className="flex flex-wrap gap-2">
-        <Saisie value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nouveau bâtiment : Bâtiment B, Annexe…" className="h-10 min-w-0 flex-1" aria-label="Nom du nouveau bâtiment" />
         <Bouton variante="principal" chargement={encours} disabled={!nom.trim()} onClick={() => void valider(true)} title="Vous êtes devant ce bâtiment : sa position est prise ici">
           <MapPinned /> Ajouter, avec la position d’ici
         </Bouton>
@@ -1406,8 +1558,218 @@ function AjoutBatiment({ ajouter }: { ajouter: (b: { cle: string; nom: string; p
   );
 }
 
+/**
+ * L'école comme elle est : ses bâtiments (une annexe est un bâtiment de l'école, même ailleurs),
+ * ses salles (dans quel bâtiment, type, capacité, état), et ses classes de l'année (niveau,
+ * effectifs, salle). Tout se saisit sur place, même sans réseau, et part avec « Envoyer ».
+ */
+function Infrastructure({ etat, setEtat, enregistrerPosition }: { etat: Etat; setEtat: (f: (e: Etat) => Etat) => void; enregistrerPosition: (batiment: number | null) => (pos: { latitude: number | null; longitude: number | null; precision?: number | null }) => Promise<void> }) {
+  const p = etat.paquet;
+  const refs = p.referentiels ?? lire<{ referentiels?: RefsEcole }>("base:colonnes")?.referentiels;
+  const etats = refs?.etats ?? [{ code: "BON", libelle: "Bon état" }];
+  const libelleEtat = (c: string) => etats.find((x) => x.code === c)?.libelle ?? c;
+  const salles = p.listeSalles ?? [];
+  const classes = p.listeClasses ?? [];
+  const nb = etat.nouveauxBatiments ?? [];
+  const ns = etat.nouvellesSalles ?? [];
+  const nc = etat.nouvellesClasses ?? [];
+  const niveaux = refs?.niveaux[p.ecole.cycle ?? ""] ?? [];
+  const libelleNiveau = (c: string) => niveaux.find((x) => x.code === c)?.libelle ?? c;
+  // Les bâtiments et les salles qu'on peut choisir (ceux de la base, et ceux ajoutés ici)
+  const choixBatiments = [...p.batiments.map((b) => ({ valeur: `id:${b.id}`, libelle: b.nom })), ...nb.map((b) => ({ valeur: `cle:${b.cle}`, libelle: `${b.nom} (ajouté ici)` }))];
+  const choixSalles = [...salles.map((x) => ({ valeur: `id:${x.id}`, libelle: x.nom })), ...ns.map((x) => ({ valeur: `cle:${x.cle}`, libelle: `${x.nom} (ajoutée ici)` }))];
+  const nomBatiment = (id: number | null) => p.batiments.find((b) => b.id === id)?.nom;
+  const nomSalle = (id: number | null) => salles.find((x) => x.id === id)?.nom;
+  const eleves = classes.reduce((n, c) => n + (c.effectif ?? 0), 0) + nc.reduce((n, c) => n + (Number(c.effectif) || 0), 0);
+  const filles = classes.reduce((n, c) => n + (c.effectifFilles ?? 0), 0) + nc.reduce((n, c) => n + (Number(c.effectifFilles) || 0), 0);
+
+  // Une salle
+  const [salle, setSalle] = useState<Omit<NouvelleSalle, "cle">>({ nom: "", batiment: "", type: "", capacite: "", etat: "BON" });
+  const [combien, setCombien] = useState("");
+  const ajouterSalles = () => {
+    const n = Math.min(50, Math.max(1, Number(combien) || 1));
+    const base = salles.length + ns.length;
+    const liste: NouvelleSalle[] = Array.from({ length: n }, (_, k) => ({ ...salle, cle: `s${Date.now()}${k}`, nom: n === 1 && salle.nom.trim() ? salle.nom.trim() : `Salle ${base + k + 1}` }));
+    setEtat((e) => ({ ...e, nouvellesSalles: [...(e.nouvellesSalles ?? []), ...liste] }));
+    setSalle((x) => ({ ...x, nom: "" }));
+    setCombien("");
+  };
+  // Une classe
+  const [classe, setClasse] = useState<Omit<NouvelleClasse, "cle">>({ niveau: "", nom: "", salle: "", effectif: "", effectifFilles: "" });
+  const nomPropose = (niveau: string) => {
+    if (!niveau) return "";
+    const deja = classes.filter((c) => c.niveau === niveau).length + nc.filter((c) => c.niveau === niveau).length;
+    return deja ? `${libelleNiveau(niveau)} ${deja + 1}` : libelleNiveau(niveau);
+  };
+  const [erreurClasse, setErreurClasse] = useState<string | null>(null);
+  const ajouterClasse = () => {
+    if (!classe.niveau) return setErreurClasse("Choisissez le niveau de la classe.");
+    const nom = classe.nom.trim() || nomPropose(classe.niveau);
+    if ([...classes.map((c) => c.nom), ...nc.map((c) => c.nom)].some((x) => x.toUpperCase() === nom.toUpperCase())) return setErreurClasse(`La classe « ${nom} » existe déjà : donnez-lui un autre nom (ex. ${nom} B).`);
+    if (classe.effectif && classe.effectifFilles && Number(classe.effectifFilles) > Number(classe.effectif)) return setErreurClasse("Plus de filles que d’élèves : vérifiez les effectifs.");
+    setErreurClasse(null);
+    setEtat((e) => ({ ...e, nouvellesClasses: [...(e.nouvellesClasses ?? []), { ...classe, nom, cle: `c${Date.now()}` }] }));
+    setClasse((x) => ({ ...x, nom: "", effectif: "", effectifFilles: "" }));
+  };
+  const retirer = (cle: string) => setEtat((e) => ({ ...e, nouveauxBatiments: (e.nouveauxBatiments ?? []).filter((x) => x.cle !== cle), nouvellesSalles: (e.nouvellesSalles ?? []).filter((x) => x.cle !== cle), nouvellesClasses: (e.nouvellesClasses ?? []).filter((x) => x.cle !== cle) }));
+  const Retirer = ({ cle }: { cle: string }) => (
+    <button type="button" title="Retirer (pas encore envoyé)" className="cursor-pointer p-1 text-zinc-400 hover:text-rouge-600" onClick={() => retirer(cle)}>
+      <Trash2 className="size-4" />
+    </button>
+  );
+  const champ = "mt-1 h-11 w-full text-[15px]";
+
+  return (
+    <>
+      <Carte titre={`Bâtiments (${p.batiments.length + nb.length})`}>
+        <AjoutBatiment refs={refs} ajouter={(b) => setEtat((e) => ({ ...e, nouveauxBatiments: [...(e.nouveauxBatiments ?? []), b] }))} />
+        {!!nb.length && (
+          <ul className="mb-2 divide-y divide-zinc-100">
+            {nb.map((b) => (
+              <li key={b.cle} className="flex flex-wrap items-center gap-2 py-2 text-[13px]">
+                <span className="font-medium">{b.nom}</span>
+                <Badge ton="jaune">à envoyer</Badge>
+                <span className="text-zinc-500">{[b.type, libelleEtat(b.etat ?? "BON"), b.position ? `${b.position.latitude?.toFixed(5)}, ${b.position.longitude?.toFixed(5)}` : "sans position"].filter(Boolean).join(" · ")}</span>
+                {b.erreur && <span className="w-full text-[12px] text-rouge-700">{b.erreur}</span>}
+                <Retirer cle={b.cle} />
+              </li>
+            ))}
+          </ul>
+        )}
+        {!p.batiments.length ? (
+          !nb.length && <p className="text-[13px] text-zinc-500">Aucun bâtiment enregistré pour cette école. Une annexe, même ailleurs, est un bâtiment de cette école : ajoutez-la ici, avec sa position.</p>
+        ) : (
+          <ul className="divide-y divide-zinc-100">
+            {p.batiments.map((b) => (
+              <li key={b.id} className="space-y-1 py-2.5">
+                <div className="text-[14px] font-medium">
+                  {b.nom}
+                  <span className="ml-2 text-[12px] font-normal text-zinc-500">{[b.type, b.etat ? libelleEtat(b.etat) : null].filter(Boolean).join(" · ")}</span>
+                </div>
+                <BlocLocalisation compact position={b} enregistrer={enregistrerPosition(b.id)} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </Carte>
+
+      <Carte titre={`Salles (${salles.length + ns.length})`}>
+        <div className="space-y-2">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="block text-[12px] font-medium text-zinc-600">
+              Nom
+              <Saisie className={champ} value={salle.nom} onChange={(e) => setSalle((x) => ({ ...x, nom: e.target.value }))} placeholder={`Salle ${salles.length + ns.length + 1}`} />
+            </label>
+            <label className="block text-[12px] font-medium text-zinc-600">
+              Dans le bâtiment
+              <Liste className={champ} value={salle.batiment} onChange={(e) => setSalle((x) => ({ ...x, batiment: e.target.value }))} options={[{ valeur: "", libelle: choixBatiments.length ? "— Choisir —" : "Aucun bâtiment noté" }, ...choixBatiments]} />
+            </label>
+            <label className="block text-[12px] font-medium text-zinc-600">
+              Type
+              <TypeAvecAutre className={champ} valeur={salle.type} changer={(v) => setSalle((x) => ({ ...x, type: v }))} types={(refs?.typesSalle ?? []).filter((t) => t !== "Salle de classe")} vide="Salle de classe" nom="Type de salle" />
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block text-[12px] font-medium text-zinc-600">
+                Places assises
+                <Saisie className={champ} inputMode="numeric" value={salle.capacite} onChange={(e) => setSalle((x) => ({ ...x, capacite: e.target.value.replace(/\D/g, "") }))} placeholder="ex. 50" />
+              </label>
+              <label className="block text-[12px] font-medium text-zinc-600">
+                État
+                <Liste className={champ} value={salle.etat} onChange={(e) => setSalle((x) => ({ ...x, etat: e.target.value }))} options={etats.map((x) => ({ valeur: x.code, libelle: x.libelle }))} />
+              </label>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Bouton variante="principal" onClick={ajouterSalles}>
+              <Plus /> {Number(combien) > 1 ? `Ajouter ${Math.min(50, Number(combien))} salles pareilles` : "Ajouter la salle"}
+            </Bouton>
+            <label className="flex items-center gap-2 text-[13px] text-zinc-600">
+              ou plusieurs d’un coup :
+              <Saisie className="h-10 w-20 text-center text-[15px]" inputMode="numeric" value={combien} onChange={(e) => setCombien(e.target.value.replace(/\D/g, ""))} placeholder="nb" aria-label="Nombre de salles pareilles" />
+            </label>
+          </div>
+        </div>
+        {(!!ns.length || !!salles.length) && (
+          <ul className="mt-3 divide-y divide-zinc-100 text-[13px]">
+            {ns.map((x) => (
+              <li key={x.cle} className="flex flex-wrap items-center gap-2 py-2">
+                <span className="font-medium">{x.nom}</span>
+                <Badge ton="jaune">à envoyer</Badge>
+                <span className="text-zinc-500">{[choixBatiments.find((b) => b.valeur === x.batiment)?.libelle, x.type || "Salle de classe", x.capacite ? `${x.capacite} places` : null, libelleEtat(x.etat)].filter(Boolean).join(" · ")}</span>
+                {x.erreur && <span className="w-full text-[12px] text-rouge-700">{x.erreur}</span>}
+                <Retirer cle={x.cle} />
+              </li>
+            ))}
+            {salles.map((x) => (
+              <li key={x.id} className="flex flex-wrap items-center gap-2 py-2">
+                <span className="font-medium">{x.nom}</span>
+                <span className="text-zinc-500">{[nomBatiment(x.batimentId), x.type || "Salle de classe", x.capacite ? `${x.capacite} places` : null, libelleEtat(x.etat)].filter(Boolean).join(" · ")}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Carte>
+
+      <Carte titre={`Classes ${refs?.annee ?? ""} (${classes.length + nc.length})${eleves ? ` · ${eleves} élèves dont ${filles} filles` : ""}`}>
+        {!niveaux.length ? (
+          <Alerte ton="jaune">Le cycle de cette école n’est pas connu (ou ses niveaux ne sont pas réglés) : les classes ne peuvent pas être ajoutées ici. Dites-le dans « Ce que vous constatez sur l’école » ; la DGRHAS corrigera.</Alerte>
+        ) : (
+          <div className="space-y-2">
+            {erreurClasse && <Alerte>{erreurClasse}</Alerte>}
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="block text-[12px] font-medium text-zinc-600">
+                Niveau
+                <Liste className={champ} value={classe.niveau} onChange={(e) => setClasse((x) => ({ ...x, niveau: e.target.value, nom: "" }))} options={[{ valeur: "", libelle: "— Choisir —" }, ...niveaux.map((n) => ({ valeur: n.code, libelle: n.libelle }))]} />
+              </label>
+              <label className="block text-[12px] font-medium text-zinc-600">
+                Nom de la classe
+                <Saisie className={champ} value={classe.nom} onChange={(e) => setClasse((x) => ({ ...x, nom: e.target.value }))} placeholder={nomPropose(classe.niveau) || "ex. CM1 A"} />
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block text-[12px] font-medium text-zinc-600">
+                  Élèves
+                  <Saisie className={champ} inputMode="numeric" value={classe.effectif} onChange={(e) => setClasse((x) => ({ ...x, effectif: e.target.value.replace(/\D/g, "") }))} placeholder="ex. 62" />
+                </label>
+                <label className="block text-[12px] font-medium text-zinc-600">
+                  dont filles
+                  <Saisie className={champ} inputMode="numeric" value={classe.effectifFilles} onChange={(e) => setClasse((x) => ({ ...x, effectifFilles: e.target.value.replace(/\D/g, "") }))} placeholder="ex. 30" />
+                </label>
+              </div>
+              <label className="block text-[12px] font-medium text-zinc-600">
+                Dans la salle
+                <Liste className={champ} value={classe.salle} onChange={(e) => setClasse((x) => ({ ...x, salle: e.target.value }))} options={[{ valeur: "", libelle: choixSalles.length ? "— Choisir —" : "Aucune salle notée" }, ...choixSalles]} />
+              </label>
+            </div>
+            <Bouton variante="principal" onClick={ajouterClasse}>
+              <Plus /> Ajouter la classe
+            </Bouton>
+          </div>
+        )}
+        {(!!nc.length || !!classes.length) && (
+          <ul className="mt-3 divide-y divide-zinc-100 text-[13px]">
+            {nc.map((c) => (
+              <li key={c.cle} className="flex flex-wrap items-center gap-2 py-2">
+                <span className="font-medium">{c.nom}</span>
+                <Badge ton="jaune">à envoyer</Badge>
+                <span className="text-zinc-500">{[libelleNiveau(c.niveau), c.effectif ? `${c.effectif} élèves${c.effectifFilles ? ` dont ${c.effectifFilles} filles` : ""}` : null, choixSalles.find((x) => x.valeur === c.salle)?.libelle].filter(Boolean).join(" · ")}</span>
+                {c.erreur && <span className="w-full text-[12px] text-rouge-700">{c.erreur}</span>}
+                <Retirer cle={c.cle} />
+              </li>
+            ))}
+            {classes.map((c) => (
+              <li key={c.id} className="flex flex-wrap items-center gap-2 py-2">
+                <span className="font-medium">{c.nom}</span>
+                <span className="text-zinc-500">{[libelleNiveau(c.niveau), c.effectif !== null ? `${c.effectif} élèves${c.effectifFilles !== null ? ` dont ${c.effectifFilles} filles` : ""}` : null, nomSalle(c.salleId)].filter(Boolean).join(" · ")}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Carte>
+    </>
+  );
+}
+
 function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; retour: () => void }) {
-  const { profil } = useSession();
   const [etat, setEtatBrut] = useState<Etat | null>(() => lire<Etat>(`ecole:${id}`));
   // L'école à l'écran n'est pas touchée par la synchronisation ; en la quittant, on synchronise
   useEffect(() => {
@@ -1445,7 +1807,7 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
   if (!etat) return <Alerte>Cette école n’est plus sur l’appareil.</Alerte>;
   const p = etat.paquet;
   const enAttente = aEnvoyer(etat);
-  const positionsEnAttente = (etat.positions.ecole ? 1 : 0) + Object.keys(etat.positions.batiments).length + (etat.nouveauxBatiments?.length ?? 0) + (etat.constatEcole ? 1 : 0);
+  const positionsEnAttente = (etat.positions.ecole ? 1 : 0) + Object.keys(etat.positions.batiments).length + infraEnAttente(etat) + (etat.constatEcole ? 1 : 0);
   // Les agents de l'école (pas ceux qui viennent seulement « aussi ») : combien ont été vus
   const agentsEcole = etat.lignes.filter((l) => !l.aussi);
   const nVus = agentsEcole.filter(vu).length;
@@ -1482,9 +1844,17 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
       if (etat.positions.ecole) await api.put(`/etablissements/${p.ecole.id}/localisation`, { ...etat.positions.ecole, precision: etat.positions.ecole.precisionGps });
       for (const [b, pos] of Object.entries(etat.positions.batiments)) await api.put(`/etablissements/${p.ecole.id}/batiments/${b}/localisation`, { ...pos, precision: pos.precisionGps });
       if (etat.positions.ecole || Object.keys(etat.positions.batiments).length) setEtat((e) => ({ ...e, positions: { batiments: {} } }));
-      if (etat.nouveauxBatiments?.length) {
+      if (infraEnAttente(etat)) {
         const apres = await envoyerBatiments(etat);
-        setEtat((e) => ({ ...e, nouveauxBatiments: apres.nouveauxBatiments, paquet: { ...e.paquet, batiments: apres.paquet.batiments } }));
+        setEtat((e) => ({
+          ...e,
+          nouveauxBatiments: apres.nouveauxBatiments,
+          nouvellesSalles: apres.nouvellesSalles,
+          nouvellesClasses: apres.nouvellesClasses,
+          paquet: { ...e.paquet, batiments: apres.paquet.batiments, listeSalles: apres.paquet.listeSalles, listeClasses: apres.paquet.listeClasses },
+        }));
+        const refus = [...(apres.nouveauxBatiments ?? []), ...(apres.nouvellesSalles ?? []), ...(apres.nouvellesClasses ?? [])].filter((x) => x.erreur);
+        if (refus.length) erreurs = [...erreurs, ...refus.map((x) => `${x.nom} : ${x.erreur}`)];
       }
       // Ce que l'équipe a noté sur l'école (état, responsable, « terminée »)
       if (etat.constatEcole) {
@@ -1495,7 +1865,7 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
       setMessage(
         erreurs.length
           ? { ton: "jaune", texte: `${faites} ligne(s) envoyée(s). ${erreurs.length} à corriger (en rouge) : ${erreurs.slice(0, 3).join(" ; ")}${erreurs.length > 3 ? "…" : ""}` }
-          : { ton: "vert", texte: `Envoyé : ${faites} agent(s)${positionsEnAttente ? ` et ${positionsEnAttente} information(s) sur l’école (position, bâtiment, état)` : ""}. Les modifications partent au contrôle, comme au recensement ; les agents nouveaux, au contrôle puis au DG.` },
+          : { ton: "vert", texte: `Envoyé : ${faites} agent(s)${positionsEnAttente ? ` et ${positionsEnAttente} information(s) sur l’école (position, bâtiments, salles, classes, état)` : ""}. Les modifications partent au contrôle, comme au recensement ; les agents nouveaux, au contrôle puis au DG.` },
       );
     } catch (e) {
       setMessage({ ton: "rouge", texte: `${(e as Error).message} — rien n’est perdu : tout reste sur l’appareil, réessayez plus tard.` });
@@ -1570,7 +1940,7 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
             changer={setOnglet}
             options={[
               { valeur: "personnel", libelle: `Personnel (${etat.lignes.length})` },
-              { valeur: "ecole", libelle: "L’école : localisation, bâtiments" },
+              { valeur: "ecole", libelle: "L’école : bâtiments, salles, classes" },
             ]}
           />
           {onglet === "personnel" && (
@@ -1649,49 +2019,7 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
             <BlocLocalisation position={p.ecole} enregistrer={enregistrerPosition(null)} />
             {etat.positions.ecole && <p className="mt-1 text-[12px] text-or-700">Prélevée sans connexion : elle partira avec « Envoyer ».</p>}
           </Carte>
-          <Carte titre={`Bâtiments (${p.batiments.length + (etat.nouveauxBatiments?.length ?? 0)})`}>
-            <AjoutBatiment ajouter={(b) => setEtat((e) => ({ ...e, nouveauxBatiments: [...(e.nouveauxBatiments ?? []), b] }))} />
-            {!!etat.nouveauxBatiments?.length && (
-              <ul className="mb-2 divide-y divide-zinc-100">
-                {etat.nouveauxBatiments.map((b) => (
-                  <li key={b.cle} className="flex flex-wrap items-center gap-2 py-2 text-[13px]">
-                    <span className="font-medium">{b.nom}</span>
-                    <Badge ton="jaune">à envoyer</Badge>
-                    <span className="text-zinc-500">{b.position ? `${b.position.latitude?.toFixed(5)}, ${b.position.longitude?.toFixed(5)}` : "sans position"}</span>
-                    <button type="button" title="Retirer" className="cursor-pointer text-zinc-400 hover:text-rouge-600" onClick={() => setEtat((e) => ({ ...e, nouveauxBatiments: (e.nouveauxBatiments ?? []).filter((x) => x.cle !== b.cle) }))}>
-                      <Trash2 className="size-3.5" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {!p.batiments.length ? (
-              !etat.nouveauxBatiments?.length && <p className="text-[13px] text-zinc-500">Aucun bâtiment enregistré pour cette école. Une annexe, même ailleurs, est un bâtiment de cette école : ajoutez-la ici, avec sa position.</p>
-            ) : (
-              <ul className="divide-y divide-zinc-100">
-                {p.batiments.map((b) => (
-                  <li key={b.id} className="space-y-1 py-2.5">
-                    <div className="text-[14px] font-medium">{b.nom}</div>
-                    <BlocLocalisation compact position={b} enregistrer={enregistrerPosition(b.id)} />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Carte>
-          <Carte titre="Salles et classes">
-            <p className="text-[13px] text-zinc-600">
-              {p.ecole.salles} salle(s), {p.ecole.classes} classe(s) enregistrée(s).{" "}
-              {profil.role === "RECENSEUR" ? (
-                "La DGRHAS les complète sur la fiche de l’école."
-              ) : enLigne ? (
-                <Link href={`/ecoles/${p.ecole.id}`} target="_blank" className="inline-flex items-center gap-1 text-marque-700 hover:underline">
-                  Compléter sur la fiche de l’école <ExternalLink className="size-3" />
-                </Link>
-              ) : (
-                "Elles se complètent sur la fiche de l’école, avec la connexion."
-              )}
-            </p>
-          </Carte>
+          <Infrastructure etat={etat} setEtat={setEtat} enregistrerPosition={enregistrerPosition} />
           {!terminee && (
             <div className="flex justify-end">
               <Bouton variante="principal" onClick={() => setFin(true)}>
