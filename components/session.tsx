@@ -2,7 +2,7 @@
 
 import { SaisieMotDePasse } from "./mot-de-passe";
 import { SqueletteApplication } from "./squelette";
-import { Bell, Inbox, KeyRound, LayoutDashboard, Lock, LogOut, Menu as IconeMenu, UserRound, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Bell, Inbox, KeyRound, LayoutDashboard, Lock, LogOut, Menu as IconeMenu, UserRound, X, type LucideIcon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -27,9 +27,24 @@ export function useSession() {
   return s;
 }
 
+/**
+ * Les pages parcourues dans l'application depuis son ouverture, comme une pile : aller plus loin
+ * ajoute la page, revenir (« Retour » ou le geste du téléphone) la retire. Le bouton « Retour »
+ * revient en arrière s'il y a une page avant ; sinon il remonte d'un cran dans le chemin.
+ */
+const pilePages: string[] = [];
+function noterPage(chemin: string) {
+  if (pilePages[pilePages.length - 1] === chemin) return;
+  if (pilePages[pilePages.length - 2] === chemin) pilePages.pop();
+  else pilePages.push(chemin);
+}
+
 export function Coquille({ children }: { children: ReactNode }) {
   const router = useRouter();
   const chemin = usePathname();
+  useEffect(() => {
+    noterPage(chemin);
+  }, [chemin]);
   const [session, setSession] = useState<Session | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [confirmerSortie, setConfirmerSortie] = useState(false);
@@ -877,11 +892,36 @@ function Reconnexion({
  * Personnel › Base du personnel › Présence ; chaque étape se clique pour remonter.
  */
 function FilAriane({ chemin, profil }: { chemin: string; profil: Profil }) {
+  const router = useRouter();
   const etapes = cheminDe(chemin, profil);
-  if (!etapes.length) return null;
+  if (chemin === "/") return null;
+  // « Retour » (DG, 24/11/2026 : l'application installée n'a plus le bouton du navigateur) : la page
+  // d'avant dans l'application, sinon l'étape au-dessus dans le chemin, sinon le tableau de bord
+  const retour = () => {
+    if (pilePages.length > 1) return router.back();
+    const parent = [...etapes].reverse().find((x) => x.href && x.href.split("?")[0] !== chemin)?.href;
+    router.push(parent ?? "/");
+  };
+  const boutonRetour = (
+    <button
+      type="button"
+      onClick={retour}
+      title="Revenir à la page précédente"
+      className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-2xl bg-white px-3 py-2 text-[13px] font-medium text-marque-700 shadow-doux ring-1 ring-zinc-100 transition hover:bg-marque-50"
+    >
+      <ArrowLeft className="size-4" /> Retour
+    </button>
+  );
+  if (!etapes.length)
+    return (
+      <nav aria-label="Où vous êtes" className="no-print mb-5">
+        {boutonRetour}
+      </nav>
+    );
   // Une petite frise : l'accueil, puis chaque étape numérotée, reliées par un trait ; on est sur la dernière
   return (
-    <nav aria-label="Où vous êtes" className="no-print mb-5 overflow-x-auto">
+    <nav aria-label="Où vous êtes" className="no-print mb-5 flex items-center gap-2 overflow-x-auto">
+      {boutonRetour}
       <ol className="inline-flex min-w-max items-center rounded-2xl bg-white px-3 py-2 shadow-doux ring-1 ring-zinc-100">
         <li className="flex items-center">
           <Link href="/" title="Tableau de bord" className="flex size-7 items-center justify-center rounded-full bg-zinc-100 text-zinc-500 transition hover:bg-marque-50 hover:text-marque-700">
