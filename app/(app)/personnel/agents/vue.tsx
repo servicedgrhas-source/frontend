@@ -13,6 +13,7 @@ import { useSession } from "@/components/session";
 import { Alerte, Bouton, Carte, Chargement, EnTete, Liste, Saisie, Tableau, Vide, cx } from "@/components/ui";
 import { api, qs, useApi } from "@/lib/api";
 import { accesDonne } from "@/lib/espaces";
+import { libelleRattachement } from "@/lib/structures";
 
 interface Ligne {
   id: number;
@@ -53,6 +54,7 @@ export function VueAgents() {
     controle: params.get("controle") ?? "",
     anomalies: params.get("anomalies") ?? "",
     effectif: params.get("effectif") ?? "",
+    rattachement: params.get("rattachement") ?? "",
     page: Number(params.get("page") ?? 1),
   };
   const liste = useApi<{ total: number; page: number; parPage: number; lignes: Ligne[]; parAnomalie?: { code: string; libelle: string; n: number }[] }>(`/recensement/agents${qs(f)}`);
@@ -159,6 +161,15 @@ export function VueAgents() {
               retirer
             </button>
             {filtreEffectif && <span className="basis-full text-zinc-500">{filtreEffectif.explication}</span>}
+          </div>
+        )}
+        {f.rattachement && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
+            <span className="text-zinc-500">Rattachement :</span>
+            <span className="rounded-full bg-or-100 px-3 py-1 font-medium text-or-700">{libelleRattachement(f.rattachement)}</span>
+            <button type="button" className="font-medium text-marque-700 hover:underline" onClick={() => aller({ rattachement: "" })}>
+              retirer
+            </button>
           </div>
         )}
         {/* Fiches à passer dans leur nouvelle DEPPSA : vérifier, cocher, appliquer */}

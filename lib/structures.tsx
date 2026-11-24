@@ -37,3 +37,10 @@ export const TYPES_STRUCTURE: Record<string, TypeStructure> = {
 const INCONNU = T("Structure", 9, Building, "bg-zinc-100 text-zinc-600", "bg-zinc-100 text-zinc-600");
 export const typeStructure = (t: string) => TYPES_STRUCTURE[t] ?? INCONNU;
 
+/** Libellé d'une ligne « Où sont rattachées les fiches » (aussi dans la liste du personnel). */
+export function libelleRattachement(r: string) {
+  if (r === "SANS_LIEU") return "Sans structure, mais un lieu de service est écrit sur la fiche";
+  if (r === "SANS_RIEN") return "Sans structure et sans lieu de service écrit";
+  if (r === "ETABLISSEMENT") return "Rattachées à une école (établissement scolaire)";
+  return `Rattachées à : ${typeStructure(r).libelle.toLowerCase()}`;
+}
