@@ -1,10 +1,10 @@
 "use client";
 
-import { Link2, Save } from "lucide-react";
+import { FileSpreadsheet, Link2, Save } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useSession } from "@/components/session";
-import { Alerte, Badge, Bouton, Carte, Chargement, Chiffre, EnTete, Liste, Saisie, Segments, Tableau, Vide } from "@/components/ui";
+import { Alerte, Badge, Bouton, Carte, Chargement, Chiffre, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { accesDonne } from "@/lib/espaces";
 import { CYCLES, peut } from "@/lib/libelles";
@@ -45,6 +45,7 @@ interface Ecart {
   cle: string;
   lieu: string;
   fiches: number;
+  departementId: number | null;
   departement: string | null;
   rattachee: StructureCourte | null;
   autre: StructureCourte | null;
@@ -102,6 +103,8 @@ function SansEcole({ peutEnregistrer }: { peutEnregistrer: boolean }) {
   const structures = useApi<StructureListe[]>("/structures");
   const [onglet, setOnglet] = useState<Onglet>("SUR");
   const [dep, setDep] = useState("");
+  // Les fiches d'un groupe, ouvertes dans une fenêtre (DG, 23/11/2026 : « il doit afficher les 11 »)
+  const [groupe, setGroupe] = useState<{ sorte: "lieu" | "ecart"; cle: string; titre: string } | null>(null);
   const [recherche, setRecherche] = useState("");
   const [page, setPage] = useState(1);
   // Choix : lieu → école choisie (cochée) ; écarts cochés
@@ -262,13 +265,9 @@ function SansEcole({ peutEnregistrer }: { peutEnregistrer: boolean }) {
                       <div className="text-[11px] text-zinc-500">{e.departement ?? ""}</div>
                     </td>
                     <td className="text-right tabular-nums">
-                      {e.rattachee ? (
-                        <Link className="text-marque-700 hover:underline" href={`/personnel/agents?structure=${e.rattachee.id}`}>
-                          {nf.format(e.fiches)}
-                        </Link>
-                      ) : (
-                        nf.format(e.fiches)
-                      )}
+                      <button type="button" className="cursor-pointer font-medium text-marque-700 hover:underline" title="Voir ces fiches" onClick={() => setGroupe({ sorte: "ecart", cle: e.cle, titre: `« ${e.lieu} » · rattachées à ${e.rattachee?.nom ?? "?"}` })}>
+                        {nf.format(e.fiches)}
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -313,7 +312,9 @@ function SansEcole({ peutEnregistrer }: { peutEnregistrer: boolean }) {
                       )}
                     </td>
                     <td className="text-right whitespace-nowrap">
-                      <div className="tabular-nums">{nf.format(l.fiches)}</div>
+                      <button type="button" className="cursor-pointer font-medium text-marque-700 tabular-nums hover:underline" title="Voir ces fiches" onClick={() => setGroupe({ sorte: "lieu", cle: l.cle, titre: `« ${l.lieu} »${l.departement ? ` · ${l.departement}` : ""}` })}>
+                        {nf.format(l.fiches)}
+                      </button>
                       <div className="text-[11px] text-zinc-500">
                         {Object.entries(l.statuts)
                           .map(([s, n]) => `${n} ${STATUTS[s] ?? s.toLowerCase()}`)
@@ -341,6 +342,9 @@ function SansEcole({ peutEnregistrer }: { peutEnregistrer: boolean }) {
         </div>
       </Carte>
 
+      <ExcelDDEPPSA departements={[...new Map([...r.lieux, ...r.ecarts].filter((x) => x.departementId && x.departement).map((x) => [x.departementId as number, x.departement as string])).entries()].sort((x, y) => x[1].localeCompare(y[1], "fr"))} />
+      {groupe && <FichesDuGroupe groupe={groupe} fermer={() => setGroupe(null)} />}
+
       <Carte titre="Enregistrer">
         <div className="flex flex-wrap items-center gap-3 text-[13px]">
           <Link2 className="size-5 text-marque-600" />
@@ -358,5 +362,91 @@ function SansEcole({ peutEnregistrer }: { peutEnregistrer: boolean }) {
         </div>
       </Carte>
     </div>
+  );
+}
+
+/** Exactement les fiches d'un groupe : nom (vers la fiche), naissance, statut, matricule, inspection écrite. */
+function FichesDuGroupe({ groupe, fermer }: { groupe: { sorte: "lieu" | "ecart"; cle: string; titre: string }; fermer: () => void }) {
+  const f = useApi<{ id: number; nom: string; statut: string; naissance: string | null; matricule: string | null; telephone: string | null; inspection: string | null; ecole: string | null }[]>(`/recensement/sans-ecole/fiches?sorte=${groupe.sorte}&cle=${encodeURIComponent(groupe.cle)}`);
+  return (
+    <Modale titre={`Fiches : ${groupe.titre}`} ouverte fermer={fermer} large>
+      {f.erreur ? (
+        <Alerte>{f.erreur}</Alerte>
+      ) : !f.donnees ? (
+        <Chargement />
+      ) : (
+        <div className="space-y-2 text-[13px]">
+          <p className="text-zinc-600">{nf.format(f.donnees.length)} fiche(s). Ouvrez une fiche pour la corriger une à une.</p>
+          <Tableau>
+            <thead>
+              <tr>
+                <th>Nom et prénoms</th>
+                <th>Naissance</th>
+                <th>Statut</th>
+                <th>Matricule</th>
+                <th>Inspection écrite</th>
+              </tr>
+            </thead>
+            <tbody>
+              {f.donnees.map((x) => (
+                <tr key={x.id}>
+                  <td>
+                    <Link href={`/personnel/agents/${x.id}`} target="_blank" className="font-medium text-marque-700 hover:underline">
+                      {x.nom}
+                    </Link>
+                  </td>
+                  <td>{x.naissance ?? "—"}</td>
+                  <td>{STATUTS[x.statut] ?? x.statut.toLowerCase()}</td>
+                  <td>{x.matricule ?? "—"}</td>
+                  <td>{x.inspection ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </Tableau>
+        </div>
+      )}
+    </Modale>
+  );
+}
+
+/**
+ * L'Excel à envoyer aux DDEPPSA (DG, 23/11/2026) : une ligne par personne dont l'école est douteuse,
+ * ce que le système propose, et deux colonnes jaunes pour leur réponse.
+ */
+function ExcelDDEPPSA({ departements }: { departements: [number, string][] }) {
+  const [dep, setDep] = useState("");
+  const [tout, setTout] = useState(false);
+  const [encours, setEncours] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const telecharger = async () => {
+    setEncours(true);
+    setErreur(null);
+    try {
+      const nom = departements.find(([id]) => String(id) === dep)?.[1] ?? "toutes les DDEPPSA";
+      await api.telecharger(`/recensement/sans-ecole/excel?${dep ? `departement=${dep}&` : ""}${tout ? "tout=1" : ""}`, `Agents sans école à vérifier - ${nom}.xlsx`);
+    } catch (e) {
+      setErreur((e as Error).message);
+    } finally {
+      setEncours(false);
+    }
+  };
+  return (
+    <Carte titre="Faire vérifier par les DDEPPSA">
+      <div className="space-y-3 text-[13px]">
+        <p className="text-zinc-600">
+          Un fichier Excel avec, pour chaque personne dont l’école est douteuse (école probable, introuvable, ou lieu écrit différent de l’école) : son lieu écrit, l’école proposée par le système, son nom, sa naissance, son statut, son matricule, son téléphone. Deux colonnes jaunes restent vides pour la réponse de la DDEPPSA : l’école où l’agent travaille réellement, et une observation.
+        </p>
+        {erreur && <Alerte>{erreur}</Alerte>}
+        <div className="flex flex-wrap items-center gap-3">
+          <Liste value={dep} onChange={(e) => setDep(e.target.value)} vide="Toutes les DDEPPSA (une synthèse en tête)" options={departements.map(([id, nom]) => ({ valeur: String(id), libelle: `DDEPPSA ${nom}` }))} />
+          <label className="flex cursor-pointer items-center gap-1.5 text-zinc-600">
+            <input type="checkbox" checked={tout} onChange={(e) => setTout(e.target.checked)} /> Inclure aussi les écoles trouvées (sûres)
+          </label>
+          <Bouton variante="principal" chargement={encours} onClick={() => void telecharger()}>
+            <FileSpreadsheet /> Télécharger l’Excel
+          </Bouton>
+        </div>
+      </div>
+    </Carte>
   );
 }
