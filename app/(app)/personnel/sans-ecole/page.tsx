@@ -1,6 +1,6 @@
 "use client";
 
-import { FileSpreadsheet, Link2, Save } from "lucide-react";
+import { FileSpreadsheet, Link2, Save, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useSession } from "@/components/session";
@@ -45,14 +45,23 @@ interface Ecart {
   cle: string;
   lieu: string;
   fiches: number;
+  cycle: string | null;
   departementId: number | null;
   departement: string | null;
   rattachee: StructureCourte | null;
+  /** La structure que le lieu écrit désigne plutôt (sûre, ou à confirmer). */
   autre: StructureCourte | null;
+  autreSure: boolean;
+  autres: StructureCourte[];
+  /** Pourquoi le rattachement est sans doute faux (cycle différent, nom de lieu…), ou null. */
+  douteux: string | null;
 }
 
+/** Décision sur un écart : garder (corriger le texte), détacher, ou rattacher ailleurs (« VERS:id »). */
+type DecisionEcart = "" | "GARDER" | "DETACHER" | `VERS:${number}`;
+
 interface Analyse {
-  compteurs: { sansEcole: number; sansLieu: number; sur: number; probable: number; introuvable: number; ecarts: number };
+  compteurs: { sansEcole: number; sansLieu: number; sur: number; probable: number; introuvable: number; ecarts: number; douteux: number };
   lieux: Lieu[];
   ecarts: Ecart[];
 }
@@ -84,7 +93,7 @@ const ONGLETS: Record<Onglet, { libelle: string; aide: string }> = {
   },
   ECARTS: {
     libelle: "Lieu écrit ≠ école",
-    aide: "Ces fiches sont rattachées à une école, mais leur lieu de service écrit dit autre chose. Cochez pour écrire le nom de l’école de rattachement dans le lieu de service ; si c’est l’école qui est fausse, corrigez la fiche (lien).",
+    aide: "Ces fiches sont rattachées à une structure, mais leur lieu de service écrit dit autre chose. Pour chaque ligne, choisissez : garder le rattachement (le lieu écrit est ancien), le détacher (rattachement faux : les fiches repassent « sans école » avec leur lieu écrit), ou rattacher à la bonne structure. Les rattachements douteux (cycle différent, simple nom de lieu…) sont en tête. Le nombre de fiches ouvre la liste, avec le lieu du registre d’origine.",
   },
 };
 
@@ -110,7 +119,8 @@ function SansEcole({ peutEnregistrer }: { peutEnregistrer: boolean }) {
   // Choix : lieu → école choisie (cochée) ; écarts cochés
   const [choix, setChoix] = useState<Record<string, number> | null>(null);
   const [ecoleDe, setEcoleDe] = useState<Record<string, number>>({});
-  const [aligner, setAligner] = useState<Set<string>>(new Set());
+  const [decisions, setDecisions] = useState<Record<string, DecisionEcart>>({});
+  const [douteuxSeuls, setDouteuxSeuls] = useState(false);
   const [envoi, setEnvoi] = useState(false);
   const [message, setMessage] = useState<{ ton: "vert" | "rouge"; texte: string } | null>(null);
 
@@ -131,7 +141,7 @@ function SansEcole({ peutEnregistrer }: { peutEnregistrer: boolean }) {
   const departements = [...new Set([...r.lieux.map((l) => l.departement), ...r.ecarts.map((e) => e.departement)].filter((x): x is string => !!x))].sort((x, y) => x.localeCompare(y, "fr"));
   const q = recherche.trim().toUpperCase();
   const lieux = onglet === "ECARTS" ? [] : r.lieux.filter((l) => l.etat === onglet && (!dep || l.departement === dep) && (!q || `${l.lieu} ${l.proposee?.nom ?? ""}`.toUpperCase().includes(q)));
-  const ecarts = onglet !== "ECARTS" ? [] : r.ecarts.filter((e) => (!dep || e.departement === dep) && (!q || `${e.lieu} ${e.rattachee?.nom ?? ""}`.toUpperCase().includes(q)));
+  const ecarts = onglet !== "ECARTS" ? [] : r.ecarts.filter((e) => (!dep || e.departement === dep) && (!douteuxSeuls || !!e.douteux) && (!q || `${e.lieu} ${e.rattachee?.nom ?? ""}`.toUpperCase().includes(q)));
   const total = onglet === "ECARTS" ? ecarts.length : lieux.length;
   const pages = Math.max(1, Math.ceil(total / TAILLE));
   const p0 = Math.min(page, pages);
@@ -154,9 +164,12 @@ function SansEcole({ peutEnregistrer }: { peutEnregistrer: boolean }) {
   };
   const toutCocher = (oui: boolean) => {
     if (onglet === "ECARTS") {
-      const n = new Set(aligner);
-      for (const e of ecarts) if (oui) n.add(e.cle); else n.delete(e.cle);
-      setAligner(n);
+      // « Tout cocher » garde les rattachements qui ne sont pas douteux ; les douteux se décident un à un
+      const n = { ...decisions };
+      for (const e of ecarts)
+        if (!oui) delete n[e.cle];
+        else if (!e.douteux) n[e.cle] = "GARDER";
+      setDecisions(n);
       return;
     }
     const n = { ...coches };
@@ -179,24 +192,48 @@ function SansEcole({ peutEnregistrer }: { peutEnregistrer: boolean }) {
 
   const aRattacher = Object.entries(coches);
   const fichesARattacher = aRattacher.reduce((n, [cle]) => n + (r.lieux.find((l) => l.cle === cle)?.fiches ?? 0), 0);
-  const fichesAAligner = [...aligner].reduce((n, cle) => n + (r.ecarts.find((e) => e.cle === cle)?.fiches ?? 0), 0);
+  const fichesDe = (d: (x: DecisionEcart) => boolean) => Object.entries(decisions).filter(([, x]) => d(x)).reduce((n, [cle]) => n + (r.ecarts.find((e) => e.cle === cle)?.fiches ?? 0), 0);
+  const fichesAAligner = fichesDe((x) => x === "GARDER");
+  const fichesADetacher = fichesDe((x) => x === "DETACHER");
+  const fichesADeplacer = fichesDe((x) => x.startsWith("VERS:"));
+  const nDecisions = Object.values(decisions).filter(Boolean).length;
+  const optionsEcart = (e: Ecart) => {
+    const vus = new Set<number>(e.rattachee ? [e.rattachee.id] : []);
+    const ailleurs = [e.autre, ...e.autres].filter((x): x is StructureCourte => !!x && !vus.has(x.id) && !!vus.add(x.id));
+    const duDep = (e.departementId ? (ecolesParDep.get(e.departementId) ?? []) : []).filter((x) => !vus.has(x.id) && (!e.cycle || !x.cycle || x.cycle === e.cycle || x.type !== "ETABLISSEMENT"));
+    return [
+      { valeur: "GARDER", libelle: `Garder : ${e.rattachee?.nom ?? "?"} (écrire ce nom comme lieu)` },
+      { valeur: "DETACHER", libelle: "Détacher : rattachement faux (repasse « sans école »)" },
+      ...ailleurs.map((x) => ({ valeur: `VERS:${x.id}`, libelle: `Rattacher à : ${x.nom}${x.id === e.autre?.id ? (e.autreSure ? " (proposé)" : " (à confirmer)") : ""}` })),
+      ...duDep.map((x) => ({ valeur: `VERS:${x.id}`, libelle: `Rattacher à : ${x.nom}${x.localite ? ` (${x.localite})` : ""}` })),
+    ];
+  };
 
   const enregistrer = async () => {
-    if (!confirm(`Rattacher ${nf.format(fichesARattacher)} fiche(s) à leur école et corriger le lieu écrit de ${nf.format(fichesAAligner)} fiche(s) ?`)) return;
+    const quoi = [
+      fichesARattacher && `rattacher ${nf.format(fichesARattacher)} fiche(s) à leur école`,
+      fichesAAligner && `corriger le lieu écrit de ${nf.format(fichesAAligner)} fiche(s)`,
+      fichesADetacher && `détacher ${nf.format(fichesADetacher)} fiche(s) mal rattachée(s)`,
+      fichesADeplacer && `rattacher ailleurs ${nf.format(fichesADeplacer)} fiche(s) mal rattachée(s)`,
+    ].filter(Boolean);
+    if (!confirm(`Confirmer : ${quoi.join(", ")} ?`)) return;
     setEnvoi(true);
     setMessage(null);
     try {
-      const x = await api.post<{ rattachees: number; alignees: number; refus: string[] }>("/recensement/sans-ecole/appliquer", {
+      const d = Object.entries(decisions);
+      const x = await api.post<{ rattachees: number; alignees: number; detachees: number; deplacees: number; refus: string[] }>("/recensement/sans-ecole/appliquer", {
         rattacher: aRattacher.map(([cle, structureId]) => ({ cle, structureId })),
-        aligner: [...aligner],
+        aligner: d.filter(([, v]) => v === "GARDER").map(([cle]) => cle),
+        detacher: d.filter(([, v]) => v === "DETACHER").map(([cle]) => cle),
+        deplacer: d.filter(([, v]) => v.startsWith("VERS:")).map(([cle, v]) => ({ cle, structureId: Number(v.slice(5)) })),
       });
       setMessage({
         ton: "vert",
-        texte: `Enregistré : ${nf.format(x.rattachees)} fiche(s) rattachée(s) à leur école, ${nf.format(x.alignees)} lieu(x) de service corrigé(s).${x.refus.length ? ` Non fait (${x.refus.length}) : ${x.refus.slice(0, 3).join(" ; ")}` : ""} Les pages des écoles les comptent maintenant.`,
+        texte: `Enregistré : ${nf.format(x.rattachees)} fiche(s) rattachée(s) à leur école, ${nf.format(x.alignees)} lieu(x) de service corrigé(s), ${nf.format(x.detachees)} fiche(s) détachée(s), ${nf.format(x.deplacees)} fiche(s) rattachée(s) ailleurs.${x.refus.length ? ` Non fait (${x.refus.length}) : ${x.refus.slice(0, 3).join(" ; ")}` : ""} Les pages des écoles les comptent maintenant.${x.detachees ? " Les fiches détachées sont dans l’onglet « École introuvable » ou « À confirmer », avec leur lieu écrit." : ""}`,
       });
       setChoix(null);
       setEcoleDe({});
-      setAligner(new Set());
+      setDecisions({});
       a.recharger();
     } catch (e) {
       setMessage({ ton: "rouge", texte: (e as Error).message });
@@ -219,7 +256,7 @@ function SansEcole({ peutEnregistrer }: { peutEnregistrer: boolean }) {
         <Chiffre libelle="Fiches sans école" valeur={nf.format(c.sansEcole)} ton="rouge" detail={`et ${nf.format(c.sansLieu)} sans lieu écrit du tout`} />
         <Chiffre libelle="École trouvée" valeur={nf.format(c.sur)} ton="vert" detail="cochées d’office" />
         <Chiffre libelle="À confirmer" valeur={nf.format(c.probable)} ton="jaune" />
-        <Chiffre libelle="Lieu écrit ≠ école" valeur={nf.format(c.ecarts)} ton="bleu" detail="fiches rattachées" />
+        <Chiffre libelle="Lieu écrit ≠ école" valeur={nf.format(c.ecarts)} ton="bleu" detail={c.douteux ? `dont ${nf.format(c.douteux)} fiche(s) au rattachement douteux` : "fiches rattachées"} />
       </div>
 
       <Carte titre="Vérifier et cocher">
@@ -235,6 +272,11 @@ function SansEcole({ peutEnregistrer }: { peutEnregistrer: boolean }) {
             <Bouton variante="discret" onClick={() => toutCocher(false)}>
               Tout décocher
             </Bouton>
+            {onglet === "ECARTS" && (
+              <label className="flex cursor-pointer items-center gap-1.5 text-zinc-600">
+                <input type="checkbox" checked={douteuxSeuls} onChange={(e) => (setDouteuxSeuls(e.target.checked), setPage(1))} /> Seulement les rattachements douteux ({nf.format(c.douteux)} fiches)
+              </label>
+            )}
             <span className="ml-auto text-zinc-500">{nf.format(total)} lieu(x)</span>
           </div>
 
@@ -244,21 +286,24 @@ function SansEcole({ peutEnregistrer }: { peutEnregistrer: boolean }) {
             <Tableau>
               <thead>
                 <tr>
-                  <th className="w-10"></th>
                   <th>Lieu de service écrit</th>
-                  <th>École de rattachement</th>
+                  <th>Rattachée aujourd’hui à</th>
                   <th className="text-right">Fiches</th>
+                  <th className="w-80">Que faire ?</th>
                 </tr>
               </thead>
               <tbody>
                 {tranche(ecarts).map((e) => (
                   <tr key={e.cle}>
                     <td>
-                      <input type="checkbox" checked={aligner.has(e.cle)} onChange={(x) => setAligner((s) => { const n = new Set(s); if (x.target.checked) n.add(e.cle); else n.delete(e.cle); return n; })} />
-                    </td>
-                    <td>
                       <div className="font-medium">« {e.lieu} »</div>
-                      {e.autre && <div className="text-[11px] text-or-700">Le lieu écrit désigne plutôt « {e.autre.nom} » : vérifiez la fiche avant de cocher.</div>}
+                      {e.cycle && <div className="text-[11px] text-zinc-500">fiches du {CYCLES[e.cycle]?.toLowerCase() ?? e.cycle}</div>}
+                      {e.douteux && (
+                        <div className="mt-0.5 flex items-start gap-1 text-[11px] font-medium text-rouge-600">
+                          <TriangleAlert className="mt-px size-3.5 shrink-0" /> Rattachement douteux : {e.douteux}
+                        </div>
+                      )}
+                      {e.autre && <div className="text-[11px] text-or-700">Le lieu écrit désigne {e.autreSure ? "plutôt" : "peut-être"} « {e.autre.nom} »{e.autreSure ? "" : " (à confirmer)"}.</div>}
                     </td>
                     <td>
                       <div>{e.rattachee?.nom ?? "—"}</div>
@@ -268,6 +313,16 @@ function SansEcole({ peutEnregistrer }: { peutEnregistrer: boolean }) {
                       <button type="button" className="cursor-pointer font-medium text-marque-700 hover:underline" title="Voir ces fiches" onClick={() => setGroupe({ sorte: "ecart", cle: e.cle, titre: `« ${e.lieu} » · rattachées à ${e.rattachee?.nom ?? "?"}` })}>
                         {nf.format(e.fiches)}
                       </button>
+                    </td>
+                    <td>
+                      <Liste
+                        className={`w-80 max-w-full ${decisions[e.cle] === "DETACHER" ? "ring-2 ring-rouge-200" : ""}`}
+                        title={optionsEcart(e).find((o) => o.valeur === decisions[e.cle])?.libelle}
+                        value={decisions[e.cle] ?? ""}
+                        vide="Ne rien changer"
+                        onChange={(x) => setDecisions((d) => ({ ...d, [e.cle]: x.target.value as DecisionEcart }))}
+                        options={optionsEcart(e)}
+                      />
                     </td>
                   </tr>
                 ))}
@@ -349,11 +404,11 @@ function SansEcole({ peutEnregistrer }: { peutEnregistrer: boolean }) {
         <div className="flex flex-wrap items-center gap-3 text-[13px]">
           <Link2 className="size-5 text-marque-600" />
           <span>
-            <b>{nf.format(fichesARattacher)}</b> fiche(s) seront rattachées à leur école ({nf.format(aRattacher.length)} lieu(x)), <b>{nf.format(fichesAAligner)}</b> lieu(x) de service corrigé(s). Le lieu écrit
-            des fiches rattachées ne change pas.
+            <b>{nf.format(fichesARattacher)}</b> fiche(s) seront rattachées à leur école ({nf.format(aRattacher.length)} lieu(x)) ; parmi les écarts : <b>{nf.format(fichesAAligner)}</b> lieu(x) de service corrigé(s),{" "}
+            <b>{nf.format(fichesADetacher)}</b> fiche(s) détachée(s), <b>{nf.format(fichesADeplacer)}</b> rattachée(s) ailleurs. Le lieu écrit des fiches ne change que pour « Garder ».
           </span>
           {peutEnregistrer ? (
-            <Bouton variante="principal" className="ml-auto" chargement={envoi} disabled={!aRattacher.length && !aligner.size} onClick={enregistrer}>
+            <Bouton variante="principal" className="ml-auto" chargement={envoi} disabled={!aRattacher.length && !nDecisions} onClick={enregistrer}>
               <Save /> Enregistrer
             </Bouton>
           ) : (
@@ -367,7 +422,7 @@ function SansEcole({ peutEnregistrer }: { peutEnregistrer: boolean }) {
 
 /** Exactement les fiches d'un groupe : nom (vers la fiche), naissance, statut, matricule, inspection écrite. */
 function FichesDuGroupe({ groupe, fermer }: { groupe: { sorte: "lieu" | "ecart"; cle: string; titre: string }; fermer: () => void }) {
-  const f = useApi<{ id: number; nom: string; statut: string; naissance: string | null; matricule: string | null; telephone: string | null; inspection: string | null; ecole: string | null }[]>(`/recensement/sans-ecole/fiches?sorte=${groupe.sorte}&cle=${encodeURIComponent(groupe.cle)}`);
+  const f = useApi<{ id: number; nom: string; statut: string; naissance: string | null; matricule: string | null; telephone: string | null; inspection: string | null; ecole: string | null; cycle: string | null; source: string | null }[]>(`/recensement/sans-ecole/fiches?sorte=${groupe.sorte}&cle=${encodeURIComponent(groupe.cle)}`);
   return (
     <Modale titre={`Fiches : ${groupe.titre}`} ouverte fermer={fermer} large>
       {f.erreur ? (
@@ -384,7 +439,9 @@ function FichesDuGroupe({ groupe, fermer }: { groupe: { sorte: "lieu" | "ecart";
                 <th>Naissance</th>
                 <th>Statut</th>
                 <th>Matricule</th>
+                <th>Cycle</th>
                 <th>Inspection écrite</th>
+                {f.donnees.some((x) => x.source) && <th title="Le lieu écrit dans le registre des volontaires ou des communautaires, d’où vient la fiche">Lieu dans le registre d’origine</th>}
               </tr>
             </thead>
             <tbody>
@@ -398,7 +455,9 @@ function FichesDuGroupe({ groupe, fermer }: { groupe: { sorte: "lieu" | "ecart";
                   <td>{x.naissance ?? "—"}</td>
                   <td>{STATUTS[x.statut] ?? x.statut.toLowerCase()}</td>
                   <td>{x.matricule ?? "—"}</td>
+                  <td>{x.cycle ? (CYCLES[x.cycle] ?? x.cycle) : "—"}</td>
                   <td>{x.inspection ?? "—"}</td>
+                  {f.donnees!.some((y) => y.source) && <td>{x.source ?? "—"}</td>}
                 </tr>
               ))}
             </tbody>
@@ -416,6 +475,7 @@ function FichesDuGroupe({ groupe, fermer }: { groupe: { sorte: "lieu" | "ecart";
 function ExcelDDEPPSA({ departements }: { departements: [number, string][] }) {
   const [dep, setDep] = useState("");
   const [tout, setTout] = useState(false);
+  const [parLieu, setParLieu] = useState(true);
   const [encours, setEncours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const telecharger = async () => {
@@ -423,7 +483,7 @@ function ExcelDDEPPSA({ departements }: { departements: [number, string][] }) {
     setErreur(null);
     try {
       const nom = departements.find(([id]) => String(id) === dep)?.[1] ?? "toutes les DDEPPSA";
-      await api.telecharger(`/recensement/sans-ecole/excel?${dep ? `departement=${dep}&` : ""}${tout ? "tout=1" : ""}`, `Agents sans école à vérifier - ${nom}.xlsx`);
+      await api.telecharger(`/recensement/sans-ecole/excel?${dep ? `departement=${dep}&` : ""}${tout ? "tout=1&" : ""}${parLieu ? "par=lieu" : ""}`, parLieu ? `Lieux écrits à reconnaître - ${nom}.xlsx` : `Agents sans école à vérifier - ${nom}.xlsx`);
     } catch (e) {
       setErreur((e as Error).message);
     } finally {
@@ -433,8 +493,18 @@ function ExcelDDEPPSA({ departements }: { departements: [number, string][] }) {
   return (
     <Carte titre="Faire vérifier par les DDEPPSA">
       <div className="space-y-3 text-[13px]">
+        <Segments
+          valeur={parLieu ? "LIEU" : "PERSONNE"}
+          changer={(v) => setParLieu(v === "LIEU")}
+          options={[
+            { valeur: "LIEU", libelle: "Une ligne par lieu écrit" },
+            { valeur: "PERSONNE", libelle: "Une ligne par personne" },
+          ]}
+        />
         <p className="text-zinc-600">
-          Un fichier Excel avec, pour chaque personne dont l’école est douteuse (école probable, introuvable, ou lieu écrit différent de l’école) : son lieu écrit, l’école proposée par le système, son nom, sa naissance, son statut, son matricule, son téléphone. Deux colonnes jaunes restent vides pour la réponse de la DDEPPSA : l’école où l’agent travaille réellement, et une observation.
+          {parLieu
+            ? "Les écoles et structures écrites sur les fiches sans rattachement, une seule fois chacune : ce que c’est (école, inspection, direction, administration ou simple nom de lieu), le nombre de fiches, la structure proposée par le système ou « introuvable ». Trois colonnes jaunes pour la réponse : le nom exact dans l’organigramme, ou la structure à créer. Une réponse corrige d’un coup toutes les fiches de ce lieu."
+            : "Pour chaque personne dont l’école est douteuse (école probable, introuvable, ou lieu écrit différent de l’école) : son lieu écrit, l’école proposée par le système, son nom, sa naissance, son statut, son matricule, son téléphone. Deux colonnes jaunes pour la réponse de la DDEPPSA : l’école où l’agent travaille réellement, et une observation."}
         </p>
         {erreur && <Alerte>{erreur}</Alerte>}
         <div className="flex flex-wrap items-center gap-3">
