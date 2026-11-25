@@ -725,7 +725,15 @@ function rangerPaquet(brut: PaquetBase, dansMission: boolean): boolean {
     return true;
   }
   // Les lignes en attente gardent ce qu'a saisi l'équipe ; les autres prennent la base à jour
-  const attente = aGarder(deja);
+  // (une colonne apparue depuis la saisie : la ligne prend ce que la base sait, comme valeur d'origine)
+  const parId = new Map(p.agents.map((a) => [a.id, a]));
+  const attente = aGarder(deja).map((l) => {
+    const a = l.agentId !== null ? parId.get(l.agentId) : undefined;
+    const manquantes = p.colonnes.filter((c) => !(c.code in l.valeurs));
+    if (!a || !manquantes.length) return l;
+    const ajout = Object.fromEntries(manquantes.map((c) => [c.code, enTexte(c, a.donnees[c.code])]));
+    return { ...l, valeurs: { ...ajout, ...l.valeurs }, origine: l.rattacher ? l.origine : { ...ajout, ...l.origine } };
+  });
   const parAgent = new Map(attente.filter((l) => l.agentId !== null).map((l) => [l.agentId as number, l]));
   const presents = new Set(p.agents.map((a) => a.id));
   const lignes = [...attente.filter((l) => l.agentId === null || !presents.has(l.agentId)), ...p.agents.map((a) => parAgent.get(a.id) ?? nouvelleLigne(p, a))];
@@ -857,8 +865,14 @@ function synchroniserBase(): Promise<ResultatSynchro | null> {
     // Les positions relevées sans réseau partent d'abord (suivi depuis Brazzaville)
     await envoyerPositions().catch(() => undefined);
     await envoyerPropositions().catch(() => undefined);
+    // Une colonne ajoutée à la grille (« Autres diplômes », 25/11/2026) : les écoles déjà sur
+    // l'appareil sont reprises, pour avoir la colonne ET ce que la base sait déjà (sinon une saisie
+    // écraserait des diplômes déjà connus)
+    let colonnesChangees = false;
     try {
       const c = await api.get<{ colonnes: Colonne[]; statuts: Paquet["statuts"]; referentiels?: RefsEcole; pieces?: TypePiece[] }>("/recensement/terrain/colonnes");
+      const avant = lire<{ colonnes: Colonne[] }>("base:colonnes")?.colonnes.map((x) => x.code).join("|");
+      colonnesChangees = !!avant && avant !== c.colonnes.map((x) => x.code).join("|");
       ecrire("base:colonnes", { colonnes: c.colonnes, statuts: c.statuts, referentiels: c.referentiels, pieces: c.pieces });
     } catch {
       /* gardées telles quelles */
@@ -884,7 +898,7 @@ function synchroniserBase(): Promise<ResultatSynchro | null> {
       if (p) locales.set(p.ecole.id, p.empreinte ?? "");
     }
     const changees = Object.entries(srv.ecoles)
-      .filter(([id, e]) => locales.get(Number(id)) !== e)
+      .filter(([id, e]) => colonnesChangees || locales.get(Number(id)) !== e)
       .map(([id]) => Number(id))
       .filter((id) => id !== ecoleOuverte);
     await prendreEcoles(changees, info.mission);

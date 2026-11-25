@@ -167,8 +167,14 @@ export function CarteOsm({ points, trajet = [], hauteur = 520, choisir }: { poin
               className="group absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer"
               style={{ left: x, top: y }}
             >
-              <span className={`block rounded-full border-2 border-white shadow-md ${p.choisi ? "size-5" : "size-3.5"}`} style={{ background: p.couleur }} />
-              <span className={`absolute top-full left-1/2 mt-1 -translate-x-1/2 rounded bg-white/90 px-1 text-[10px] font-semibold whitespace-nowrap text-zinc-800 shadow ${p.choisi ? "" : "hidden group-hover:block"}`}>{p.libelle}</span>
+              {/* Bien visible sur le fond de carte (DG, 25/11/2026) : un halo qui bat, un rond cerclé de
+                  blanc et de sombre, et l'identifiant toujours écrit (le nom en entier au survol) */}
+              <span className={`pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-ping rounded-full opacity-40 motion-reduce:animate-none ${p.choisi ? "size-12" : "size-9"}`} style={{ background: p.couleur }} aria-hidden />
+              <span className={`relative block rounded-full border-[3px] border-white shadow-[0_0_0_2px_rgba(14,24,19,0.55),0_4px_10px_rgba(0,0,0,0.35)] transition-transform group-hover:scale-110 ${p.choisi ? "size-7" : "size-5"}`} style={{ background: p.couleur }} />
+              <span className={`absolute top-full left-1/2 mt-1.5 -translate-x-1/2 rounded-md bg-nuit/90 px-1.5 py-0.5 text-[11px] font-semibold whitespace-nowrap text-white shadow-md ${p.choisi ? "ring-2 ring-or-400" : ""}`}>
+                <span className={p.choisi ? "" : "group-hover:hidden"}>{p.choisi ? p.libelle : p.libelle.split(" · ")[0]}</span>
+                {!p.choisi && <span className="hidden group-hover:inline">{p.libelle}</span>}
+              </span>
             </button>
           );
         })}

@@ -28,15 +28,58 @@ export function useSession() {
 }
 
 /**
- * Les pages parcourues dans l'application depuis son ouverture, comme une pile : aller plus loin
- * ajoute la page, revenir (« Retour » ou le geste du téléphone) la retire. Le bouton « Retour »
- * revient en arrière s'il y a une page avant ; sinon il remonte d'un cran dans le chemin.
+ * L'historique de l'onglet, tel que le navigateur le tient (25/11/2026 : une pile tenue à part se
+ * trompait après une redirection, un rechargement ou un lien qui ramène en arrière). Chaque entrée
+ * porte son numéro (dans `history.state`, qui survit au rechargement) ; les pages de l'application
+ * sont notées par numéro pour l'onglet (sessionStorage). « Retour » recule d'une entrée seulement
+ * si l'entrée d'avant est une page de l'application ; sinon il remonte d'un cran dans le chemin.
  */
-const pilePages: string[] = [];
+const CLE_HISTOIRE = "dgrhas.histoire";
+let indexCourant = 0;
+function installerHistoire() {
+  if (typeof window === "undefined") return;
+  const w = window as Window & { __dgrhasHistoire?: boolean };
+  if (w.__dgrhasHistoire) return;
+  w.__dgrhasHistoire = true;
+  const h = window.history;
+  const numero = (st: unknown) => (st && typeof (st as { __dgrhasIdx?: unknown }).__dgrhasIdx === "number" ? (st as { __dgrhasIdx: number }).__dgrhasIdx : null);
+  indexCourant = numero(h.state) ?? 0;
+  const pousser = h.pushState.bind(h);
+  const remplacer = h.replaceState.bind(h);
+  const avec = (st: unknown, i: number) => ({ ...(st && typeof st === "object" ? st : {}), __dgrhasIdx: i });
+  h.pushState = (st, inutile, url) => {
+    indexCourant++;
+    pousser(avec(st, indexCourant), inutile, url);
+  };
+  h.replaceState = (st, inutile, url) => remplacer(avec(st, indexCourant), inutile, url);
+  window.addEventListener("popstate", (e) => {
+    const i = numero(e.state);
+    if (i !== null) indexCourant = i;
+  });
+  remplacer(avec(h.state, indexCourant), "");
+}
+installerHistoire();
+
+function lireHistoire(): Record<string, string> {
+  try {
+    return JSON.parse(sessionStorage.getItem(CLE_HISTOIRE) ?? "{}") as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
 function noterPage(chemin: string) {
-  if (pilePages[pilePages.length - 1] === chemin) return;
-  if (pilePages[pilePages.length - 2] === chemin) pilePages.pop();
-  else pilePages.push(chemin);
+  try {
+    const m = lireHistoire();
+    m[String(indexCourant)] = chemin;
+    sessionStorage.setItem(CLE_HISTOIRE, JSON.stringify(m));
+  } catch {
+    /* sans stockage : « Retour » remonte dans le chemin */
+  }
+}
+/** La page de l'application juste avant dans l'historique de l'onglet (sinon rien). */
+function pageAvant(chemin: string): string | null {
+  const avant = lireHistoire()[String(indexCourant - 1)];
+  return avant && avant !== chemin ? avant : null;
 }
 
 /*
@@ -956,9 +999,10 @@ function FilAriane({ chemin, profil }: { chemin: string; profil: Profil }) {
   // « Retour » (DG, 24/11/2026 : l'application installée n'a plus le bouton du navigateur) : la page
   // d'avant dans l'application, sinon l'étape au-dessus dans le chemin, sinon le tableau de bord
   const retour = () => {
-    if (pilePages.length > 1) return router.back();
+    if (pageAvant(chemin)) return router.back();
     const parent = [...etapes].reverse().find((x) => x.href && x.href.split("?")[0] !== chemin)?.href;
-    router.push(parent ?? "/");
+    // Remonter remplace la page (sinon le « Retour » suivant ramènerait ici, en aller-retour)
+    router.replace(parent ?? "/");
   };
   const boutonRetour = (
     <button
