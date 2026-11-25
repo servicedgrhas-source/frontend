@@ -29,10 +29,11 @@ const POLITIQUE = [
   `script-src 'self' 'unsafe-inline'${developpement ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   // Les tuiles d'OpenStreetMap : la carte du suivi des recenseurs (DG, 22/11/2026)
-  "img-src 'self' data: blob: https://tile.openstreetmap.org",
+  "img-src 'self' data: blob: https://tile.openstreetmap.org https://*.basemaps.cartocdn.com",
   "font-src 'self' data:",
   // L'API, et sur le poste le rechargement à chaud de l'interface
-  `connect-src 'self'${origineApi ? ` ${origineApi}` : ""}${developpement ? " ws: wss:" : ""}`,
+  // et la tuile d'essai de la carte (OpenStreetMap répond-il à ce site ?)
+  `connect-src 'self' https://tile.openstreetmap.org${origineApi ? ` ${origineApi}` : ""}${developpement ? " ws: wss:" : ""}`,
   // Acte signé affiché dans le portail (fichier ouvert dans la page)
   "frame-src 'self' blob:",
   "worker-src 'self' blob:",

@@ -14,7 +14,7 @@ import { peut } from "@/lib/libelles";
  * Recenseurs de la mission de terrain (DG, 22/11/2026). On les planifie à l'avance : un compte par
  * personne (identifiant RG-001-BZ, mot de passe simple), les départements où il est envoyé et les
  * dates. Il ne voit que le formulaire du terrain. Un recenseur mis dans plusieurs départements est
- * permis, mais signalé en rouge. Appareil perdu ou recenseur retiré : « Effacer son appareil ».
+ * permis, mais signalé en rouge. Appareil perdu : « Bloquer » ; données à vider : « Effacer les données » (le compte continue).
  */
 
 interface DepartementMission {
@@ -60,6 +60,9 @@ interface Remis {
 const jour = (j: string | null) => (j ? j.split("-").reverse().join("/") : "—");
 const quand = (d: string | null) => (d ? new Date(d).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(" ", " à ") : "jamais");
 
+/** Effacement demandé et pas encore fait par l'appareil (un effacement accusé ne revient pas). */
+const effacementEnAttente = (x: { effacerLe: string | null; effaceLe: string | null }) => !!x.effacerLe && (!x.effaceLe || x.effaceLe < x.effacerLe);
+
 export default function PageRecenseurs() {
   const { profil } = useSession();
   const r = useApi<Liste>("/recensement/recenseurs");
@@ -103,13 +106,15 @@ export default function PageRecenseurs() {
     agir(x.id, async () => {
       if (
         !(await demander(
-          `Arrêter la mission de ${x.code} (${x.nom}) et effacer son appareil ? À sa prochaine connexion, l’appareil envoie d’abord ce qui attend (s’il le peut), puis efface tout ce qu’il garde et le compte se ferme.`,
-          "Oui, effacer son appareil",
+          x.bloqueLe
+            ? `Effacer les données de l’appareil de ${x.code} (${x.nom}) ? Il est bloqué : à sa prochaine connexion, son appareil efface tout ce qu’il garde, sans pouvoir envoyer ce qui attend. Il reste bloqué.`
+            : `Effacer les données de l’appareil de ${x.code} (${x.nom}) ? À sa prochaine connexion, l’appareil envoie d’abord ce qui attend (s’il le peut), efface toutes ses données, puis retélécharge la base de sa mission. Son compte continue. Appareil perdu ou volé : bloquez-le aussi.`,
+          "Oui, effacer les données",
         ))
       )
         return;
       await api.post(`/recensement/recenseurs/${x.id}/effacer`, {});
-      setMessage(`${x.code} : effacement demandé. Il se fera à la prochaine connexion de son appareil.`);
+      setMessage(`${x.code} : effacement demandé. Il se fera à la prochaine connexion de son appareil, une seule fois.`);
     });
 
   const bloquer = (x: Recenseur) =>
@@ -122,7 +127,7 @@ export default function PageRecenseurs() {
   const debloquer = (x: Recenseur) =>
     agir(x.id, async () => {
       await api.post(`/recensement/recenseurs/${x.id}/debloquer`, {});
-      setMessage(`${x.code} : débloqué, il peut se reconnecter.`);
+      setMessage(`${x.code} : débloqué, il peut se reconnecter avec son mot de passe.${effacementEnAttente(x) ? " L’effacement demandé se fera à sa prochaine connexion." : ""}`);
     });
 
   const reprendre = (x: Recenseur) =>
@@ -224,19 +229,22 @@ export default function PageRecenseurs() {
                   <td className="whitespace-nowrap">{quand(x.derniereConnexion)}</td>
                   <td className="whitespace-nowrap tabular-nums">{x.envois ? `${x.envois} envoi(s), ${x.lignesEnvoyees} ligne(s)` : "—"}</td>
                   <td>
-                    {x.effaceLe ? (
-                      <Badge ton="gris">Appareil effacé le {quand(x.effaceLe)}</Badge>
-                    ) : x.effacerLe ? (
-                      <Badge ton="rouge">Effacement demandé</Badge>
-                    ) : x.bloqueLe ? (
-                      <Badge ton="rouge" titre={`Bloqué par ${x.bloquePar ?? "?"}`}>Bloqué le {quand(x.bloqueLe)}</Badge>
-                    ) : !x.actif ? (
-                      <Badge ton="gris">Compte fermé</Badge>
-                    ) : x.fin && new Date().toISOString().slice(0, 10) > x.fin ? (
-                      <Badge ton="jaune">Mission terminée</Badge>
-                    ) : (
-                      <Badge ton="vert">En mission</Badge>
-                    )}
+                    <div className="flex flex-wrap gap-1">
+                      {x.bloqueLe ? (
+                        <Badge ton="rouge" titre={`Bloqué par ${x.bloquePar ?? "?"}`}>Bloqué le {quand(x.bloqueLe)}</Badge>
+                      ) : !x.actif ? (
+                        <Badge ton="gris">Compte fermé</Badge>
+                      ) : x.fin && new Date().toISOString().slice(0, 10) > x.fin ? (
+                        <Badge ton="jaune">Mission terminée</Badge>
+                      ) : (
+                        <Badge ton="vert">En mission</Badge>
+                      )}
+                      {effacementEnAttente(x) ? (
+                        <Badge ton="rouge" titre="L’appareil s’effacera à sa prochaine connexion">Effacement en attente</Badge>
+                      ) : x.effaceLe ? (
+                        <Badge ton="gris">Appareil effacé le {quand(x.effaceLe)}</Badge>
+                      ) : null}
+                    </div>
                   </td>
                   {decider && (
                     <td>
@@ -247,11 +255,11 @@ export default function PageRecenseurs() {
                         <Bouton variante="discret" disabled={!!enCours} onClick={() => void nouveauMotDePasse(x)} title="Nouveau mot de passe (oublié, ou remis à quelqu’un d’autre)">
                           <KeyRound />
                         </Bouton>
-                        {x.bloqueLe && !x.effacerLe ? (
-                          <Bouton variante="discret" disabled={!!enCours} onClick={() => void debloquer(x)} title="Le compte se rouvre ; ses données étaient restées sur sa tablette">
+                        {x.bloqueLe ? (
+                          <Bouton variante="discret" disabled={!!enCours} onClick={() => void debloquer(x)} title="Le compte se rouvre : il se reconnecte avec son mot de passe">
                             <LockOpen /> Débloquer
                           </Bouton>
-                        ) : x.effacerLe || !x.actif ? (
+                        ) : !x.actif ? (
                           <Bouton variante="discret" disabled={!!enCours} onClick={() => void reprendre(x)} title="Reprendre la mission (compte rouvert)">
                             <RotateCcw /> Reprendre
                           </Bouton>
@@ -260,9 +268,9 @@ export default function PageRecenseurs() {
                             <Ban /> Bloquer
                           </Bouton>
                         )}
-                        {!x.effacerLe && !x.effaceLe && (
-                          <Bouton variante="danger" disabled={!!enCours} onClick={() => void effacer(x)} title="Appareil perdu, recenseur retiré : arrêter et effacer son appareil">
-                            <Trash2 /> Effacer l’appareil
+                        {!effacementEnAttente(x) && (
+                          <Bouton variante="danger" disabled={!!enCours} onClick={() => void effacer(x)} title="Vider les données gardées sur son appareil (une seule fois, à sa prochaine connexion) ; la base se retélécharge">
+                            <Trash2 /> Effacer les données
                           </Bouton>
                         )}
                       </div>

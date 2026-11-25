@@ -29,6 +29,10 @@ const versY = (lat: number, z: number) => {
   return ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * TUILE * 2 ** z;
 };
 
+const CLE_SECOURS = "dgrhas.carte.secours";
+// Change l'adresse des tuiles : les images « Access blocked » gardées par le navigateur ne reviennent pas
+const VERSION_TUILES = "v=2";
+
 export function CarteOsm({ points, trajet = [], hauteur = 520, choisir }: { points: PointCarte[]; trajet?: [number, number][]; hauteur?: number; choisir?: (id: string) => void }) {
   const boite = useRef<HTMLDivElement>(null);
   const [largeur, setLargeur] = useState(800);
@@ -53,6 +57,34 @@ export function CarteOsm({ points, trajet = [], hauteur = 520, choisir }: { poin
     return { z, lat: (b.nord + b.sud) / 2, lng: (b.ouest + b.est) / 2 };
   }, [points, trajet, largeur, hauteur]);
   const [vue, setVue] = useState<{ z: number; cx: number; cy: number } | null>(null);
+  // Les serveurs d'OpenStreetMap refusent parfois l'application (« Access blocked ») : on passe alors
+  // toute la carte sur CARTO, faite des mêmes données OpenStreetMap
+  const [secours, setSecours] = useState(false);
+  // Le refus d'OpenStreetMap arrive comme une image (« Access blocked »), pas comme une erreur : une
+  // tuile est demandée une fois à l'ouverture, et son code de réponse décide (gardé pour la session)
+  useEffect(() => {
+    let fini = false;
+    try {
+      if (sessionStorage.getItem(CLE_SECOURS) === "1") {
+        queueMicrotask(() => !fini && setSecours(true));
+        return () => void (fini = true);
+      }
+    } catch {
+      /* sans stockage : on teste à chaque fois */
+    }
+    fetch(`https://tile.openstreetmap.org/2/2/1.png?${VERSION_TUILES}`, { referrerPolicy: "strict-origin-when-cross-origin", cache: "no-store" })
+      .then((r) => {
+        if (r.ok || fini) return;
+        setSecours(true);
+        try {
+          sessionStorage.setItem(CLE_SECOURS, "1");
+        } catch {
+          /* rien */
+        }
+      })
+      .catch(() => undefined);
+    return () => void (fini = true);
+  }, []);
   const cleCadre = `${cadre.z}|${cadre.lat}|${cadre.lng}`;
   const [cadreVu, setCadreVu] = useState(cleCadre);
   // Nouveaux points (autre jour, autre recenseur choisi) : la carte se recadre
@@ -99,7 +131,14 @@ export function CarteOsm({ points, trajet = [], hauteur = 520, choisir }: { poin
         // eslint-disable-next-line @next/next/no-img-element
         <img
           key={t.cle}
-          src={`https://tile.openstreetmap.org/${z}/${((t.x % n) + n) % n}/${t.y}.png`}
+          src={
+            secours
+              ? `https://${"abcd"[(((t.x + t.y) % 4) + 4) % 4]}.basemaps.cartocdn.com/rastertiles/voyager/${z}/${((t.x % n) + n) % n}/${t.y}.png`
+              : `https://tile.openstreetmap.org/${z}/${((t.x % n) + n) % n}/${t.y}.png?${VERSION_TUILES}`
+          }
+          // OpenStreetMap exige de savoir quel site demande la tuile (le site, jamais la page)
+          referrerPolicy="strict-origin-when-cross-origin"
+          onError={() => !secours && setSecours(true)}
           alt=""
           draggable={false}
           className="pointer-events-none absolute"
@@ -141,7 +180,7 @@ export function CarteOsm({ points, trajet = [], hauteur = 520, choisir }: { poin
           <Minus className="size-4" />
         </button>
       </div>
-      <div className="absolute right-1 bottom-1 rounded bg-white/80 px-1 text-[10px] text-zinc-600">© OpenStreetMap</div>
+      <div className="absolute right-1 bottom-1 rounded bg-white/80 px-1 text-[10px] text-zinc-600">© OpenStreetMap{secours ? " · © CARTO" : ""}</div>
     </div>
   );
 }

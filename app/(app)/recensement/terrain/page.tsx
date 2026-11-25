@@ -1093,7 +1093,7 @@ function CarteMission({
     void (async () => {
       await api.post("/recensement/terrain/mission/efface", {}).catch(() => undefined);
       await effacerTout();
-      window.dispatchEvent(new CustomEvent(APPAREIL_EFFACE, { detail: "Votre mission est terminée et tout a été envoyé : les données de cet appareil ont été effacées. Merci pour votre travail." }));
+      window.dispatchEvent(new CustomEvent(APPAREIL_EFFACE, { detail: { message: "Votre mission est terminée et tout a été envoyé : les données de cet appareil ont été effacées. Merci pour votre travail.", fermer: true } }));
     })();
   }, [finie, resteAEnvoyer, enLigne, enSynchro]);
   // (le jour du serveur d'abord : la date de l'appareil peut être fausse)

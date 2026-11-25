@@ -19,7 +19,7 @@ type Etat =
   | { e: "oubli"; identifiant: string; secours: boolean }
   | { e: "nouveauCode" }
   | { e: "autre"; identifiant: string }
-  | { e: "efface"; pourquoi: string }
+  | { e: "efface"; pourquoi: string; fermer: boolean }
   | { e: "ouvert" };
 
 /** La clé de secours de l'appareil (code oublié) : demandée au serveur une fois, avec le réseau. */
@@ -35,6 +35,9 @@ async function assurerSecours() {
   }
 }
 
+const EFFACE_DGRHAS =
+  "À la demande de la DGRHAS, les données de cet appareil ont été effacées (ce qui attendait l’envoi est parti d’abord, s’il y avait du réseau).";
+
 export function CoffreTerrain({ utilisateur, identifiant, children }: { utilisateur: string; identifiant: string; children: ReactNode }) {
   const [etat, setEtat] = useState<Etat>({ e: "chargement" });
   const [code, setCode] = useState("");
@@ -47,7 +50,7 @@ export function CoffreTerrain({ utilisateur, identifiant, children }: { utilisat
   const apresOuverture = async () => {
     if ((await coffre.lireMeta())?.effacementDemande) {
       await effacerAppareilMaintenant();
-      return setEtat({ e: "efface", pourquoi: "La DGRHAS a arrêté la mission de ce compte : ce qui attendait a été envoyé (s’il y avait du réseau), puis les données de cet appareil ont été effacées." });
+      return setEtat({ e: "efface", pourquoi: EFFACE_DGRHAS, fermer: false });
     }
     void assurerSecours();
     setEtat({ e: "ouvert" });
@@ -55,7 +58,7 @@ export function CoffreTerrain({ utilisateur, identifiant, children }: { utilisat
 
   const relire = async () => {
     const fin = await coffre.effacerSiMissionFinie();
-    if (fin === true) return setEtat({ e: "efface", pourquoi: "La mission est terminée et tout avait été envoyé : les données gardées sur cet appareil ont été effacées." });
+    if (fin === true) return setEtat({ e: "efface", pourquoi: "La mission est terminée et tout avait été envoyé : les données gardées sur cet appareil ont été effacées.", fermer: true });
     if (coffre.estOuvert()) return setEtat({ e: "ouvert" });
     // Revenu en moins de 5 minutes (page actualisée, application quittée un instant) : pas de code
     if (await coffre.reprendre(utilisateur)) return apresOuverture();
@@ -75,7 +78,11 @@ export function CoffreTerrain({ utilisateur, identifiant, children }: { utilisat
     // (lecture asynchrone de la mémoire de l'appareil : l'état change après, pas pendant l'effet)
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void relire();
-    const efface = (e: Event) => setEtat({ e: "efface", pourquoi: (e as CustomEvent<string | undefined>).detail || "La DGRHAS a arrêté la mission de ce compte : les données gardées sur cet appareil ont été effacées." });
+    // Effacement demandé par la DGRHAS : le compte continue ; fin de mission : le compte se ferme
+    const efface = (e: Event) => {
+      const d = (e as CustomEvent<{ message?: string; fermer?: boolean } | undefined>).detail;
+      setEtat({ e: "efface", pourquoi: d?.message || EFFACE_DGRHAS, fermer: !!d?.fermer });
+    };
     window.addEventListener(APPAREIL_EFFACE, efface);
     // Mission arrêtée pendant que le coffre est fermé : l'écran le dit
     const aEffacer = () => void relire();
@@ -232,6 +239,22 @@ export function CoffreTerrain({ utilisateur, identifiant, children }: { utilisat
       </form>,
     );
 
+  if (etat.e === "efface" && !etat.fermer)
+    return cadre(
+      "Données effacées",
+      <>
+        <p>{etat.pourquoi}</p>
+        <p className="text-zinc-500">Votre compte continue, avec le même code. En continuant, la base de votre mission se télécharge de nouveau (gardez le réseau).</p>
+        <Bouton
+          variante="principal"
+          // La page repart de zéro (rien de l'ancienne mémoire de la page ne survit) : l'appareil se
+          // rouvre (ou demande le code), puis la base se télécharge de nouveau
+          onClick={() => window.location.reload()}
+        >
+          Continuer
+        </Bouton>
+      </>,
+    );
   if (etat.e === "efface")
     return cadre(
       "Données effacées",
@@ -315,7 +338,7 @@ export function CoffreTerrain({ utilisateur, identifiant, children }: { utilisat
           const r = await coffre.ouvrirAvecCode(code);
           setCode("");
           if (r.ok) return apresOuverture();
-          if (!r.restants) return setEtat({ e: "efface", pourquoi: `${coffre.ESSAIS_MAX} codes faux d’affilée : par sécurité, les données gardées sur cet appareil ont été effacées. Retéléchargez-les avec la connexion.` });
+          if (!r.restants) return setEtat({ e: "efface", pourquoi: `${coffre.ESSAIS_MAX} codes faux d’affilée : par sécurité, les données gardées sur cet appareil ont été effacées. Choisissez un nouveau code : la base se retéléchargera.`, fermer: false });
           setErreur(`Code faux. Encore ${r.restants} essai(s) ; ensuite, tout ce qui est gardé ici sera effacé.${r.restants <= 5 ? " Vous ne vous en souvenez pas ? « J’ai oublié mon code » ci-dessous, au lieu de deviner." : ""}`);
           setEtat({ ...etat, essais: coffre.ESSAIS_MAX - r.restants });
         });
@@ -377,9 +400,9 @@ export function CoffreTerrain({ utilisateur, identifiant, children }: { utilisat
           onClick={() =>
             confirm("Effacer tout de suite, sans envoyer ce qui attend ? Ce qui n’a pas été envoyé sera perdu.") &&
             void agir(async () => {
-              await coffre.effacerTout();
+              await coffre.effacerDonnees();
               await api.post("/recensement/terrain/mission/efface", {}).catch(() => undefined);
-              setEtat({ e: "efface", pourquoi: "Les données de cet appareil ont été effacées." });
+              setEtat({ e: "efface", pourquoi: "Les données de cet appareil ont été effacées, à la demande de la DGRHAS.", fermer: false });
             })
           }
         >

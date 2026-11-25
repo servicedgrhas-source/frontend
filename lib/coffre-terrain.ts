@@ -130,6 +130,14 @@ let brute: Uint8Array | null = null;
 const memoire = new Map<string, unknown>();
 const enAttente = new Map<string, ReturnType<typeof setTimeout>>();
 const ecouteurs = new Set<() => void>();
+/**
+ * Juste après un effacement demandé par la DGRHAS : plus rien ne s'écrit (une page encore ouverte
+ * ne doit pas réécrire ce qui vient d'être effacé), jusqu'à ce que la personne continue.
+ */
+let gele = false;
+export const degeler = () => {
+  gele = false;
+};
 
 export const estOuvert = () => !!cleDonnees;
 export const surChangement = (f: () => void) => {
@@ -148,7 +156,7 @@ export const cles = (prefixe: string) => [...memoire.keys()].filter((k) => k.sta
 
 /** Écrire (null efface) : la mémoire tout de suite, l'appareil (chiffré) peu après. */
 export function ecrire(cle: string, v: unknown) {
-  if (!cleDonnees) return;
+  if (!cleDonnees || gele) return;
   if (v === null || v === undefined) memoire.delete(cle);
   else memoire.set(cle, v);
   clearTimeout(enAttente.get(cle));
@@ -161,7 +169,7 @@ export function ecrire(cle: string, v: unknown) {
 async function enregistrer(cle: string) {
   enAttente.delete(cle);
   const k = cleDonnees;
-  if (!k) return;
+  if (!k || gele) return;
   const v = memoire.get(cle);
   try {
     if (v === undefined) await requete(DONNEES, "readwrite", (s) => s.delete(cle));
@@ -247,6 +255,7 @@ export async function creer(code: string, utilisateur: string, identifiant: stri
   await ecrireMeta({ sel, tours: TOURS, parCode: await chiffrer(cleCode, brute), essais: 0, utilisateur, identifiant, appareil: nouvelIdentifiant() });
   void garderDurablement();
   cleDonnees = await cleBrute(brute);
+  gele = false;
   memoire.clear();
   reprendreAnciennes();
   prevenir();
@@ -271,6 +280,7 @@ export async function ouvrirAvecCode(code: string): Promise<{ ok: true } | { ok:
   }
   if (m.essais) await ecrireMeta({ ...m, essais: 0 });
   cleDonnees = await cleBrute(brute);
+  gele = false;
   await chargerTout(cleDonnees);
   reprendreAnciennes();
   void garderDurablement();
@@ -314,6 +324,7 @@ export async function ouvrirAvecSecours(cleB64: string) {
   }
   await ecrireMeta({ ...m, essais: 0 });
   cleDonnees = await cleBrute(brute);
+  gele = false;
   await chargerTout(cleDonnees);
   void garderDurablement();
   prevenir();
@@ -400,6 +411,7 @@ export async function reprendre(utilisateur: string): Promise<boolean> {
     return false;
   }
   cleDonnees = await cleBrute(brute);
+  gele = false;
   await chargerTout(cleDonnees);
   reprendreAnciennes();
   prevenir();
@@ -443,6 +455,44 @@ export async function effacerTout() {
   }
   prevenir();
 }
+
+/**
+ * Effacement demandé par la DGRHAS (25/11/2026) : les DONNÉES de l'appareil sont effacées (base
+ * téléchargée, écoles, lignes, photos, positions), mais le compte continue et le code reste le même.
+ * À l'ouverture suivante, le coffre est vide : la base se télécharge de nouveau. On vérifie que la
+ * mémoire est bien vide ; sinon, tout est effacé (code compris).
+ */
+export async function effacerDonnees(): Promise<boolean> {
+  gele = true;
+  enAttente.forEach((t) => clearTimeout(t));
+  enAttente.clear();
+  memoire.clear();
+  let vide = false;
+  try {
+    await requete(DONNEES, "readwrite", (s) => s.clear());
+    vide = (await requete<number>(DONNEES, "readonly", (s) => s.count())) === 0;
+    const m = await lireMeta();
+    if (m) await ecrireMeta({ ...m, effacementDemande: false, enAttente: 0 });
+  } catch {
+    vide = false;
+  }
+  try {
+    const anciennes: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i) ?? "";
+      if (k.startsWith(ANCIEN_PREFIXE)) anciennes.push(k);
+    }
+    anciennes.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    /* stockage indisponible */
+  }
+  if (!vide) await effacerTout();
+  prevenir();
+  return vide;
+}
+
+/** Nombre d'enregistrements gardés sur l'appareil (0 après un effacement). */
+export const nombreEnregistrements = () => requete<number>(DONNEES, "readonly", (s) => s.count()).catch(() => -1);
 
 /* ------------------------------ Effacement demandé par la DGRHAS ------------------------------ */
 
@@ -617,6 +667,7 @@ export async function ouvrirAvecEmpreinte() {
   }
   if (m.essais) await ecrireMeta({ ...m, essais: 0 });
   cleDonnees = await cleBrute(brute);
+  gele = false;
   await chargerTout(cleDonnees);
   reprendreAnciennes();
   prevenir();

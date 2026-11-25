@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useReducer, useState, useSyncExternalStore } from "react";
-import { effacerTout, envoyerAvantEffacement, estOuvert, lireMeta, marquerEffacement } from "./coffre-terrain";
+import { effacerDonnees, envoyerAvantEffacement, estOuvert, lireMeta, marquerEffacement } from "./coffre-terrain";
 
 /**
  * En ligne : NEXT_PUBLIC_API_URL (adresse de l'API sur Render, « …/api »).
@@ -251,8 +251,10 @@ async function envoyer<T>(
     0,
   );
   let rep: Response;
+  const partieLe = Date.now();
   try {
-    rep = await fetch(`${API_URL}${chemin}`, { ...options, headers: entetes });
+    // Jamais une réponse gardée par le navigateur (un vieux « effacez l'appareil » revenait)
+    rep = await fetch(`${API_URL}${chemin}`, { cache: "no-store", ...options, headers: entetes });
   } catch {
     throw injoignable;
   }
@@ -274,7 +276,8 @@ async function envoyer<T>(
   if (!rep.ok) {
     if (corps?.code === "E423") suspendreAcces(corps);
     // Mission arrêtée par la DGRHAS (appareil perdu, recenseur retiré) : l'appareil efface tout
-    if (rep.status === 410 && corps?.code === "EFFACER_APPAREIL") await effacerAppareil(jeton);
+    // (une requête partie avant la fin de l'effacement porte l'ancienne demande : déjà faite)
+    if (rep.status === 410 && corps?.code === "EFFACER_APPAREIL" && partieLe >= effaceLe) await effacerAppareil(jeton);
     const m = corps?.message;
     const message = Array.isArray(m) ? m.join(" ; ") : (m ?? `Erreur ${rep.status}`);
     if (rep.status === 401 && !chemin.startsWith("/auth/connexion")) sessionExpiree(message);
@@ -289,6 +292,8 @@ export const APPAREIL_EFFACE = "dgrhas:appareil-efface";
 export const APPAREIL_A_EFFACER = "dgrhas:appareil-a-effacer";
 
 let effacementEnCours = false;
+/** Fin du dernier effacement (les réponses aux requêtes parties avant ne le refont pas). */
+let effaceLe = 0;
 async function effacerAppareil(jeton: string | null) {
   // (l'envoi qui précède l'effacement passe aussi par ici : pas d'effacement dans l'effacement)
   if (effacementEnCours) return;
@@ -303,10 +308,12 @@ async function effacerAppareil(jeton: string | null) {
     }
     // Ce qui attend part d'abord (le serveur laisse encore passer l'envoi)
     await envoyerAvantEffacement();
-    await effacerTout();
-    // L'appareil le dit au serveur, puis le compte se ferme
+    // Les données s'effacent ; le compte continue (la base se retélécharge à l'ouverture suivante)
+    await effacerDonnees();
+    // L'appareil le dit au serveur : la demande est levée, elle ne revient pas
     if (jeton)
       await fetch(`${API_URL}/recensement/terrain/mission/efface`, { method: "POST", headers: { Authorization: `Bearer ${jeton}`, "X-App-State": etatApplication() } }).catch(() => undefined);
+    effaceLe = Date.now();
     if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(APPAREIL_EFFACE));
   } finally {
     effacementEnCours = false;
