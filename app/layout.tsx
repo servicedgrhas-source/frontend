@@ -36,6 +36,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="fr" className={`${poppins.variable} h-full antialiased`} suppressHydrationWarning>
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
+        {/* Menu de gauche réduit aux icônes : connu avant le premier affichage, sans menu large qui clignote */}
+        <script dangerouslySetInnerHTML={{ __html: `try{if(localStorage.getItem("dgrhas.menuReduit")==="1")document.documentElement.dataset.menuReduit="1"}catch(e){}` }} />
         {/* Compte visiteur : ni impression ni téléchargement (DG, 04/11/2026) */}
         <GardeVisiteur />
         {children}

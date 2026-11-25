@@ -157,9 +157,15 @@ export function SqueletteFiabiliser() {
  * squelette, au lieu d'un « Ouverture de la session… » sur fond vide.
  */
 export function SqueletteApplication() {
+  // Le menu réduit se lit sur la page (posé avant le premier affichage) : pas de menu large qui clignote
   return (
     <div className="flex min-h-screen gap-6 p-4" aria-busy="true" aria-label="Ouverture de la session">
-      <div className="hidden w-[300px] shrink-0 space-y-6 rounded-3xl bg-nuit p-6 lg:block">
+      <div className="hidden w-[66px] shrink-0 space-y-4 rounded-3xl bg-nuit px-5 py-5 lg:[[data-menu-reduit]_&]:block">
+        {Array.from({ length: 9 }, (_, i) => (
+          <Os key={i} sombre className="size-6 rounded-lg" />
+        ))}
+      </div>
+      <div className="hidden w-[300px] shrink-0 space-y-6 rounded-3xl bg-nuit p-6 lg:block lg:[[data-menu-reduit]_&]:hidden">
         <div className="flex items-center gap-3">
           <Os sombre className="size-16 rounded-2xl" />
           <div className="flex-1 space-y-2">

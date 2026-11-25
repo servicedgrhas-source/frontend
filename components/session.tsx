@@ -2,11 +2,11 @@
 
 import { SaisieMotDePasse } from "./mot-de-passe";
 import { SqueletteApplication } from "./squelette";
-import { ArrowLeft, Bell, Inbox, KeyRound, LayoutDashboard, Lock, LogOut, Menu as IconeMenu, UserRound, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Bell, Inbox, KeyRound, LayoutDashboard, Lock, LogOut, Menu as IconeMenu, PanelLeftClose, PanelLeftOpen, UserRound, X, type LucideIcon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { api, CLE_JETON, ErreurApi, fermerSession, lireSession, memoriserProfil, ouvrirSession, qs, SESSION_ROUVERTE, surSessionExpiree, TRAVAIL_MODIFIE, type Profil } from "@/lib/api";
 import { appliquerMenu, cheminDe, ESPACES, espaceDe, lienEspace, MENU, MENU_MODIFIE, niveauPage, POLES, poleDe, rubriquesVisibles, travailEspace, type Compteurs, type ConfigMenu } from "@/lib/espaces";
 import { ROLES } from "@/lib/libelles";
@@ -39,6 +39,38 @@ function noterPage(chemin: string) {
   else pilePages.push(chemin);
 }
 
+/*
+ * Menu de gauche réduit aux icônes (25/11/2026), sur ordinateur seulement : retenu dans ce
+ * navigateur. Le changement ne se calcule qu'en CSS (largeur et opacité) : pas de rendu en boucle.
+ */
+const CLE_MENU_REDUIT = "dgrhas.menuReduit";
+const MENU_REDUIT_CHANGE = "dgrhas:menu-reduit";
+function lireMenuReduit() {
+  try {
+    return localStorage.getItem(CLE_MENU_REDUIT) === "1";
+  } catch {
+    return false;
+  }
+}
+function ecouterMenuReduit(f: () => void) {
+  window.addEventListener(MENU_REDUIT_CHANGE, f);
+  window.addEventListener("storage", f);
+  return () => {
+    window.removeEventListener(MENU_REDUIT_CHANGE, f);
+    window.removeEventListener("storage", f);
+  };
+}
+function changerMenuReduit(reduit: boolean) {
+  try {
+    localStorage.setItem(CLE_MENU_REDUIT, reduit ? "1" : "0");
+  } catch {
+    /* navigation privée : le choix vaut pour cette page seulement */
+  }
+  if (reduit) document.documentElement.dataset.menuReduit = "1";
+  else delete document.documentElement.dataset.menuReduit;
+  window.dispatchEvent(new Event(MENU_REDUIT_CHANGE));
+}
+
 export function Coquille({ children }: { children: ReactNode }) {
   const router = useRouter();
   const chemin = usePathname();
@@ -55,6 +87,7 @@ export function Coquille({ children }: { children: ReactNode }) {
   const [alertesOuvertes, setAlertesOuvertes] = useState(false);
   // Téléphone et petite tablette (DG, 21/11/2026 : équipes de terrain) : le menu se replie
   const [menuMobile, setMenuMobile] = useState(false);
+  const reduit = useSyncExternalStore(ecouterMenuReduit, lireMenuReduit, () => false);
   // Session expirée pendant le travail : message du serveur, reconnexion sur place
   const [expiree, setExpiree] = useState<string | null>(null);
 
@@ -323,15 +356,19 @@ export function Coquille({ children }: { children: ReactNode }) {
         <aside
           // Un lien choisi dans le menu le referme (téléphone)
           onClickCapture={(e) => (e.target as HTMLElement).closest("a") && setMenuMobile(false)}
+          data-reduit={reduit ? "true" : undefined}
           className={cx(
-            "no-print top-0 h-screen w-64 shrink-0 flex-col overflow-hidden bg-nuit text-white md:sticky md:flex lg:top-3 lg:h-[calc(100vh-1.5rem)] lg:rounded-[28px]",
+            // Réduit : 66 px, juste la place d'une icône centrée (les icônes ne bougent pas pendant le repli)
+            "group/menu no-print top-0 h-screen w-64 shrink-0 flex-col overflow-hidden bg-nuit text-white md:sticky md:flex md:transition-[width] md:duration-200 md:ease-out motion-reduce:transition-none md:data-[reduit=true]:w-[66px] lg:top-3 lg:h-[calc(100vh-1.5rem)] lg:rounded-[28px]",
             menuMobile ? "fixed left-0 z-50 flex shadow-2xl" : "hidden",
           )}
         >
           <button type="button" onClick={() => setMenuMobile(false)} className="absolute top-3 right-3 cursor-pointer rounded-lg p-1.5 text-white/60 hover:bg-white/10 md:hidden" aria-label="Fermer le menu">
             <X className="size-5" />
           </button>
-          <div className="px-6 pt-7 pb-6">
+          {/* Réduit : ni armoiries ni titre, seulement un peu d'air au-dessus des icônes */}
+          <div className="hidden h-5 shrink-0 md:group-data-[reduit=true]/menu:block" aria-hidden />
+          <div className="w-64 shrink-0 px-6 pt-7 pb-6 md:group-data-[reduit=true]/menu:hidden">
             <div className="flex items-center gap-3">
               <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-white p-1.5 shadow-lg shadow-black/20">
                 <Image src="/armoiries.png" alt="Armoiries de la République du Congo" width={56} height={56} className="h-full w-full object-contain" priority />
@@ -345,17 +382,18 @@ export function Coquille({ children }: { children: ReactNode }) {
             </div>
           </div>
 
-          <nav className="flex-1 overflow-y-auto px-3 pb-4">
-            {p.role !== "STRUCTURE" && <LienMenu href="/" libelle={(p.role === "VISITEUR" || p.compteVide) && p.droits?.["/"] !== "LECTURE" && p.droits?.["/"] !== "MODIFICATION" ? "Accueil" : "Tableau de bord"} icone={LayoutDashboard} actif={chemin === "/"} principal />}
-            {p.role !== "VISITEUR" && !p.compteVide && <LienMenu href="/a-traiter" libelle="Dossiers à traiter" icone={Inbox} actif={chemin === "/a-traiter"} principal nombre={circuit?.aTraiter} titre="Demandes qui attendent votre visa et votre avis" />}
+          <nav className="flex-1 overflow-x-hidden overflow-y-auto px-3 pb-4 md:group-data-[reduit=true]/menu:[scrollbar-width:none]!">
+            {p.role !== "STRUCTURE" && <LienMenu href="/" libelle={(p.role === "VISITEUR" || p.compteVide) && p.droits?.["/"] !== "LECTURE" && p.droits?.["/"] !== "MODIFICATION" ? "Accueil" : "Tableau de bord"} icone={LayoutDashboard} actif={chemin === "/"} principal reduit={reduit} />}
+            {p.role !== "VISITEUR" && !p.compteVide && <LienMenu href="/a-traiter" libelle="Dossiers à traiter" icone={Inbox} actif={chemin === "/a-traiter"} principal reduit={reduit} nombre={circuit?.aTraiter} titre="Demandes qui attendent votre visa et votre avis" />}
             {p.role !== "VISITEUR" && !p.compteVide && <button
               type="button"
               onClick={() => setAlertesOuvertes(true)}
+              title={reduit ? (circuit?.alertes ? `Alertes (${circuit.alertes})` : "Alertes") : undefined}
               className="group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-semibold text-white/80 transition-colors hover:bg-white/[0.05] hover:text-white"
             >
               <Bell className="size-[18px] shrink-0 text-white/40 group-hover:text-white/70" />
-              <span className="flex-1 text-left">Alertes</span>
-              {!!circuit?.alertes && <span className="rounded-full bg-or-400 px-1.5 py-px text-[10px] font-bold text-zinc-900 tabular-nums">{circuit.alertes > 99 ? "99+" : circuit.alertes}</span>}
+              <span className="flex-1 text-left whitespace-nowrap transition-opacity duration-150 md:group-data-[reduit=true]/menu:opacity-0">Alertes</span>
+              {!!circuit?.alertes && <span className="rounded-full bg-or-400 px-1.5 py-px text-[10px] font-bold text-zinc-900 tabular-nums md:group-data-[reduit=true]/menu:absolute md:group-data-[reduit=true]/menu:top-1.5 md:group-data-[reduit=true]/menu:right-1.5 md:group-data-[reduit=true]/menu:size-2 md:group-data-[reduit=true]/menu:p-0 md:group-data-[reduit=true]/menu:text-[0px] md:group-data-[reduit=true]/menu:ring-2 md:group-data-[reduit=true]/menu:ring-nuit">{circuit.alertes > 99 ? "99+" : circuit.alertes}</span>}
             </button>}
             <div className="my-2" />
             {/* Le menu ne se déroule pas (DG, 25/10/2026) : chaque rubrique ouvre sa page d'accueil, ses cases
@@ -377,6 +415,7 @@ export function Coquille({ children }: { children: ReactNode }) {
                     icone={pole.icone}
                     actif={chemin === `/espace/${pole.cle}` || poleDe(espaceCourant?.cle)?.cle === pole.cle}
                     principal
+                    reduit={reduit}
                     nombre={travail}
                   />
                 );
@@ -384,13 +423,28 @@ export function Coquille({ children }: { children: ReactNode }) {
               const e = ESPACES.find((x) => x.cle === m.espace);
               // Comptes des écoles, inspections… : seulement les rubriques de leur personnel et de leurs demandes
               if (!e || !rubriquesVisibles(e, p).length) return null;
-              return <LienMenu key={e.cle} href={lienEspace(e, p)} libelle={e.titre} icone={e.icone} actif={espaceCourant?.cle === e.cle} principal nombre={travailEspace(e, p, compteurs)} />;
+              return <LienMenu key={e.cle} href={lienEspace(e, p)} libelle={e.titre} icone={e.icone} actif={espaceCourant?.cle === e.cle} principal reduit={reduit} nombre={travailEspace(e, p, compteurs)} />;
             })}
           </nav>
 
-          <div className="border-t border-white/10 px-6 pt-4 pb-5">
-            <div className="truncate text-[14px] font-semibold">{p.nom}</div>
-            <div className="truncate text-xs text-white/45">{p.rolePerso ?? ROLES[p.role]}</div>
+          {/* Réduit : les icônes seules (déplier, mon compte, se déconnecter) */}
+          <div className="hidden flex-col items-center gap-1 border-t border-white/10 py-3 md:group-data-[reduit=true]/menu:flex">
+            <button type="button" onClick={() => changerMenuReduit(false)} title="Déplier le menu" aria-label="Déplier le menu" className="cursor-pointer rounded-xl p-2.5 text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white">
+              <PanelLeftOpen className="size-[18px]" />
+            </button>
+            <Link href="/compte" title="Mon compte" aria-label="Mon compte" className={cx("rounded-xl p-2.5 transition-colors hover:bg-white/[0.06] hover:text-white", chemin === "/compte" ? "text-white" : "text-white/55")}>
+              <UserRound className="size-[18px]" />
+            </Link>
+            <button type="button" onClick={() => setConfirmerSortie(true)} title="Se déconnecter" aria-label="Se déconnecter" className="cursor-pointer rounded-xl p-2.5 text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white">
+              <LogOut className="size-[18px]" />
+            </button>
+          </div>
+          <div className="relative w-64 shrink-0 border-t border-white/10 px-6 pt-4 pb-5 md:group-data-[reduit=true]/menu:hidden">
+            <button type="button" onClick={() => changerMenuReduit(true)} title="Réduire le menu (icônes seules)" aria-label="Réduire le menu" className="absolute top-3.5 right-4 hidden cursor-pointer rounded-lg p-1.5 text-white/45 transition-colors hover:bg-white/[0.06] hover:text-white md:inline-flex">
+              <PanelLeftClose className="size-4" />
+            </button>
+            <div className="truncate pr-8 text-[14px] font-semibold">{p.nom}</div>
+            <div className="truncate pr-8 text-xs text-white/45">{p.rolePerso ?? ROLES[p.role]}</div>
             <div className="mt-3 flex items-center gap-3 text-xs whitespace-nowrap">
               <Link href="/compte" className={cx("inline-flex items-center gap-1.5 hover:text-white", chemin === "/compte" ? "text-white" : "text-white/55")}>
                 <UserRound className="size-3.5" /> Mon compte
@@ -474,6 +528,7 @@ function LienMenu({
   nombre,
   titre,
   cache,
+  reduit,
 }: {
   href: string;
   libelle: string;
@@ -484,11 +539,14 @@ function LienMenu({
   titre?: string;
   /** Rubrique d'un domaine fermé : hors de la navigation au clavier. */
   cache?: boolean;
+  /** Menu réduit aux icônes : le nom de la rubrique passe en infobulle. */
+  reduit?: boolean;
 }) {
   return (
     <Link
       href={href}
-      title={titre}
+      title={reduit ? (nombre ? `${libelle} (${nombre})` : libelle) : titre}
+      aria-label={reduit ? libelle : undefined}
       tabIndex={cache ? -1 : undefined}
       className={cx(
         "group relative flex items-center gap-3 rounded-xl px-3 transition-colors duration-200",
@@ -504,8 +562,8 @@ function LienMenu({
           actif ? "text-marque-300" : "text-white/40 group-hover:text-white/70",
         )}
       />
-      <span className="flex-1">{libelle}</span>
-      {!!nombre && <span className="rounded-full bg-white/10 px-1.5 py-px text-[10px] font-semibold text-white/80 tabular-nums">{nombre > 999 ? "999+" : nombre}</span>}
+      <span className="flex-1 whitespace-nowrap transition-opacity duration-150 md:group-data-[reduit=true]/menu:opacity-0">{libelle}</span>
+      {!!nombre && <span className="rounded-full bg-white/10 px-1.5 py-px text-[10px] font-semibold text-white/80 tabular-nums md:group-data-[reduit=true]/menu:bg-or-400 md:group-data-[reduit=true]/menu:absolute md:group-data-[reduit=true]/menu:top-1.5 md:group-data-[reduit=true]/menu:right-1.5 md:group-data-[reduit=true]/menu:size-2 md:group-data-[reduit=true]/menu:p-0 md:group-data-[reduit=true]/menu:text-[0px] md:group-data-[reduit=true]/menu:ring-2 md:group-data-[reduit=true]/menu:ring-nuit">{nombre > 999 ? "999+" : nombre}</span>}
     </Link>
   );
 }
