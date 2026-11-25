@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCheck, Save, UserCheck } from "lucide-react";
+import { CheckCheck, FileSpreadsheet, Save, UserCheck } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useSession } from "@/components/session";
@@ -91,6 +91,7 @@ function Placer({ peutEnregistrer }: { peutEnregistrer: boolean }) {
   const [resultat, setResultat] = useState<Resultat | null>(null);
   const [etat, setEtat] = useState<Etat>("A_PLACER");
   const [dep, setDep] = useState("");
+  const [exportEnCours, setExportEnCours] = useState(false);
   const [recherche, setRecherche] = useState("");
   const [page, setPage] = useState(1);
   // Les choix de la DGRHAS, en écart de ce que le serveur coche d'office
@@ -162,9 +163,24 @@ function Placer({ peutEnregistrer }: { peutEnregistrer: boolean }) {
         titre="Placer les nommés dans les structures"
         sousTitre="Les nominations validées de l’année prennent effet dans l’organigramme : le directeur, le proviseur, le chef de circonscription ou le coordonnateur devient le responsable de sa structure (fini le « poste vacant ») ; la fiche de chaque nommé est rattachée à sa structure, avec sa fonction. Rien n’est enregistré avant « Enregistrer »."
         actions={
-          r && r.annees.length > 1 ? (
-            <Liste value={annee ?? r.annee ?? ""} onChange={(e) => changerAnnee(e.target.value)} options={r.annees.map((a) => ({ valeur: a, libelle: `Nominations ${a}` }))} />
-          ) : undefined
+          <div className="flex flex-wrap gap-2">
+            {r && r.annees.length > 1 && <Liste value={annee ?? r.annee ?? ""} onChange={(e) => changerAnnee(e.target.value)} options={r.annees.map((a) => ({ valeur: a, libelle: `Nominations ${a}` }))} />}
+            {r?.annee && (
+              <Bouton
+                chargement={exportEnCours}
+                title={dep ? `Le département ${dep} : une feuille par situation, avec ce qui fait hésiter et une colonne pour la décision de la DDEPPSA` : "Tous les départements (choisissez-en un dans le filtre pour le fichier d’une DDEPPSA) : une feuille par situation"}
+                onClick={() => {
+                  setExportEnCours(true);
+                  void api
+                    .telecharger(`/nominations-placement/excel${qs({ annee: r.annee, departement: dep || undefined })}`, `Placement des nommés ${r.annee}${dep ? ` - ${dep}` : ""}.xlsx`)
+                    .catch((e: Error) => setErreur(e.message))
+                    .finally(() => setExportEnCours(false));
+                }}
+              >
+                <FileSpreadsheet /> Excel {dep ? `(${dep})` : "(tous les départements)"}
+              </Bouton>
+            )}
+          </div>
         }
       />
 

@@ -2048,6 +2048,27 @@ function TravailEcole({ id, enLigne, retour }: { id: number; enLigne: boolean; r
     setEnvoyerApres(false);
     void envoyerDernier.current();
   }, [envoyerApres]);
+  // École téléchargée avant l'ajout d'une colonne (« Autres diplômes », 25/11/2026) : à l'ouverture,
+  // avec le réseau et rien en attente, elle est reprise de la base avec les colonnes du moment
+  const colonnesVues = useRef(false);
+  useEffect(() => {
+    if (!etat || colonnesVues.current || !navigator.onLine || aEnvoyer(etat).length || photosEnAttente(etat)) return;
+    colonnesVues.current = true;
+    const ici = etat.paquet.colonnes.map((c) => c.code).join("|");
+    void api
+      .get<{ colonnes: Colonne[] }>("/recensement/terrain/colonnes")
+      .then(async (c) => {
+        if (c.colonnes.map((x) => x.code).join("|") === ici) return;
+        const n = await api.get<Paquet>(`/recensement/terrain/ecole/${id}`);
+        setEtatBrut(() => {
+          const e: Etat = { paquet: n, lignes: n.agents.map((a) => nouvelleLigne(n, a)), positions: etat.positions };
+          ecrire(`ecole:${id}`, e);
+          return e;
+        });
+      })
+      .catch(() => undefined);
+  }, [id, etat]);
+
   if (!etat) return <Alerte>Cette école n’est plus sur l’appareil.</Alerte>;
   const p = etat.paquet;
   const enAttente = aEnvoyer(etat);
