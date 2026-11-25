@@ -112,6 +112,11 @@ export interface Rubrique {
    * une seule carte Recensement).
    */
   dans?: string;
+  /**
+   * Page qu'on n'ouvre que depuis sa rubrique (25/11/2026 : les pages du recensement s'ouvrent depuis
+   * chaque recensement) : ni carte ni lien sur la page du domaine, mais ses droits et son chemin.
+   */
+  interne?: boolean;
 }
 
 export interface Espace {
@@ -371,10 +376,20 @@ export const ESPACES: Espace[] = [
         libelle: "Recensement",
         icone: ClipboardCheck,
         visible: recenser,
-        explication: "Tout le recensement au même endroit : chercher un agent et compléter sa fiche, ajouter un agent absent de la base, contrôler ce qui a été modifié ; et ci-dessous, le recensement ouvert, la mission sur le terrain, les recenseurs, leur suivi, l’import.",
+        explication: "Les recensements créés : pour chacun, le recensement sur le terrain, les agents recenseurs, leur suivi, le modèle Excel, et le contrôle des données (à contrôler, à décider par le DG, acceptés, rejetés).",
       },
       {
         dans: "/recensement",
+        interne: true,
+        href: "/recensement/controle",
+        libelle: "Contrôle des données",
+        icone: ShieldCheck,
+        visible: recenser,
+        explication: "Les agents ajoutés et les fiches modifiées par un recensement : à contrôler, à décider par le DG, acceptés, rejetés.",
+      },
+      {
+        dans: "/recensement",
+        interne: true,
         href: "/recensement/campagnes",
         libelle: "Recensements (ouvrir, clôturer)",
         icone: CalendarRange,
@@ -383,6 +398,7 @@ export const ESPACES: Espace[] = [
       },
       {
         dans: "/recensement",
+        interne: true,
         href: "/recensement/terrain",
         libelle: "Recensement sur le terrain",
         icone: ClipboardList,
@@ -391,16 +407,18 @@ export const ESPACES: Espace[] = [
       },
       {
         dans: "/recensement",
+        interne: true,
         href: "/recensement/recenseurs",
-        libelle: "Recenseurs de la mission",
+        libelle: "Agents recenseurs",
         icone: UserCheck,
         visible: traiter,
         explication: "Planifier la mission : créer les comptes des recenseurs (identifiant RG-001-BZ, mot de passe à leur remettre), leurs départements et leurs dates ; suivre leurs envois ; effacer l’appareil d’un recenseur (perdu, retiré).",
       },
       {
         dans: "/recensement",
+        interne: true,
         href: "/recensement/recenseurs/suivi",
-        libelle: "Suivi des recenseurs (carte)",
+        libelle: "Suivi des recenseurs",
         icone: MapPinned,
         visible: (p) => p.role === "DG" || p.role === "ADMIN",
         explication: "Depuis Brazzaville : la position de chaque recenseur sur la carte, son trajet du jour, qui a coupé sa position ou n’a plus de signal, ses téléphones ; le bloquer ou effacer sa tablette.",
@@ -464,6 +482,7 @@ export const ESPACES: Espace[] = [
       {
         groupe: "La base du personnel",
         dans: "/recensement",
+        interne: true,
         href: "/personnel/import",
         libelle: "Modèle Excel, import et scans",
         icone: FileSpreadsheet,

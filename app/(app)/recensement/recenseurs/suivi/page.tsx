@@ -3,6 +3,7 @@
 import { AlertTriangle, Ban, LockOpen, MapPinned, Phone, RefreshCw, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { FondAntenne } from "@/components/recensement/captage-signal";
 import { CarteOsm, type PointCarte } from "@/components/recensement/carte-osm";
 import { useSession } from "@/components/session";
 import { Alerte, Annonce, Badge, Bouton, Carte, Chargement, EnTete, Saisie, Tableau, Vide, cx, useConfirmation } from "@/components/ui";
@@ -100,6 +101,7 @@ export default function PageSuivi() {
   const compte = (s: Signal) => enMission.filter((l) => l.signal === s).length;
 
   return (
+    <FondAntenne>
     <div className="space-y-5">
       <EnTete
         titre="Suivi des recenseurs"
@@ -148,7 +150,7 @@ export default function PageSuivi() {
       ) : !r.donnees ? (
         <Chargement />
       ) : !lignes.length ? (
-        <Vide>Aucun recenseur. Créez-les dans « Recenseurs de la mission ».</Vide>
+        <Vide>Aucun recenseur. Créez-les dans « Agents recenseurs ».</Vide>
       ) : (
         <>
           <Carte
@@ -267,5 +269,6 @@ export default function PageSuivi() {
       )}
       {confirmation}
     </div>
+    </FondAntenne>
   );
 }

@@ -139,7 +139,7 @@ export default function PageRecenseurs() {
   return (
     <div className="space-y-5">
       <EnTete
-        titre="Recenseurs de la mission"
+        titre="Agents recenseurs"
         sousTitre="Chaque recenseur a un compte à lui : un identifiant (RG-001-BZ : un numéro et les initiales du département) et un mot de passe à lui remettre. Il ne voit que le formulaire du recensement, pour les départements de sa mission. Les données qu’il garde sur sa tablette sont chiffrées et s’effacent d’elles-mêmes deux jours après la fin de la mission."
         actions={
           <>

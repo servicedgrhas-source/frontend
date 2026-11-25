@@ -25,7 +25,8 @@ export function VueEspace() {
   // à part (sauf si leur rubrique n'est pas ici : menu réglé autrement, ou fermée à ce compte)
   const ici = new Set(toutes.map((r) => r.href));
   const rubriques = toutes.filter((r) => !r.dans || !ici.has(r.dans));
-  const dedans = (href: string) => toutes.filter((r) => r.dans === href);
+  // (les pages « internes » s'ouvrent depuis leur rubrique, pas d'ici)
+  const dedans = (href: string) => toutes.filter((r) => r.dans === href && !r.interne);
   if (!toutes.length) return <Alerte>Ce domaine n’est pas ouvert à votre rôle.</Alerte>;
   const Icone = espace.icone;
 

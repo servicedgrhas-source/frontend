@@ -41,9 +41,10 @@ const quand = (d: string) => new Date(d).toLocaleString("fr-FR", { day: "2-digit
  * contrôle. Chaque modification montre l'ancienne et la nouvelle valeur de chaque rubrique ; le
  * bureau du contrôle valide ou rejette une modification, ou toute une sélection d'un coup.
  */
-export function ControleModifications() {
+export function ControleModifications({ campagne }: { campagne?: number } = {}) {
   const { profil } = useSession();
-  const r = useApi<{ total: number; lignes: Modification[] }>("/recensement/modifications");
+  // Un seul recensement (page « Contrôle des données » de ce recensement), sinon tous
+  const r = useApi<{ total: number; lignes: Modification[] }>(`/recensement/modifications${campagne ? `?campagne=${campagne}` : ""}`);
   const [choisies, setChoisies] = useState<Set<number>>(new Set());
   const [rejet, setRejet] = useState<number[] | null>(null);
   const [motif, setMotif] = useState("");
@@ -111,7 +112,7 @@ export function ControleModifications() {
     });
 
   return (
-    <Carte titre={`4. Fiches modifiées au recensement : contrôle${r.donnees ? ` (${restantes})` : ""}`}>
+    <Carte titre={`Fiches modifiées au recensement : contrôle${r.donnees ? ` (${restantes})` : ""}`}>
       <p className="-mt-2 mb-4 text-[13px] leading-relaxed text-zinc-600">
         Une fiche complétée ou corrigée depuis cette page passe au contrôle, comme un agent ajouté. Pour chaque rubrique changée : l’ancienne valeur (barrée) et la nouvelle. Les{" "}
         <strong>propositions</strong> (venues des rapports de fin d’année des DDEPPSA) ne sont pas encore dans la fiche : « Valider » les applique, « Rejeter » ne change rien.{" "}
