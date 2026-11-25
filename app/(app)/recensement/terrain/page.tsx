@@ -28,7 +28,8 @@ interface Colonne {
   libelle: string;
   type: string;
   options: { code: string; libelle: string }[];
-  colonnes: { code: string; libelle: string }[];
+  /** Les cases d'un tableau (enfants, autres diplômes) ; une case « liste » a ses choix. */
+  colonnes: { code: string; libelle: string; type?: string; options?: { code: string; libelle: string }[] }[];
   obligatoirePour: string[];
   aide: string;
 }
@@ -2746,6 +2747,8 @@ function Case({ c, ligne, maj, manques, grande, idCase, auClavier }: { c: Colonn
   const commun = { id: idCase, "data-case": idCase, onKeyDown: auClavier, "aria-label": c.libelle, title: c.aide || c.libelle };
   // Les enfants : un nom et une date par enfant, un bouton pour en ajouter ; rien à taper d'autre
   if (c.code === "ENFANTS" && c.type === "TABLEAU") return <CaseEnfants valeur={v} maj={maj} grande={grande} classe={cls} commun={commun} />;
+  // Les autres diplômes : de la même façon, une ligne par diplôme (25/11/2026)
+  if (c.code === "AUTRES_DIPLOMES" && c.type === "TABLEAU") return <CaseDiplomes c={c} valeur={v} maj={maj} grande={grande} classe={cls} commun={commun} />;
   if (c.type === "LISTE")
     return (
       <select {...commun} className={cls} value={v} onChange={(e) => maj(e.target.value)}>
@@ -2997,6 +3000,134 @@ function ListeEnfants({ valeur, maj, auto }: { valeur: string; maj: (v: string) 
       ))}
       <button type="button" onClick={ajouter} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1.5 text-[14px] font-medium text-marque-700 hover:bg-marque-50">
         <Plus className="size-4" /> Ajouter un enfant
+      </button>
+    </div>
+  );
+}
+
+/* ------------------------------ Autres diplômes ------------------------------ */
+
+interface Diplome {
+  diplome: string;
+  specialite: string;
+  ecole: string;
+  annee: string;
+  reste: string[];
+}
+const DIPLOME_VIDE: Diplome = { diplome: "", specialite: "", ecole: "", annee: "", reste: [] };
+// Même format d'échange que les enfants (« Diplôme | Spécialité | École | Année ; … ») : jamais tapé
+const lireDiplomes = (v: string): Diplome[] =>
+  v
+    .split(" ; ")
+    .map((x) => x.split(" | "))
+    .filter((x) => x.some((y) => y.trim()))
+    .map(([diplome = "", specialite = "", ecole = "", annee = "", ...reste]) => ({ diplome: diplome.trim(), specialite: specialite.trim(), ecole: ecole.trim(), annee: annee.trim(), reste }));
+const ecrireDiplomes = (l: Diplome[]) =>
+  l
+    .filter((d) => d.diplome || d.specialite.trim() || d.ecole.trim() || d.annee)
+    .map((d) => [d.diplome, d.specialite.trim(), d.ecole.trim(), d.annee, ...d.reste].join(" | ").replace(/(\s\|\s)+$/, ""))
+    .join(" ; ");
+
+/** Grille : un bouton « 2 diplômes » qui ouvre la liste ; une personne à la fois : la liste directement. */
+function CaseDiplomes({ c, valeur, maj, grande, classe, commun }: { c: Colonne; valeur: string; maj: (v: string) => void; grande?: boolean; classe: string; commun: Record<string, unknown> }) {
+  const [ouverte, setOuverte] = useState(false);
+  const n = lireDiplomes(valeur).length;
+  if (grande) return <ListeDiplomes c={c} valeur={valeur} maj={maj} />;
+  return (
+    <>
+      <button type="button" {...commun} className={cx(classe, "cursor-pointer text-left")} onClick={() => setOuverte(true)}>
+        {n ? `${n} diplôme${n > 1 ? "s" : ""}` : <span className="text-zinc-400">+ Diplômes</span>}
+      </button>
+      {ouverte && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-3 sm:items-center" onClick={() => setOuverte(false)}>
+          <div className="w-full max-w-2xl space-y-3 rounded-2xl bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <strong className="text-[15px]">Autres diplômes</strong>
+              <Bouton variante="principal" onClick={() => setOuverte(false)}>
+                Terminé
+              </Bouton>
+            </div>
+            <ListeDiplomes c={c} valeur={valeur} maj={maj} auto />
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * Une ligne par diplôme : le diplôme (dans la liste), la spécialité ou la série, l'école et l'année
+ * (facultatives). Entrée passe à la case suivante, puis au diplôme suivant.
+ */
+function ListeDiplomes({ c, valeur, maj, auto }: { c: Colonne; valeur: string; maj: (v: string) => void; auto?: boolean }) {
+  const [lignes, setLignes] = useState<Diplome[]>(() => {
+    const l = lireDiplomes(valeur);
+    return l.length ? l : [{ ...DIPLOME_VIDE }];
+  });
+  const boite = useRef<HTMLDivElement>(null);
+  const choix = c.colonnes.find((x) => x.code === "DIPLOME")?.options ?? [];
+  const poser = (l: Diplome[]) => {
+    setLignes(l);
+    maj(ecrireDiplomes(l));
+  };
+  const changer = (i: number, d: Partial<Diplome>) => poser(lignes.map((x, k) => (k === i ? { ...x, ...d } : x)));
+  const ajouter = () => {
+    setLignes([...lignes, { ...DIPLOME_VIDE }]);
+    setTimeout(() => boite.current?.querySelectorAll<HTMLElement>("[data-diplome]")[lignes.length]?.focus(), 30);
+  };
+  const enlever = (i: number) => {
+    const l = lignes.filter((_, k) => k !== i);
+    poser(l.length ? l : [{ ...DIPLOME_VIDE }]);
+  };
+  // Entrée : case suivante de la ligne ; sur l'année, un nouveau diplôme
+  const suivant = (e: React.KeyboardEvent<HTMLElement>, dernier?: boolean) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (dernier) return ajouter();
+    const cases = [...(e.currentTarget.closest("[data-ligne]")?.querySelectorAll<HTMLElement>("input, select") ?? [])];
+    cases[cases.indexOf(e.currentTarget) + 1]?.focus();
+  };
+  const champ = "h-11 min-w-0 rounded-md border border-zinc-200 px-3 text-[15px] outline-none focus:border-marque-500 focus:ring-2 focus:ring-marque-200";
+  // Un diplôme écrit autrement que la liste (ancienne saisie) reste visible et gardé
+  const horsListe = (v: string) => !!v && !choix.some((o) => o.code === v);
+  return (
+    <div ref={boite} className="space-y-2">
+      {lignes.map((d, i) => (
+        // Téléphone : diplôme et spécialité, puis école et année en dessous ; tablette : sur une ligne
+        <div key={i} data-ligne className="grid grid-cols-[1.25rem_1fr_1fr_auto] items-center gap-x-2 gap-y-1.5 sm:grid-cols-[1.25rem_10rem_1fr_1fr_5.5rem_auto]">
+          <span className="text-right text-[12px] text-zinc-400">{i + 1}.</span>
+          {choix.length ? (
+            <select data-diplome autoFocus={auto && i === lignes.length - 1} className={cx(champ, "cursor-pointer px-2")} value={d.diplome} aria-label={`Diplôme ${i + 1}`} onChange={(x) => changer(i, { diplome: x.target.value })} onKeyDown={(x) => suivant(x)}>
+              <option value="">Diplôme…</option>
+              {horsListe(d.diplome) && <option value={d.diplome}>{d.diplome}</option>}
+              {choix.map((o) => (
+                <option key={o.code} value={o.code}>
+                  {o.libelle}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input data-diplome autoFocus={auto && i === lignes.length - 1} className={champ} value={d.diplome} placeholder="Diplôme" aria-label={`Diplôme ${i + 1}`} onChange={(x) => changer(i, { diplome: x.target.value.toUpperCase() })} onKeyDown={(x) => suivant(x)} />
+          )}
+          <input className={champ} value={d.specialite} placeholder="Spécialité ou série" aria-label={`Diplôme ${i + 1} : spécialité ou série`} onChange={(x) => changer(i, { specialite: x.target.value })} onKeyDown={(x) => suivant(x)} />
+          <button type="button" className="cursor-pointer p-1 text-zinc-400 hover:text-rouge-600 sm:order-last" aria-label={`Retirer le diplôme ${i + 1}`} onClick={() => enlever(i)}>
+            <Trash2 className="size-4" />
+          </button>
+          <input className={cx(champ, "col-start-2 sm:col-start-auto")} value={d.ecole} placeholder="École (facultatif)" aria-label={`Diplôme ${i + 1} : école ou établissement`} onChange={(x) => changer(i, { ecole: x.target.value })} onKeyDown={(x) => suivant(x)} />
+          <input
+            className={cx(champ, "px-2 tabular-nums")}
+            value={d.annee}
+            inputMode="numeric"
+            maxLength={4}
+            placeholder="Année"
+            aria-label={`Diplôme ${i + 1} : année d’obtention`}
+            onChange={(x) => changer(i, { annee: x.target.value.replace(/\D/g, "").slice(0, 4) })}
+            onKeyDown={(x) => suivant(x, true)}
+          />
+        </div>
+      ))}
+      <button type="button" onClick={ajouter} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1.5 text-[14px] font-medium text-marque-700 hover:bg-marque-50">
+        <Plus className="size-4" /> Ajouter un diplôme
       </button>
     </div>
   );
