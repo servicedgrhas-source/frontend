@@ -435,7 +435,7 @@ export function Coquille({ children }: { children: ReactNode }) {
               className="group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-semibold text-white/80 transition-colors hover:bg-white/[0.05] hover:text-white"
             >
               <Bell className="size-[18px] shrink-0 text-white/40 group-hover:text-white/70" />
-              <span className="flex-1 text-left whitespace-nowrap transition-opacity duration-150 md:group-data-[reduit=true]/menu:opacity-0">Alertes</span>
+              <span className="flex-1 text-left transition-opacity duration-150 md:group-data-[reduit=true]/menu:whitespace-nowrap md:group-data-[reduit=true]/menu:opacity-0">Alertes</span>
               {!!circuit?.alertes && <span className="rounded-full bg-or-400 px-1.5 py-px text-[10px] font-bold text-zinc-900 tabular-nums md:group-data-[reduit=true]/menu:absolute md:group-data-[reduit=true]/menu:top-1.5 md:group-data-[reduit=true]/menu:right-1.5 md:group-data-[reduit=true]/menu:size-2 md:group-data-[reduit=true]/menu:p-0 md:group-data-[reduit=true]/menu:text-[0px] md:group-data-[reduit=true]/menu:ring-2 md:group-data-[reduit=true]/menu:ring-nuit">{circuit.alertes > 99 ? "99+" : circuit.alertes}</span>}
             </button>}
             <div className="my-2" />
@@ -605,7 +605,7 @@ function LienMenu({
           actif ? "text-marque-300" : "text-white/40 group-hover:text-white/70",
         )}
       />
-      <span className="flex-1 whitespace-nowrap transition-opacity duration-150 md:group-data-[reduit=true]/menu:opacity-0">{libelle}</span>
+      <span className="flex-1 leading-snug transition-opacity duration-150 md:group-data-[reduit=true]/menu:whitespace-nowrap md:group-data-[reduit=true]/menu:opacity-0">{libelle}</span>
       {!!nombre && <span className="rounded-full bg-white/10 px-1.5 py-px text-[10px] font-semibold text-white/80 tabular-nums md:group-data-[reduit=true]/menu:bg-or-400 md:group-data-[reduit=true]/menu:absolute md:group-data-[reduit=true]/menu:top-1.5 md:group-data-[reduit=true]/menu:right-1.5 md:group-data-[reduit=true]/menu:size-2 md:group-data-[reduit=true]/menu:p-0 md:group-data-[reduit=true]/menu:text-[0px] md:group-data-[reduit=true]/menu:ring-2 md:group-data-[reduit=true]/menu:ring-nuit">{nombre > 999 ? "999+" : nombre}</span>}
     </Link>
   );
