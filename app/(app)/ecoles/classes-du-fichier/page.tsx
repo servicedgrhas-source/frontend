@@ -15,7 +15,7 @@ import { CYCLES, peut, type Ton } from "@/lib/libelles";
  * enregistré avant « Enregistrer le nombre de classes ».
  */
 
-type Etat = "SURE" | "PROBABLE" | "ABSENTE" | "IGNOREE";
+type Etat = "SURE" | "PROBABLE" | "ABSENTE" | "ENREGISTREE" | "IGNOREE";
 
 interface Ligne {
   cle: string;
@@ -69,9 +69,10 @@ const ETATS: Record<Etat, { libelle: string; ton: Ton; aide: string }> = {
   SURE: { libelle: "Écoles retrouvées", ton: "vert", aide: "La même école chez nous (même nom, dans le même département et le même cycle) : son nombre de classes est coché. Décochez une ligne pour ne pas la prendre." },
   PROBABLE: { libelle: "À confirmer", ton: "jaune", aide: "Un nom proche, ou plusieurs écoles possibles : cochez seulement si c’est bien la même école. Sans coche, rien n’est enregistré." },
   ABSENTE: { libelle: "Absentes de l’organigramme", ton: "rouge", aide: "Aucune école de ce nom dans le département et le cycle. Cochez celles à ajouter dans l’organigramme : elles sont créées dans l’inspection choisie (proposée d’après la circonscription du fichier), avec leur nombre de classes. Quand la circonscription n’a pas d’inspection chez nous, « Créer … » l’ajoute sous la DDEPPSA du département. Sans coche, rien n’est ajouté." },
+  ENREGISTREE: { libelle: "Déjà enregistrées", ton: "gris", aide: "Écoles dont le nombre de classes du fichier est déjà enregistré (retrouvées ou confirmées lors d’un enregistrement précédent) : rien à refaire. Si le fichier change le nombre d’une école, elle revient dans « Écoles retrouvées »." },
   IGNOREE: { libelle: "Département inconnu", ton: "gris", aide: "Le département écrit dans le fichier n’est pas reconnu." },
 };
-const ORDRE: Etat[] = ["SURE", "PROBABLE", "ABSENTE", "IGNOREE"];
+const ORDRE: Etat[] = ["SURE", "PROBABLE", "ABSENTE", "ENREGISTREE", "IGNOREE"];
 
 const nf = new Intl.NumberFormat("fr-FR");
 const TAILLE = 50;
@@ -99,11 +100,12 @@ function ClassesDuFichier({ peutEnregistrer }: { peutEnregistrer: boolean }) {
   const [ajouts, setAjouts] = useState<Set<string>>(new Set());
   const [inspection, setInspection] = useState<Record<string, number>>({});
 
-  const analyser = async (f: File) => {
+  /** `apres` : relecture qui suit un enregistrement (le message du résultat reste affiché). */
+  const analyser = async (f: File, apres = false) => {
     setFichier(f);
     setEnvoi(true);
     setErreur(null);
-    setResultat(null);
+    if (!apres) setResultat(null);
     try {
       const d = new FormData();
       d.append("fichier", f);
@@ -115,7 +117,8 @@ function ClassesDuFichier({ peutEnregistrer }: { peutEnregistrer: boolean }) {
       setAjouts(new Set());
       // -1 : créer l'inspection de la circonscription (elle n'existe pas encore dans l'organigramme)
       setInspection(Object.fromEntries(x.lignes.filter((l) => l.inspectionProposeeId || l.nouvelleInspection).map((l) => [l.cle, l.inspectionProposeeId ?? -1])));
-      setEtat("SURE");
+      // Le premier onglet où il reste quelque chose à faire
+      setEtat((["SURE", "PROBABLE", "ABSENTE"] as Etat[]).find((e) => x.compteurs[e]) ?? "ENREGISTREE");
       setPage(1);
     } catch (e) {
       setErreur((e as Error).message);
@@ -133,6 +136,9 @@ function ClassesDuFichier({ peutEnregistrer }: { peutEnregistrer: boolean }) {
   const p0 = Math.min(page, pages);
   const visibles = lignes.slice((p0 - 1) * TAILLE, p0 * TAILLE);
   const cochable = etat === "SURE" || etat === "PROBABLE";
+  // Les écoles retrouvées, à cocher ou déjà faites : la colonne « École chez nous »
+  const vueEcole = cochable || etat === "ENREGISTREE";
+  const etatsAffiches = r ? ORDRE.filter((e) => e !== "IGNOREE" || r.compteurs.IGNOREE) : [];
   const ajoutable = (l: Ligne) => l.etat === "ABSENTE" && !l.doublonFichier && !!l.departementId;
   const inspectionsDe = (l: Ligne) => r?.inspections[`${l.departementId}|${l.cycle}`] ?? [];
 
@@ -187,12 +193,14 @@ function ClassesDuFichier({ peutEnregistrer }: { peutEnregistrer: boolean }) {
       d.append("ajouter", JSON.stringify(aAjouter.map((l) => ({ cle: l.cle, inspectionId: inspection[l.cle] }))));
       const x = await api.post<Omit<Resultat, "annee">>("/classes-declarees/appliquer", d);
       setResultat({ ...x, annee: r.annee });
-      setR(null);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       setErreur((e as Error).message);
-    } finally {
       setEnvoi(false);
+      return;
     }
+    // Relecture du fichier : ce qui vient d'être fait passe dans « Déjà enregistrées »
+    await analyser(fichier, true);
   };
 
   const nomCycle = (c: string) => CYCLES[c] ?? c;
@@ -226,16 +234,16 @@ function ClassesDuFichier({ peutEnregistrer }: { peutEnregistrer: boolean }) {
               {resultat.refus.length > 5 ? "…" : ""}
             </span>
           )}
-          <span className="mt-1 block">Déposez à nouveau le fichier pour voir ce qui reste à confirmer.</span>
+          <span className="mt-1 block">La liste ci-dessous est à jour : ce qui vient d’être fait est dans « Déjà enregistrées », les onglets ne gardent que ce qui reste à faire.</span>
         </Alerte>
       )}
 
       {r && (
         <>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            {ORDRE.map((e) => (
+          <div className={etatsAffiches.length > 4 ? "grid grid-cols-2 gap-3 md:grid-cols-5" : "grid grid-cols-2 gap-3 md:grid-cols-4"}>
+            {etatsAffiches.map((e) => (
               <button key={e} type="button" className="text-left" onClick={() => (setEtat(e), setPage(1))}>
-                <Chiffre libelle={ETATS[e].libelle} valeur={nf.format(r.compteurs[e])} ton={ETATS[e].ton} detail={e === etat ? "affichées ci-dessous" : undefined} />
+                <Chiffre libelle={ETATS[e].libelle} valeur={nf.format(r.compteurs[e])} ton={ETATS[e].ton} detail={e === etat ? "affichées ci-dessous" : e === "ENREGISTREE" ? "rien à refaire" : r.compteurs[e] ? "à traiter" : undefined} />
               </button>
             ))}
           </div>
@@ -246,21 +254,21 @@ function ClassesDuFichier({ peutEnregistrer }: { peutEnregistrer: boolean }) {
 
           <Carte titre="2. Vérifier et cocher">
             <div className="space-y-3 text-[13px]">
-              <Segments valeur={etat} changer={(e) => (setEtat(e), setPage(1))} options={ORDRE.map((e) => ({ valeur: e, libelle: `${ETATS[e].libelle} (${nf.format(r.compteurs[e])})` }))} />
+              <Segments valeur={etat} changer={(e) => (setEtat(e), setPage(1))} options={etatsAffiches.map((e) => ({ valeur: e, libelle: `${ETATS[e].libelle} (${nf.format(r.compteurs[e])})` }))} />
               <p className="text-zinc-600">{ETATS[etat].aide}</p>
               <div className="flex flex-wrap items-center gap-2">
                 <Liste value={dep} onChange={(e) => (setDep(e.target.value), setPage(1))} vide="Tous les départements" options={departements.map((d) => ({ valeur: d, libelle: d }))} />
                 <Liste value={cycle} onChange={(e) => (setCycle(e.target.value), setPage(1))} vide="Tous les cycles" options={["PRESCOLAIRE", "PRIMAIRE", "COLLEGE", "LYCEE", "ALPHABETISATION"].map((c) => ({ valeur: c, libelle: nomCycle(c) }))} />
                 <Saisie placeholder="Chercher une école, une circonscription…" value={recherche} onChange={(e) => (setRecherche(e.target.value), setPage(1))} className="w-64" />
                 {(cochable || etat === "ABSENTE") && (
-                  <>
+                  <div className="flex items-center gap-1">
                     <Bouton variante="discret" onClick={() => toutCocher(true)} title={etat === "ABSENTE" ? "Les lignes affichées qui ont une inspection (filtre compris)" : "Les lignes affichées (filtre compris)"}>
                       <CheckCheck /> Tout cocher
                     </Bouton>
                     <Bouton variante="discret" onClick={() => toutCocher(false)}>
                       Tout décocher
                     </Bouton>
-                  </>
+                  </div>
                 )}
                 <span className="ml-auto text-zinc-500">{nf.format(lignes.length)} ligne(s)</span>
               </div>
@@ -273,9 +281,9 @@ function ClassesDuFichier({ peutEnregistrer }: { peutEnregistrer: boolean }) {
                     <tr>
                       {(cochable || etat === "ABSENTE") && <th className="w-10"></th>}
                       <th>Dans le fichier</th>
-                      <th>{cochable ? "École chez nous" : etat === "ABSENTE" ? "Ajouter dans l’organigramme" : "Pourquoi"}</th>
+                      <th>{vueEcole ? "École chez nous" : etat === "ABSENTE" ? "Ajouter dans l’organigramme" : "Pourquoi"}</th>
                       <th className="text-right">Classes (fichier)</th>
-                      {cochable && <th>Déjà dans le système</th>}
+                      {vueEcole && <th>Déjà dans le système</th>}
                       <th>Ligne</th>
                     </tr>
                   </thead>
@@ -306,7 +314,7 @@ function ClassesDuFichier({ peutEnregistrer }: { peutEnregistrer: boolean }) {
                           </div>
                         </td>
                         <td>
-                          {cochable ? (
+                          {vueEcole ? (
                             <div>
                               <div>{l.ecole}</div>
                               <div className="text-[11px] text-zinc-500">{l.inspection ?? "inspection non renseignée"}</div>
@@ -322,7 +330,7 @@ function ClassesDuFichier({ peutEnregistrer }: { peutEnregistrer: boolean }) {
                                   </Badge>
                                 )}
                               </div>
-                              {etat === "PROBABLE" && l.pourquoi && <div className="text-[11px] text-zinc-500">{l.pourquoi}</div>}
+                              {(etat === "PROBABLE" || etat === "ENREGISTREE") && l.pourquoi && <div className="text-[11px] text-zinc-500">{l.pourquoi}</div>}
                             </div>
                           ) : etat === "ABSENTE" && ajoutable(l) ? (
                             <div className="space-y-1">
@@ -360,7 +368,7 @@ function ClassesDuFichier({ peutEnregistrer }: { peutEnregistrer: boolean }) {
                           )}
                         </td>
                         <td className="text-right font-medium tabular-nums">{nf.format(l.nombre)}</td>
-                        {cochable && (
+                        {vueEcole && (
                           <td className="text-[12px]">
                             {l.classesSaisies > 0 && <div>{nf.format(l.classesSaisies)} classe(s) saisie(s) une par une : elles restent la référence</div>}
                             {l.dejaDeclare != null && (
