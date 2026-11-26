@@ -43,6 +43,7 @@ import {
   Users,
   type LucideIcon,
   ScanSearch,
+  Sheet,
 } from "lucide-react";
 import type { Profil } from "./api";
 import { peut } from "./libelles";
@@ -628,6 +629,13 @@ export const ESPACES: Espace[] = [
         icone: BookCheck,
         visible: traiter,
         explication: "Le répertoire des établissements publics du ministère (Excel) : les écoles prennent son écriture, celles qui manquent sont ajoutées dans leur inspection. Essai d’abord, enregistrement par le DG.",
+      },
+      {
+        href: "/ecoles/classes-du-fichier",
+        libelle: "Classes du fichier des allocations",
+        icone: Sheet,
+        visible: traiter,
+        explication: "Le fichier des allocations budgétaires (Excel) donne le nombre de classes de chaque école : il sert au besoin en enseignants tant que les classes ne sont pas saisies une par une. Essai d’abord, enregistrement par le DG.",
       },
       {
         href: "/ecoles/noms",

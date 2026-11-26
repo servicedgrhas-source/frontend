@@ -50,6 +50,8 @@ export interface LigneBesoin {
 }
 
 export interface Besoins {
+  /** Nombre de classes pris dans le fichier des allocations budgétaires (aucune classe saisie). */
+  classesDeclarees?: boolean;
   heuresEnseignant: number;
   classes: number;
   enseignants: number;

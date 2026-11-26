@@ -168,7 +168,11 @@ function FicheEcole() {
       </Carte>
 
       <div className="grid gap-4 sm:grid-cols-4">
-        <Chiffre libelle="Classes ouvertes" valeur={d.classes.length} detail={`${d.classes.reduce((t, c) => t + (c.effectif ?? 0), 0)} élève(s) déclaré(s)`} />
+        {b.classesDeclarees ? (
+          <Chiffre libelle="Classes (fichier des allocations)" valeur={b.classes} detail="non saisies une par une" />
+        ) : (
+          <Chiffre libelle="Classes ouvertes" valeur={d.classes.length} detail={`${d.classes.reduce((t, c) => t + (c.effectif ?? 0), 0)} élève(s) déclaré(s)`} />
+        )}
         <Chiffre libelle="Salles" valeur={d.salles.length} detail={`${d.batiments.length} bâtiment(s)`} />
         <Chiffre libelle="Enseignants en poste" valeur={enseignants} detail={`${d.agents.length} agent(s) rattaché(s)`} />
         <Chiffre
@@ -221,7 +225,11 @@ function FicheEcole() {
         >
           {!d.niveaux.length && <Alerte ton="jaune">Pas de niveaux pour ce cycle : indiquez le cycle de l’école dans l’organigramme, ou les niveaux dans les référentiels.</Alerte>}
           {!d.classes.length ? (
-            <Vide>Aucune classe saisie pour {d.annee}. Ouvrez les classes de l’école : c’est d’elles que dépend le besoin en enseignants.</Vide>
+            <Vide>
+              {b.classesDeclarees
+                ? `Aucune classe saisie une par une pour ${d.annee}. Le besoin en enseignants utilise en attendant les ${b.classes} classe(s) du fichier des allocations budgétaires ; ouvrez les classes de l’école pour un calcul exact (par niveau et par matière).`
+                : `Aucune classe saisie pour ${d.annee}. Ouvrez les classes de l’école : c’est d’elles que dépend le besoin en enseignants.`}
+            </Vide>
           ) : (
             <Tableau>
               <thead>
