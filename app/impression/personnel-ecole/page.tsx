@@ -12,15 +12,15 @@ const col = (titre: string, largeur: number, k: number, droite = false): Colonne
 const COLONNES: ColonneImprimee<Ligne>[] = [
   col("N°", 4, 0, true),
   col("Matricule", 9, 1),
-  col("Nom et prénoms", 19, 2),
-  col("Sexe", 4, 3),
-  col("Statut", 10, 4),
-  col("Grade", 8, 5),
-  col("Qualification", 11, 6),
+  col("Nom et prénoms", 20, 2),
+  col("Sexe", 3, 3),
+  col("Statut", 8, 4),
+  col("Grade", 10, 5),
+  col("Qualification", 12, 6),
   col("Fonction dans l’école", 11, 7),
   col("Matière / spécialité", 10, 8),
-  col("Temps de travail", 8, 9),
-  col("En poste", 6, 10),
+  col("Temps de travail", 7, 9),
+  col("En poste", 5, 10),
 ];
 const sousTitre = (d: Record<string, unknown>) => [d.ecole, d.sousTitre].filter(Boolean).join(" · ");
 const arrete = (n: number, d: Record<string, unknown>) =>
@@ -29,7 +29,7 @@ const arrete = (n: number, d: Record<string, unknown>) =>
 /** Personnel d'une école imprimable (DG, 27/11/2026), avec le filtre « Temps de travail » de la fiche. */
 function Liste() {
   const id = Number(useSearchParams().get("id")) || 0;
-  return <ImpressionListe chemin={`/etablissements/${id}/personnel/export/json`} titre="PERSONNEL DE L’ÉCOLE" sousTitre={sousTitre} colonnes={COLONNES} arrete={arrete} pied="Personnel de l’école" portrait />;
+  return <ImpressionListe chemin={`/etablissements/${id}/personnel/export/json`} titre="PERSONNEL DE L’ÉCOLE" sousTitre={sousTitre} colonnes={COLONNES} arrete={arrete} pied="Personnel de l’école" />;
 }
 
 export default function Page() {
