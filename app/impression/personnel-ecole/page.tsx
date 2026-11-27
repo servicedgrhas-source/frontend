@@ -29,7 +29,7 @@ const arrete = (n: number, d: Record<string, unknown>) =>
 /** Personnel d'une école imprimable (DG, 27/11/2026), avec le filtre « Temps de travail » de la fiche. */
 function Liste() {
   const id = Number(useSearchParams().get("id")) || 0;
-  return <ImpressionListe chemin={`/etablissements/${id}/personnel/export/json`} titre="PERSONNEL DE L’ÉCOLE" sousTitre={sousTitre} colonnes={COLONNES} arrete={arrete} pied="Personnel de l’école" />;
+  return <ImpressionListe chemin={`/etablissements/${id}/personnel/export/json`} titre="PERSONNEL DE L’ÉCOLE" sousTitre={sousTitre} colonnes={COLONNES} arrete={arrete} pied="Personnel de l’école" sansDirection />;
 }
 
 export default function Page() {

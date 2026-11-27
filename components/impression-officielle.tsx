@@ -16,6 +16,7 @@ export function EnteteOfficielle({
   sousTitre,
   numero,
   sousNumero,
+  sansDirection = false,
 }: {
   titre: string;
   sousTitre?: string;
@@ -23,6 +24,8 @@ export function EnteteOfficielle({
   numero?: string | null;
   /** Sous le numéro (ex. date et heure de création de la fiche). */
   sousNumero?: string | null;
+  /** Sans la direction des recrutements ni le service des recrutements (s'arrête à la DGRHAS). */
+  sansDirection?: boolean;
 }) {
   return (
     <>
@@ -36,10 +39,14 @@ export function EnteteOfficielle({
           <div>DIRECTION GENERALE DES RESSOURCES HUMAINES</div>
           <div>ET DE L’ADMINISTRATION SCOLAIRE</div>
           {SEP}
-          <div>DIRECTION DES RECRUTEMENTS ET DU SUIVI DES CARRIERES</div>
-          {SEP}
-          <div>SERVICE DES RECRUTEMENTS</div>
-          {SEP}
+          {!sansDirection && (
+            <>
+              <div>DIRECTION DES RECRUTEMENTS ET DU SUIVI DES CARRIERES</div>
+              {SEP}
+              <div>SERVICE DES RECRUTEMENTS</div>
+              {SEP}
+            </>
+          )}
         </div>
         <div className="w-[34%] text-center leading-tight">
           <div className="font-bold">REPUBLIQUE DU CONGO</div>

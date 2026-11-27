@@ -31,6 +31,7 @@ export function ImpressionListe<L>({
   adapter,
   pret = true,
   portrait = false,
+  sansDirection = false,
 }: {
   /** Adresse du serveur qui renvoie { lignes, … } (les filtres de l'adresse de la page y sont passés). */
   chemin: string;
@@ -46,6 +47,8 @@ export function ImpressionListe<L>({
   pret?: boolean;
   /** A4 portrait (paysage par défaut). */
   portrait?: boolean;
+  /** En-tête arrêté à la DGRHAS (sans direction ni service des recrutements). */
+  sansDirection?: boolean;
 }) {
   const params = useSearchParams();
   const filtres = Object.fromEntries(params.entries());
@@ -87,7 +90,7 @@ export function ImpressionListe<L>({
         cle: "entete",
         type: "libre",
         garderAvecSuivant: true,
-        contenu: <EnteteOfficielle titre={titre} sousTitre={sousTitre(d)} sousNumero={editeLe()} />,
+        contenu: <EnteteOfficielle titre={titre} sousTitre={sousTitre(d)} sousNumero={editeLe()} sansDirection={sansDirection} />,
       },
       ...d.lignes.map(
         (l, i): Bloc => ({
@@ -113,7 +116,7 @@ export function ImpressionListe<L>({
       },
     ];
     return { blocs, tableaux };
-  }, [r.donnees, colonnes, titre, sousTitre, arrete]);
+  }, [r.donnees, colonnes, titre, sousTitre, arrete, sansDirection]);
 
   if (r.erreur)
     return (
