@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useState, Suspense } from "react";
 import { CarteEmploiDuTemps } from "@/components/ecoles/emploi-du-temps";
 import { BlocLocalisation, type Position } from "@/components/ecoles/localisation";
+import { BarreExport } from "@/components/export-liste";
 import { SaisieReferentiel } from "@/components/saisie-referentiel";
 import { Alerte, Annonce, Badge, Bouton, BoutonIcone, Carte, Champ, Chargement, Chiffre, EnTete, Liste, Modale, Saisie, Segments, Tableau, Vide, cx, useConfirmation } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
@@ -373,6 +374,12 @@ function FicheEcole() {
             Les fiches du personnel rattachées à cette école (choisie dans la fiche, ou reconnue d’après le lieu de service écrit). Le proviseur, le directeur, l’économe… ne comptent pas comme
             enseignants ; un agent détaché, en disponibilité ou retraité n’est pas en poste.
           </p>
+          {!!d.agents.length && (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[12px] text-zinc-500">La liste du personnel{temps ? " (filtre « Temps de travail » compris)" : ""} :</span>
+              <BarreExport chemin={`/etablissements/${id}/personnel/export`} impression="/impression/personnel-ecole" nom={`Personnel ${d.structure.nom}`} filtres={{ id, temps: temps || undefined }} erreur={setErreur} />
+            </div>
+          )}
           {!!d.agents.length && (
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <span className="text-[12px] text-zinc-500">Temps de travail :</span>

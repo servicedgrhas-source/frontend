@@ -30,19 +30,22 @@ export function ImpressionListe<L>({
   pied,
   adapter,
   pret = true,
+  portrait = false,
 }: {
   /** Adresse du serveur qui renvoie { lignes, … } (les filtres de l'adresse de la page y sont passés). */
   chemin: string;
   titre: string;
   sousTitre: (d: { lignes: L[] } & Record<string, unknown>) => string;
   colonnes: ColonneImprimee<L>[];
-  /** « Arrêtée la présente liste à … » */
-  arrete: (n: number) => string;
+  /** « Arrêtée la présente liste à … » (les données reçues en second, pour des totaux du serveur). */
+  arrete: (n: number, d: { lignes: L[] } & Record<string, unknown>) => string;
   pied: string;
   /** Mise en forme des données reçues avant l'impression (ex. le journal, décrit ici). */
   adapter?: (d: unknown) => { lignes: L[] } & Record<string, unknown>;
   /** Faux tant que ce qu'il faut pour mettre en forme n'est pas chargé. */
   pret?: boolean;
+  /** A4 portrait (paysage par défaut). */
+  portrait?: boolean;
 }) {
   const params = useSearchParams();
   const filtres = Object.fromEntries(params.entries());
@@ -106,7 +109,7 @@ export function ImpressionListe<L>({
         cle: "fin",
         type: "libre",
         garderAvecPrecedent: true,
-        contenu: <div className="mt-3 text-[9pt]">{arrete(d.lignes.length)}</div>,
+        contenu: <div className="mt-3 text-[9pt]">{arrete(d.lignes.length, d)}</div>,
       },
     ];
     return { blocs, tableaux };
@@ -121,14 +124,14 @@ export function ImpressionListe<L>({
   if (!contenu || !r.donnees) return <Chargement texte="Préparation de la liste…" />;
   return (
     <div className="min-h-screen bg-zinc-200 py-6 print:bg-white print:py-0">
-      <StyleImpressionA4 paysage />
-      <div className="no-print mx-auto mb-4 flex w-[297mm] flex-wrap items-center justify-between gap-2">
+      <StyleImpressionA4 paysage={!portrait} />
+      <div className={`no-print mx-auto mb-4 flex ${portrait ? "w-[210mm]" : "w-[297mm]"} flex-wrap items-center justify-between gap-2`}>
         <span className="text-sm text-zinc-700">{sousTitre(r.donnees)}</span>
         <Bouton variante="principal" onClick={() => window.print()}>
           Imprimer / Enregistrer en PDF
         </Bouton>
       </div>
-      <PagesA4 paysage blocs={contenu.blocs} tableaux={contenu.tableaux} pied={{ gauche: pied, droite: "MEPPSA · DGRHAS", mention: GENERE_PAR, mentionAGauche: true }} classeFeuille="feuille-liste" margeHaut={10} margeCote={10} margeBas={18} />
+      <PagesA4 paysage={!portrait} blocs={contenu.blocs} tableaux={contenu.tableaux} pied={{ gauche: pied, droite: "MEPPSA · DGRHAS", mention: GENERE_PAR, mentionAGauche: true }} classeFeuille="feuille-liste" margeHaut={10} margeCote={10} margeBas={18} />
     </div>
   );
 }
